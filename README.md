@@ -3,7 +3,7 @@
 A self-hosted imageboard for one person or a few friends. Tag-based, deliberately small,
 and designed to run as a single container with a single volume.
 
-Think danbooru or szurubooru, minus everything needed to serve thousands of strangers.
+Think danbooru, minus everything needed to serve thousands of strangers. My intention was to make something simple to solve my own problems. It should be simple enough for selfhosters to deploy. Contributions are welcome. That said, I want to keep this application relatively simple and lightweight.
 
 ## Features
 
@@ -293,3 +293,4 @@ MIT — see [LICENSE](LICENSE).
 
 The container image bundles third-party software under its own terms, notably gallery-dl
 (GPL-2.0) and FFmpeg. See [NOTICE](NOTICE) for the full list.
+
