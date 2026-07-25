@@ -1,0 +1,63 @@
+@model Boh.Web.ViewModels.PostTagView
+@functions {
+    // The namespace is not printed on the chip — colour carries it. It stays in the tooltip
+    // so the full tag is recoverable, and in the href and remove handler so both act on the
+    // real tag rather than the shortened label.
+    static string Tooltip(Boh.Web.ViewModels.PostTagEntry tag) =>
+        (tag.Namespace.Length > 0 ? $"{tag.Display} — " : "")
+        + (tag.Implied ? "implied by another tag" : $"{tag.PostCount} post(s)");
+}
+
+<div id="tag-list">
+    @if (Model.Error is not null)
+    {
+        <p class="tag-error" role="alert"><small>@Model.Error</small></p>
+    }
+
+    @if (Model.Tags.Count == 0)
+    {
+        <p><small class="muted">No tags yet.</small></p>
+    }
+    else
+    {
+        <ul class="tag-chips">
+            @foreach (var tag in Model.Tags)
+            {
+                <li class="tag-chip @(tag.Implied ? "tag-implied" : "")"
+                    style="@(tag.Color is null ? null : $"--tag-color: {tag.Color}")"
+                    title="@Tooltip(tag)">
+                    <a href="/?q=@Uri.EscapeDataString(tag.Display)">@tag.Name</a>
+                    <span class="tag-count">@tag.PostCount</span>
+                    @if (Model.CanEdit && !tag.Implied)
+                    {
+                        <button type="button" class="tag-remove"
+                                aria-label="Remove tag @tag.Display"
+                                hx-post="/Posts/Detail/@Model.PostId?handler=RemoveTag&tag=@Uri.EscapeDataString(tag.Display)"
+                                hx-target="#tag-list"
+                                hx-swap="outerHTML">&times;</button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+
+    @if (Model.CanEdit)
+    {
+        <form class="tag-add"
+              hx-post="/Posts/Detail/@Model.PostId?handler=AddTags"
+              hx-target="#tag-list"
+              hx-swap="outerHTML"
+              hx-on::after-request="this.reset()"
+              autocomplete="off">
+            <input type="text" name="tags" placeholder="add tags…"
+                   aria-label="Add tags"
+                   data-suggest-for="#tag-add-suggestions"
+                   hx-get="/Tags/Autocomplete"
+                   hx-trigger="keyup changed delay:200ms"
+                   hx-target="#tag-add-suggestions"
+                   hx-swap="innerHTML" />
+            <button type="submit">Add</button>
+        </form>
+        <div id="tag-add-suggestions" class="suggestions"></div>
+    }
+</div>

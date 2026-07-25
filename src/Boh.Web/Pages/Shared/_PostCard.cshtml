@@ -1,0 +1,10 @@
+@model Boh.Web.Data.Entities.Post
+
+<a class="gallery-item" href="/Posts/Detail/@Model.Id" title="Post @Model.Id">
+    <img src="@PostUrls.Thumb(Model)" alt="Post @Model.Id" loading="lazy"
+         width="@Model.Width" height="@Model.Height" />
+    @if (Model.IsVideo)
+    {
+        <span class="badge">video</span>
+    }
+</a>

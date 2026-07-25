@@ -1,0 +1,21 @@
+@model IReadOnlyList<Boh.Web.Services.TagSuggestion>
+
+@if (Model.Count > 0)
+{
+    <ul class="suggestion-list">
+        @foreach (var suggestion in Model)
+        {
+            <li>
+                <button type="button" class="suggestion" data-tag="@(suggestion.AliasOf ?? suggestion.Display)"
+                        style="@(suggestion.Color is null ? null : $"--tag-color: {suggestion.Color}")">
+                    <span class="suggestion-name">@suggestion.Display</span>
+                    @if (suggestion.AliasOf is not null)
+                    {
+                        <span class="suggestion-alias">&rarr; @suggestion.AliasOf</span>
+                    }
+                    <span class="tag-count">@suggestion.PostCount</span>
+                </button>
+            </li>
+        }
+    </ul>
+}

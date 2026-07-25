@@ -1,0 +1,84 @@
+@page "{id:int}"
+@model Boh.Web.Pages.Posts.DetailModel
+@{
+    var post = Model.Post;
+    ViewData["Title"] = $"Post {post.Id}";
+}
+
+<div class="post-view">
+    <div class="post-media">
+        @if (post.IsVideo)
+        {
+            <video controls preload="metadata" src="@PostUrls.Original(post)"></video>
+        }
+        else
+        {
+            <a href="@PostUrls.Original(post)">
+                <img src="@PostUrls.Original(post)" alt="Post @post.Id"
+                     width="@post.Width" height="@post.Height" />
+            </a>
+        }
+    </div>
+
+    @* Everything sits below the media in one column. Tags are the variable-length part, so
+       they lead; the fixed facts tile underneath. *@
+    <section class="post-below">
+        <div class="tag-section">
+            <h2>Tags</h2>
+            <partial name="_TagList" model="Model.TagView" />
+        </div>
+
+        <dl class="post-facts">
+            <div>
+                <dt>Dimensions</dt>
+                <dd>@post.Width × @post.Height</dd>
+            </div>
+            <div>
+                <dt>Size</dt>
+                <dd>@PostUrls.HumanSize(post.FileSizeBytes)</dd>
+            </div>
+            <div>
+                <dt>Type</dt>
+                <dd>@post.MimeType</dd>
+            </div>
+
+            @if (post.DurationSec is { } duration)
+            {
+                <div>
+                    <dt>Duration</dt>
+                    <dd>@TimeSpan.FromSeconds(duration).ToString(@"m\:ss")</dd>
+                </div>
+            }
+
+            <div>
+                <dt>Uploaded</dt>
+                <dd><time datetime="@post.UploadedAt.ToString("o")">@post.UploadedAt.ToString("yyyy-MM-dd HH:mm") UTC</time></dd>
+            </div>
+
+            @if (!string.IsNullOrEmpty(post.SourceUrl))
+            {
+                <div class="fact-wide">
+                    <dt>Source</dt>
+                    <dd><a href="@post.SourceUrl" rel="noreferrer noopener nofollow">@post.SourceUrl</a></dd>
+                </div>
+            }
+
+            <div class="fact-wide">
+                <dt>SHA-256</dt>
+                <dd><code>@post.Sha256</code></dd>
+            </div>
+        </dl>
+
+        <div class="post-actions">
+            <a href="@PostUrls.Original(post)" download role="button" class="secondary">Download original</a>
+
+            @if (Model.CanEdit)
+            {
+                <form method="post" asp-page-handler="Delete"
+                      onsubmit="return confirm('Delete post @post.Id? This cannot be undone.');">
+                    <button type="submit" class="danger">Delete post</button>
+                </form>
+            }
+        </div>
+    </section>
+</div>

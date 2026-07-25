@@ -1,0 +1,21 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# Local runtime data (SQLite DB, blobs, thumbnails)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Test output
+TestResults/
+*.trx
+coverage*.xml
+
+# Local tool settings, specific to one machine's permission grants
+.claude/settings.local.json

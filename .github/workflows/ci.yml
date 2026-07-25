@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore boh.slnx
+
+      - name: Build
+        run: dotnet build boh.slnx -c Release --no-restore
+
+      # Magick.NET decodes with native code, so the tests need the same OpenMP runtime
+      # the container installs.
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgomp1
+
+      - name: Test
+        run: dotnet test boh.slnx -c Release --no-build --verbosity normal
+
+  image:
+    name: Build container image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only — publishing happens in release.yml. This exists so a broken Dockerfile
+      # fails a pull request rather than a tag.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: boh:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the image
+        run: |
+          docker run -d --name boh-ci -p 8080:8080 \
+            -e BOH_ADMIN_PASSWORD=ci-smoke-test boh:ci
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
+              echo "healthy after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "did not become healthy"
+              docker logs boh-ci
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # The bundled tools are part of the deliverable, so assert they are present
+          # and runnable as the non-root app user.
+          docker exec boh-ci ffmpeg -version >/dev/null
+          docker exec boh-ci ffprobe -version >/dev/null
+          docker exec boh-ci gallery-dl --version >/dev/null
+          echo "bundled tools OK"
+
+          docker rm -f boh-ci >/dev/null

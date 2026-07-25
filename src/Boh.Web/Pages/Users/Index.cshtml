@@ -1,0 +1,124 @@
+@page "/Users"
+@model Boh.Web.Pages.Users.IndexModel
+@{
+    ViewData["Title"] = "Users";
+}
+
+<header class="page-head">
+    <h1>Users</h1>
+    <span class="head-actions">
+        <a href="/Tags/Admin" role="button" class="secondary">Tag administration</a>
+        <a href="/Maintenance" role="button" class="secondary">Maintenance</a>
+    </span>
+</header>
+
+@if (Model.Message is not null)
+{
+    <div class="notice" role="status">@Model.Message</div>
+}
+@if (Model.Error is not null)
+{
+    <div class="notice notice-error" role="alert">@Model.Error</div>
+}
+
+<section>
+    <h2>Add a user</h2>
+    <p>
+        <small class="muted">
+            Ordinary users can upload, tag, import and delete posts. Administrators can additionally
+            manage users, the tag graph and maintenance. Passwords must be at least
+            @Model.MinPasswordLength characters; whoever you create can change theirs from
+            <a href="/Account">their account page</a>.
+        </small>
+    </p>
+
+    <form method="post" asp-page-handler="Create" class="pair-form">
+        <input type="text" name="username" placeholder="username" aria-label="Username"
+               autocapitalize="none" required />
+        <input type="password" name="password" placeholder="password" aria-label="Password"
+               autocomplete="new-password" required />
+        <label class="inline-check">
+            <input type="checkbox" name="isAdmin" value="true" />
+            Administrator
+        </label>
+        <button type="submit">Add user</button>
+    </form>
+</section>
+
+<section>
+    <h2>Existing users</h2>
+
+    <div class="scroll-x">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">User</th>
+                    <th scope="col">Role</th>
+                    <th scope="col">Posts</th>
+                    <th scope="col">Created</th>
+                    <th scope="col">Reset password</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in Model.Users)
+                {
+                    var isSelf = user.Id == Model.CurrentUserId;
+                    <tr>
+                        <td>
+                            @user.Username
+                            @if (isSelf)
+                            {
+                                <small class="muted">(you)</small>
+                            }
+                            @if (user.Username == Model.SeededAdminUsername)
+                            {
+                                <small class="muted" title="Recreated from BOH_ADMIN_PASSWORD on every start">(seeded)</small>
+                            }
+                        </td>
+                        <td>@(user.IsAdmin ? "administrator" : "user")</td>
+                        <td>@user.PostCount</td>
+                        <td><small>@user.CreatedAt.ToString("yyyy-MM-dd")</small></td>
+                        <td>
+                            <form method="post" asp-page-handler="ResetPassword" class="row-form">
+                                <input type="hidden" name="userId" value="@user.Id" />
+                                <input type="password" name="password" placeholder="new password"
+                                       aria-label="New password for @user.Username"
+                                       autocomplete="new-password" required />
+                                <button type="submit" class="secondary outline">Set</button>
+                            </form>
+                        </td>
+                        <td>
+                            <div class="row-actions">
+                                <form method="post" asp-page-handler="SetAdmin">
+                                    <input type="hidden" name="userId" value="@user.Id" />
+                                    <input type="hidden" name="isAdmin" value="@((!user.IsAdmin).ToString().ToLowerInvariant())" />
+                                    <button type="submit" class="secondary outline">
+                                        @(user.IsAdmin ? "Make user" : "Make admin")
+                                    </button>
+                                </form>
+
+                                @if (!isSelf)
+                                {
+                                    <form method="post" asp-page-handler="Delete"
+                                          onsubmit="return confirm('Delete @user.Username? Their posts are kept.');">
+                                        <input type="hidden" name="userId" value="@user.Id" />
+                                        <button type="submit" class="secondary outline danger-text">Delete</button>
+                                    </form>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <p>
+        <small class="muted">
+            Deleting a user keeps their posts; the uploader is simply cleared. The last
+            administrator cannot be deleted or demoted, so the instance always has someone who
+            can manage it.
+        </small>
+    </p>
+</section>

@@ -1,0 +1,26 @@
+# Single-volume deployment: everything under /data. This is the simple case.
+# For splitting the database, media and thumbnails across different storage, see
+# docker-compose.split.yml and the "Storage layout" section of the README.
+services:
+  boh:
+    image: ghcr.io/kylebavis/boh:latest
+    # To build from a checkout instead of pulling, comment out `image` and use:
+    # build: .
+    container_name: boh
+    ports:
+      - "8080:8080"
+    volumes:
+      - boh_data:/data
+    environment:
+      # Applied on every start, so changing this changes the admin password.
+      BOH_ADMIN_PASSWORD: change-me
+
+      # Set to true to let anyone browse without signing in. Uploading, tagging,
+      # deleting and importing still require an account.
+      BOH_PUBLIC_READ: "false"
+
+      BOH_MAX_UPLOAD_MB: "256"
+    restart: unless-stopped
+
+volumes:
+  boh_data:

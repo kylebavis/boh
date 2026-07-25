@@ -1,0 +1,186 @@
+@page "/Tags/Admin"
+@model Boh.Web.Pages.Tags.AdminModel
+@{
+    ViewData["Title"] = "Tag administration";
+}
+
+<header class="page-head">
+    <h1>Tag administration</h1>
+    <span class="head-actions">
+        <a href="/Tags" role="button" class="secondary">All tags</a>
+        <a href="/Maintenance" role="button" class="secondary">Maintenance</a>
+    </span>
+</header>
+
+@if (Model.Message is not null)
+{
+    <div class="notice" role="status">@Model.Message</div>
+}
+@if (Model.Error is not null)
+{
+    <div class="notice notice-error" role="alert">@Model.Error</div>
+}
+
+<section>
+    <h2>Namespaces</h2>
+    <p><small class="muted">Colours distinguish namespaces across the gallery, tag lists and autocomplete. Every namespace gets a stable colour automatically; set one here to override it.</small></p>
+
+    <form method="post" asp-page-handler="SetNamespaceColor" class="pair-form">
+        <input type="text" name="ns" placeholder="namespace" aria-label="Namespace" required />
+        <input type="color" name="color" value="#a371f7" aria-label="Colour" class="color-input" />
+        <button type="submit">Set colour</button>
+    </form>
+
+    @if (Model.Namespaces.Count == 0)
+    {
+        <p class="muted"><small>No namespaced tags yet. Tag something <code>artist:name</code> and it will appear here.</small></p>
+    }
+    else
+    {
+        <div class="scroll-x">
+            <table>
+                <thead>
+                    <tr><th scope="col">Namespace</th><th scope="col">Tags</th><th scope="col">Colour</th><th scope="col"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var ns in Model.Namespaces)
+                    {
+                        <tr>
+                            <td>
+                                <span class="tag-link" style="--tag-color: @ns.Color">@ns.Name:</span>
+                            </td>
+                            <td>@ns.TagCount</td>
+                            <td>
+                                <span class="swatch" style="background: @ns.Color"></span>
+                                <code>@ns.Color</code>
+                                @if (ns.IsDefault)
+                                {
+                                    <small class="muted">default</small>
+                                }
+                            </td>
+                            <td>
+                                @if (!ns.IsDefault)
+                                {
+                                    <form method="post" asp-page-handler="ResetNamespaceColor">
+                                        <input type="hidden" name="ns" value="@ns.Name" />
+                                        <button type="submit" class="secondary outline">Reset</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section>
+    <h2>Move or rename a tag</h2>
+    <p><small class="muted">Also how a tag is put into a namespace — <code>foo</code> to <code>artist:foo</code>. If the destination already exists the two are merged, keeping every post, alias and implication.</small></p>
+
+    <form method="post" asp-page-handler="MoveTag" class="pair-form">
+        <input type="text" name="from" placeholder="existing tag" aria-label="Existing tag" required />
+        <span class="pair-arrow">&rarr;</span>
+        <input type="text" name="to" placeholder="new name" aria-label="New name" required />
+        <button type="submit">Move</button>
+    </form>
+</section>
+
+<section>
+    <h2>Aliases</h2>
+    <p><small class="muted">An alias never reaches storage — tagging a post with it stores the canonical tag instead. Creating one migrates existing posts.</small></p>
+
+    <form method="post" asp-page-handler="AddAlias" class="pair-form">
+        <input type="text" name="alias" placeholder="alias tag" aria-label="Alias tag" required />
+        <span class="pair-arrow">&rarr;</span>
+        <input type="text" name="canonical" placeholder="canonical tag" aria-label="Canonical tag" required />
+        <button type="submit">Add alias</button>
+    </form>
+
+    @if (Model.Aliases.Count == 0)
+    {
+        <p class="muted"><small>No aliases defined.</small></p>
+    }
+    else
+    {
+        <div class="scroll-x">
+            <table>
+                <thead>
+                    <tr><th scope="col">Alias</th><th scope="col">Canonical</th><th scope="col"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var alias in Model.Aliases)
+                    {
+                        <tr>
+                            <td>@alias.Alias</td>
+                            <td><a href="/?q=@Uri.EscapeDataString(alias.Canonical)">@alias.Canonical</a></td>
+                            <td>
+                                <form method="post" asp-page-handler="RemoveAlias">
+                                    <input type="hidden" name="aliasTagId" value="@alias.AliasTagId" />
+                                    <button type="submit" class="secondary outline">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section>
+    <h2>Implications</h2>
+    <p><small class="muted">Tagging a post with the child also applies the parent, transitively. Implied tags are marked on the post and cannot be removed by hand.</small></p>
+
+    <form method="post" asp-page-handler="AddImplication" class="pair-form">
+        <input type="text" name="child" placeholder="child tag" aria-label="Child tag" required />
+        <span class="pair-arrow">implies</span>
+        <input type="text" name="parent" placeholder="parent tag" aria-label="Parent tag" required />
+        <button type="submit">Add implication</button>
+    </form>
+
+    @if (Model.Implications.Count == 0)
+    {
+        <p class="muted"><small>No implications defined.</small></p>
+    }
+    else
+    {
+        <div class="scroll-x">
+            <table>
+                <thead>
+                    <tr><th scope="col">Child</th><th scope="col">Implies</th><th scope="col"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var implication in Model.Implications)
+                    {
+                        <tr>
+                            <td><a href="/?q=@Uri.EscapeDataString(implication.Child)">@implication.Child</a></td>
+                            <td><a href="/?q=@Uri.EscapeDataString(implication.Parent)">@implication.Parent</a></td>
+                            <td>
+                                <form method="post" asp-page-handler="RemoveImplication">
+                                    <input type="hidden" name="childTagId" value="@implication.ChildTagId" />
+                                    <input type="hidden" name="parentTagId" value="@implication.ParentTagId" />
+                                    <button type="submit" class="secondary outline">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section>
+    <h2>Maintenance</h2>
+    <div class="maintenance-actions">
+        <form method="post" asp-page-handler="Rebuild">
+            <button type="submit" class="secondary">Rebuild implied tags</button>
+        </form>
+        <form method="post" asp-page-handler="Recount">
+            <button type="submit" class="secondary">Recount tag totals</button>
+        </form>
+    </div>
+    <p><small class="muted">Rebuild recomputes every post's implied tags. Recount repairs post totals if they drift.</small></p>
+</section>

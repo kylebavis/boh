@@ -1,0 +1,57 @@
+@page "/Account"
+@model Boh.Web.Pages.Account.IndexModel
+@{
+    ViewData["Title"] = "Account";
+}
+
+<h1>Account</h1>
+
+@if (Model.AuthDisabled)
+{
+    <div class="notice" role="status">
+        This instance runs with <code>BOH_AUTH_MODE=none</code>, so there are no accounts.
+    </div>
+}
+else
+{
+    <p>
+        Signed in as <strong>@Model.Username</strong>
+        <small class="muted">(@(Model.IsAdmin ? "administrator" : "user"))</small>
+    </p>
+
+    @if (Model.Message is not null)
+    {
+        <div class="notice" role="status">@Model.Message</div>
+    }
+    @if (Model.Error is not null)
+    {
+        <div class="notice notice-error" role="alert">@Model.Error</div>
+    }
+
+    <section>
+        <h2>Change password</h2>
+
+        <form method="post" class="login-panel">
+            <label for="current">
+                Current password
+                <input type="password" id="current" name="currentPassword"
+                       autocomplete="current-password" required />
+            </label>
+
+            <label for="new">
+                New password
+                <input type="password" id="new" name="newPassword"
+                       autocomplete="new-password" minlength="@Model.MinPasswordLength" required />
+                <small>At least @Model.MinPasswordLength characters.</small>
+            </label>
+
+            <label for="confirm">
+                Confirm new password
+                <input type="password" id="confirm" name="confirmPassword"
+                       autocomplete="new-password" minlength="@Model.MinPasswordLength" required />
+            </label>
+
+            <button type="submit">Change password</button>
+        </form>
+    </section>
+}

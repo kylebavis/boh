@@ -1,0 +1,31 @@
+@page
+@model Boh.Web.Pages.Posts.UploadModel
+@{
+    ViewData["Title"] = "Upload";
+}
+
+<h1>Upload</h1>
+
+@if (Model.Error is not null)
+{
+    <div class="notice notice-error" role="alert">@Model.Error</div>
+}
+
+@if (Model.DuplicateOfPostId is { } duplicateId)
+{
+    <div class="notice" role="status">
+        That file is already stored as
+        <a href="/Posts/Detail/@duplicateId">post @duplicateId</a>.
+    </div>
+}
+
+<form method="post" enctype="multipart/form-data">
+    <label for="file">
+        File
+        <input type="file" id="file" name="UploadedFile" required
+               accept="image/*,video/*" />
+        <small>Images and video up to @Model.MaxUploadMb MB. The file type is detected from content, not the filename.</small>
+    </label>
+
+    <button type="submit">Upload</button>
+</form>

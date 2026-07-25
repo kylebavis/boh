@@ -1,0 +1,67 @@
+@page "/Tags"
+@model Boh.Web.Pages.Tags.IndexModel
+@{
+    ViewData["Title"] = "Tags";
+}
+
+<header class="page-head">
+    <h1>Tags</h1>
+    @if (Boh.Web.Security.UserPrincipal.IsAdmin(User) || Model.AuthDisabled)
+    {
+        <span class="head-actions">
+            <a href="/Tags/Admin" role="button" class="secondary">Tag administration</a>
+            <a href="/Maintenance" role="button" class="secondary">Maintenance</a>
+        </span>
+    }
+</header>
+
+@* Deliberately not role="search": that makes Pico weld the input and button into one
+   pill — squaring off the input's right edge — and the page already has the real search
+   landmark in the nav. This is a filter over the current list. *@
+<form method="get" class="filter-form">
+    <input type="search" name="filter" value="@Model.Filter" placeholder="filter tags…" aria-label="Filter tags" />
+    <button type="submit">Filter</button>
+</form>
+
+@if (Model.Rows.Count == 0)
+{
+    <p class="muted">No tags@(string.IsNullOrWhiteSpace(Model.Filter) ? " yet" : " match that filter").</p>
+}
+else
+{
+    <p><small>@Model.TotalCount tag@(Model.TotalCount == 1 ? "" : "s")@(Model.Rows.Count < Model.TotalCount ? $" — showing the top {Model.Rows.Count}" : "")</small></p>
+
+    <div class="scroll-x">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Tag</th>
+                    <th scope="col">Posts</th>
+                    <th scope="col">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in Model.Rows)
+                {
+                    <tr>
+                        <td>
+                            <a href="/?q=@Uri.EscapeDataString(row.Display)" class="tag-link"
+                               style="@(row.Color is null ? null : $"--tag-color: {row.Color}")">@row.Display</a>
+                        </td>
+                        <td>@row.PostCount</td>
+                        <td>
+                            @if (row.AliasOf is not null)
+                            {
+                                <small>alias of <a href="/?q=@Uri.EscapeDataString(row.AliasOf)">@row.AliasOf</a></small>
+                            }
+                            @if (row.Implies.Count > 0)
+                            {
+                                <small>implies @string.Join(", ", row.Implies)</small>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

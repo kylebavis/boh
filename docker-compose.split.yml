@@ -1,0 +1,44 @@
+# Split storage: database on local disk, bulk media on a NAS, thumbnails local.
+#
+# The database MUST stay on local storage. SQLite relies on POSIX advisory locks that
+# SMB/CIFS and NFS do not reliably provide, and WAL mode needs shared memory they cannot
+# offer at all — the failure mode is silent corruption, not a clean error.
+#
+# Before the first start, create the local directory and hand it to the container's user:
+#
+#   sudo mkdir -p /var/lib/boh
+#   sudo chown -R 1654:1654 /var/lib/boh
+#
+# Mount the SMB share with the same owner rather than chowning it, e.g. in /etc/fstab:
+#
+#   //nas/booru  /mnt/nas/booru  cifs  credentials=/etc/boh-smb,uid=1654,gid=1654,nofail  0  0
+#
+# boh verifies every location is writable at startup and names the exact fix if not.
+services:
+  boh:
+    image: ghcr.io/kylebavis/boh:latest
+    container_name: boh
+    ports:
+      - "8080:8080"
+    volumes:
+      # Database, encryption keys and import scratch — local disk, small and write-heavy.
+      - /var/lib/boh:/var/lib/boh
+      # Originals — the bulk of the archive, on the NAS.
+      - /mnt/nas/booru:/mnt/media
+      # Thumbnails — local for gallery responsiveness; a page loads dozens at once.
+      - boh_thumbs:/var/cache/boh-thumbs
+    environment:
+      BOH_ADMIN_PASSWORD: change-me
+
+      BOH_DB_PATH: /var/lib/boh/boh.db
+      BOH_KEYS_PATH: /var/lib/boh/keys
+      BOH_TEMP_PATH: /var/lib/boh/tmp
+      BOH_ORIGINALS_PATH: /mnt/media
+      BOH_THUMBS_PATH: /var/cache/boh-thumbs
+
+      BOH_PUBLIC_READ: "false"
+      BOH_MAX_UPLOAD_MB: "256"
+    restart: unless-stopped
+
+volumes:
+  boh_thumbs:

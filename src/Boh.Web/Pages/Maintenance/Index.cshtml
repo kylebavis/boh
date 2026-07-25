@@ -1,0 +1,77 @@
+@page "/Maintenance"
+@model Boh.Web.Pages.Maintenance.IndexModel
+@{
+    ViewData["Title"] = "Maintenance";
+}
+
+<header class="page-head">
+    <h1>Maintenance</h1>
+    <a href="/Tags/Admin" role="button" class="secondary">Tag administration</a>
+</header>
+
+<section>
+    <h2>Thumbnails</h2>
+    <p>
+        <small class="muted">
+            Rebuilds thumbnails for posts that have none — generation that failed at upload, or
+            thumbnails lost when moving storage. Originals are re-read, so this is slow on a large
+            archive; a run stops after 60 seconds and reports what is left, so run it again to continue.
+        </small>
+    </p>
+
+    @if (Model.ThumbnailResult is { } result)
+    {
+        @if (result.Missing == 0)
+        {
+            <div class="notice" role="status">Every post already has a thumbnail. Nothing to do.</div>
+        }
+        else
+        {
+            <div class="notice @(result.Failed > 0 ? "notice-error" : "")" role="status">
+                @result.Missing thumbnail(s) missing — rebuilt @result.Regenerated@(result.Failed > 0 ? $", {result.Failed} failed" : "").
+                @if (!result.Complete)
+                {
+                    <text>@result.Remaining still to do; run it again to continue.</text>
+                }
+                @if (result.Failed > 0)
+                {
+                    <text>Failures are in the server log, usually a missing or unreadable original.</text>
+                }
+            </div>
+        }
+    }
+
+    <form method="post" asp-page-handler="RegenerateThumbnails" class="action-form">
+        <button type="submit" class="secondary">Regenerate missing thumbnails</button>
+    </form>
+</section>
+
+<section>
+    <h2>Unused tags</h2>
+    <p>
+        <small class="muted">
+            Deletes tags that no post carries — usually left behind when posts are deleted or
+            retagged. Tags used by an alias or an implication are kept even with nothing tagged,
+            since removing them would silently discard those rules.
+        </small>
+    </p>
+
+    @if (Model.DeletedTagCount is { } deleted)
+    {
+        <div class="notice" role="status">
+            @if (deleted == 0)
+            {
+                <text>No unused tags to remove.</text>
+            }
+            else
+            {
+                <text>Deleted @deleted unused tag@(deleted == 1 ? "" : "s").</text>
+            }
+        </div>
+    }
+
+    <form method="post" asp-page-handler="DeleteUnusedTags" class="action-form"
+          onsubmit="return confirm('Delete every tag that no post uses? Aliases and implications are kept.');">
+        <button type="submit" class="danger">Delete unused tags</button>
+    </form>
+</section>

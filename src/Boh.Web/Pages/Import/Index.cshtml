@@ -1,0 +1,72 @@
+@page "/Import"
+@model Boh.Web.Pages.Import.IndexModel
+@{
+    ViewData["Title"] = "Import";
+}
+
+<h1>Import from a URL</h1>
+
+<p>
+    <small class="muted">
+        Fetches with <a href="https://github.com/mikf/gallery-dl" rel="noreferrer noopener">gallery-dl</a> and
+        creates posts, mapping site metadata onto namespaced tags. At most @Model.MaxFiles file(s) per import,
+        and the download is stopped after @Model.TimeoutSeconds seconds.
+    </small>
+</p>
+
+<form method="post" class="import-form">
+    <input type="url" name="SourceUrl" value="@Model.SourceUrl" required
+           placeholder="https://…" aria-label="URL to import" />
+    <button type="submit">Import</button>
+</form>
+
+@if (Model.Result is { } result)
+{
+    @if (result.Error is not null)
+    {
+        <div class="notice notice-error" role="alert">@result.Error</div>
+    }
+    else
+    {
+        <div class="notice" role="status">
+            Created @result.Created.Count post(s)@(result.Skipped.Count > 0 ? $", skipped {result.Skipped.Count}" : "").
+        </div>
+    }
+
+    @if (result.Created.Count > 0)
+    {
+        <h2>Imported</h2>
+        <ul class="import-list">
+            @foreach (var item in result.Created)
+            {
+                <li>
+                    <a class="import-thumb" href="/Posts/Detail/@item.PostId">
+                        <img src="/files/t/@(item.Sha256).webp" alt="Post @item.PostId" loading="lazy" />
+                    </a>
+                    <div class="import-detail">
+                        <a href="/Posts/Detail/@item.PostId">@item.FileName</a>
+                        <small class="muted">
+                            @(item.Tags.Count == 0 ? "no tags found" : string.Join(" ", item.Tags))
+                        </small>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+
+    @if (result.Skipped.Count > 0)
+    {
+        <h2>Skipped</h2>
+        <div class="scroll-x">
+            <table>
+                <thead><tr><th scope="col">File</th><th scope="col">Reason</th></tr></thead>
+                <tbody>
+                    @foreach (var item in result.Skipped)
+                    {
+                        <tr><td>@item.FileName</td><td>@item.Reason</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}

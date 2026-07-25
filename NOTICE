@@ -1,0 +1,55 @@
+boh — third-party components
+============================
+
+boh itself is licensed under the MIT License (see LICENSE).
+
+The published container image bundles the following third-party software.
+These are separate works, distributed alongside boh as mere aggregation;
+each remains under its own license.
+
+
+Bundled in the container image
+------------------------------
+
+gallery-dl — GPL-2.0
+    https://github.com/mikf/gallery-dl
+    Invoked by boh as a separate process via the command line. boh links no
+    gallery-dl code into its own binaries.
+
+FFmpeg — LGPL-2.1-or-later / GPL-2.0-or-later depending on build configuration
+    https://ffmpeg.org
+    Provided by the Debian `ffmpeg` package. Invoked as a separate process for
+    video thumbnail extraction and media probing.
+
+Python — PSF License
+    https://docs.python.org/3/license.html
+    Runtime dependency of gallery-dl.
+
+
+Referenced as package / source dependencies
+-------------------------------------------
+
+Magick.NET (ImageMagick) — Apache-2.0
+    https://github.com/dlemstra/Magick.NET
+    https://imagemagick.org/script/license.php
+    Used for still-image decoding, probing and thumbnail generation. The
+    Q8-AnyCPU package bundles the native ImageMagick libraries.
+
+Pico CSS — MIT
+    https://github.com/picocss/pico
+
+htmx — Zero-Clause BSD (0BSD)
+    https://github.com/bigskysoftware/htmx
+
+Entity Framework Core, ASP.NET Core — MIT
+    https://github.com/dotnet/efcore
+    https://github.com/dotnet/aspnetcore
+
+BCrypt.Net-Next — MIT
+    https://github.com/BcryptNet/bcrypt.net
+
+SQLitePCLRaw — Apache-2.0, bundling SQLite (public domain)
+    https://github.com/ericsink/SQLitePCL.raw
+    https://www.sqlite.org/copyright.html
+    Pinned ahead of the version Entity Framework Core resolves, to pick up a
+    SQLite release containing the fix for CVE-2025-6965.
