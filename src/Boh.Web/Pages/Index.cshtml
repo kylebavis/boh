@@ -38,7 +38,8 @@ else
     <div class="gallery">
         @foreach (var post in Model.Posts)
         {
-            <partial name="_PostCard" model="post" />
+            <partial name="_PostCard"
+                     model="new Boh.Web.ViewModels.GalleryCard(post, Model.CurrentPage, Model.Query)" />
         }
     </div>
 

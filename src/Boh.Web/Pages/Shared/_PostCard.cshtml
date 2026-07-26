@@ -1,9 +1,13 @@
-@model Boh.Web.Data.Entities.Post
+@model Boh.Web.ViewModels.GalleryCard
+@{
+    var post = Model.Post;
+}
 
-<a class="gallery-item" href="/Posts/Detail/@Model.Id" title="Post @Model.Id">
-    <img src="@PostUrls.Thumb(Model)" alt="Post @Model.Id" loading="lazy"
-         width="@Model.Width" height="@Model.Height" />
-    @if (Model.IsVideo)
+<a class="gallery-item" href="@GalleryLinks.Detail(post.Id, Model.FromPage, Model.Query)"
+   title="Post @post.Id">
+    <img src="@PostUrls.Thumb(post)" alt="Post @post.Id" loading="lazy"
+         width="@post.Width" height="@post.Height" />
+    @if (post.IsVideo)
     {
         <span class="badge">video</span>
     }

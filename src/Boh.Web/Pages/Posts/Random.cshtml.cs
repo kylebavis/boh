@@ -20,9 +20,9 @@ public class RandomModel(PostService posts, TagService tags) : PageModel
         {
             // Nothing to jump to — send them back to the gallery, keeping the search so the
             // empty-state message explains why.
-            return Redirect(string.IsNullOrWhiteSpace(q) ? "/" : $"/?q={Uri.EscapeDataString(q)}");
+            return Redirect(GalleryLinks.Gallery(1, q));
         }
 
-        return Redirect($"/Posts/Detail/{id}");
+        return Redirect(GalleryLinks.Detail(id.Value, 1, q));
     }
 }

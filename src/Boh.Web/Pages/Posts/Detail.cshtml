@@ -76,6 +76,9 @@
             {
                 <form method="post" asp-page-handler="Delete"
                       onsubmit="return confirm('Delete post @post.Id? This cannot be undone.');">
+                    @* Where to go afterwards: the listing this post was opened from. *@
+                    <input type="hidden" name="q" value="@Model.Query" />
+                    <input type="hidden" name="fromPage" value="@Model.FromPage" />
                     <button type="submit" class="danger">Delete post</button>
                 </form>
             }

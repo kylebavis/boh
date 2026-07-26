@@ -15,10 +15,22 @@ public class DetailModel(PostService posts, TagService tags, BohOptions options)
     /// <summary>True when the current visitor may modify this post.</summary>
     public bool CanEdit => options.AuthDisabled || User.Identity?.IsAuthenticated == true;
 
-    public async Task<IActionResult> OnGetAsync(int id, CancellationToken ct)
+    /// <summary>The search the visitor arrived with, echoed back into the delete form.</summary>
+    public string? Query { get; private set; }
+
+    /// <summary>The gallery page the visitor arrived from.</summary>
+    public int FromPage { get; private set; } = 1;
+
+    public async Task<IActionResult> OnGetAsync(int id, string? q, int fromPage, CancellationToken ct)
     {
         var post = await posts.GetAsync(id, ct);
         if (post is null) return NotFound();
+
+        Query = q;
+        FromPage = fromPage < 1 ? 1 : fromPage;
+
+        // Keeps the header search box filled and Random scoped to the same search.
+        ViewData["Query"] = q;
 
         Post = post;
         TagView = BuildTagView(post, await tags.GetNamespaceColorsAsync(ct));
@@ -47,10 +59,15 @@ public class DetailModel(PostService posts, TagService tags, BohOptions options)
         return await TagFragmentAsync(id, null, ct);
     }
 
-    public async Task<IActionResult> OnPostDeleteAsync(int id, CancellationToken ct)
+    /// <summary>
+    /// <paramref name="q"/> and <paramref name="fromPage"/> come from hidden fields on the
+    /// delete form, so the visitor lands back in the listing they deleted from. The gallery
+    /// clamps an overshooting page, which covers deleting the last post on the final page.
+    /// </summary>
+    public async Task<IActionResult> OnPostDeleteAsync(int id, string? q, int fromPage, CancellationToken ct)
     {
         await posts.DeleteAsync(id, ct);
-        return RedirectToPage("/Index");
+        return Redirect(GalleryLinks.Gallery(fromPage < 1 ? 1 : fromPage, q));
     }
 
     /// <summary>Re-renders just the tag block, which is what HTMX swaps in.</summary>
