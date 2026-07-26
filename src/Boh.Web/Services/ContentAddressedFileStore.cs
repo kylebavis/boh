@@ -13,6 +13,9 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
 {
     private const int BufferSize = 81920;
 
+    /// <summary>Below this a thumbnail cannot contain a decodable image.</summary>
+    private const int MinimumUsableThumbnailBytes = 32;
+
     public void EnsureDirectories()
     {
         Directory.CreateDirectory(options.OriginalsDir);
@@ -92,7 +95,21 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
     public bool OriginalExists(string sha256, string extension) =>
         File.Exists(OriginalPath(sha256, extension));
 
-    public bool ThumbExists(string sha256) => File.Exists(ThumbPath(sha256));
+    /// <summary>
+    /// Whether a *usable* thumbnail exists, not merely a file at the path.
+    /// </summary>
+    /// <remarks>
+    /// A failed encode can leave a truncated stub behind — a real migration produced 8-byte
+    /// files where ffmpeg had been asked for a frame past the end of a short clip. Treating
+    /// those as present made the regeneration pass skip precisely the posts it existed to fix.
+    /// </remarks>
+    public bool ThumbExists(string sha256)
+    {
+        var file = new FileInfo(ThumbPath(sha256));
+
+        // A WEBP header alone is 12 bytes; anything at or under that decodes to nothing.
+        return file.Exists && file.Length > MinimumUsableThumbnailBytes;
+    }
 
     public void EnsureThumbDirectory(string sha256) =>
         Directory.CreateDirectory(Path.GetDirectoryName(ThumbPath(sha256))!);

@@ -79,26 +79,59 @@ public sealed class VideoMediaProcessor(
     public async Task GenerateThumbnailAsync(
         string sourcePath, string destinationPath, int maxEdge, CancellationToken ct)
     {
-        // Seek before -i so ffmpeg jumps straight there instead of decoding from the start.
-        // One second in avoids the black frame many videos open on; -noaccurate_seek keeps
-        // it fast, and clips shorter than a second still yield their first frame.
-        var result = await runner.RunAsync("ffmpeg",
-        [
-            "-v", "error",
-            "-noaccurate_seek",
-            "-ss", "00:00:01",
+        // Preferred: one second in, which skips the black frame many videos open on. Seeking
+        // before -i lets ffmpeg jump there rather than decoding from the start.
+        var result = await TryExtractFrameAsync(sourcePath, destinationPath, maxEdge, seekSeconds: 1, ct);
+
+        // A clip shorter than the seek point yields no frame at all: ffmpeg exits non-zero
+        // having written an empty stub. Real collections are full of two-second reaction clips,
+        // so fall back to the very first frame rather than leaving them without a thumbnail.
+        if (!Succeeded(result, destinationPath))
+        {
+            logger.LogDebug("Seeking 1s into {Path} produced no frame; retrying from the start", sourcePath);
+            result = await TryExtractFrameAsync(sourcePath, destinationPath, maxEdge, seekSeconds: null, ct);
+        }
+
+        if (!Succeeded(result, destinationPath))
+        {
+            throw new InvalidOperationException(
+                $"ffmpeg failed to produce a thumbnail (exit {result.ExitCode}): {result.StandardError.Trim()}");
+        }
+    }
+
+    private Task<ProcessResult> TryExtractFrameAsync(
+        string sourcePath, string destinationPath, int maxEdge, int? seekSeconds, CancellationToken ct)
+    {
+        var args = new List<string> { "-v", "error" };
+
+        if (seekSeconds is { } seek)
+        {
+            args.AddRange(["-noaccurate_seek", "-ss", TimeSpan.FromSeconds(seek).ToString(@"hh\:mm\:ss")]);
+        }
+
+        args.AddRange([
             "-i", sourcePath,
             "-frames:v", "1",
             "-vf", $"scale='min({maxEdge},iw)':'min({maxEdge},ih)':force_original_aspect_ratio=decrease",
             "-f", "webp",
             "-y", destinationPath
-        ], ThumbnailTimeout, ct);
+        ]);
 
-        if (!result.Succeeded)
-        {
-            throw new InvalidOperationException(
-                $"ffmpeg failed to produce a thumbnail (exit {result.ExitCode}): {result.StandardError.Trim()}");
-        }
+        return runner.RunAsync("ffmpeg", args, ThumbnailTimeout, ct);
+    }
+
+    /// <summary>
+    /// A zero exit is not enough on its own — ffmpeg can leave a truncated stub behind, so the
+    /// output has to be inspected before it is treated as a thumbnail.
+    /// </summary>
+    private static bool Succeeded(ProcessResult result, string destinationPath)
+    {
+        if (!result.Succeeded) return false;
+
+        var file = new FileInfo(destinationPath);
+
+        // Smaller than the shortest possible WEBP header means nothing decodable was written.
+        return file.Exists && file.Length > 32;
     }
 
     private static double? ReadDuration(JsonElement root)

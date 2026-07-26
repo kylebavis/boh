@@ -127,6 +127,30 @@ public class ThumbnailRepairTests
         Assert.Equal(0, second.Regenerated);
     }
 
+    /// <summary>
+    /// A failed encode leaves a truncated file rather than nothing. If that counted as a
+    /// thumbnail, the repair pass would skip exactly the posts it exists to fix — which is
+    /// what happened to 8 short video clips during a real migration.
+    /// </summary>
+    [Fact]
+    public async Task A_truncated_stub_counts_as_missing_and_is_regenerated()
+    {
+        using var env = new TestEnvironment();
+        var postId = await env.CreatePostAsync();
+        var post = (await env.Posts.GetAsync(postId, Ct))!;
+        var thumbPath = env.Store.ThumbPath(post.Sha256);
+
+        // Exactly what ffmpeg left behind: a few bytes, no decodable image.
+        await File.WriteAllBytesAsync(thumbPath, new byte[8]);
+        Assert.False(env.Store.ThumbExists(post.Sha256));
+
+        var result = await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
+
+        Assert.Equal(1, result.Missing);
+        Assert.Equal(1, result.Regenerated);
+        Assert.True(new FileInfo(thumbPath).Length > 32);
+    }
+
     [Fact]
     public async Task An_empty_collection_completes_cleanly()
     {
