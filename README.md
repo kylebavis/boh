@@ -1,9 +1,11 @@
 # boh
 
 A self-hosted imageboard for one person or a few friends. Tag-based, deliberately small,
-and designed to run as a single container with a single volume.
+and designed to run as a single container with a single volumes. 
 
-Think danbooru, minus everything needed to serve thousands of strangers. My intention was to make something simple to solve my own problems. It should be simple enough for selfhosters to deploy. Contributions are welcome. That said, I want to keep this application relatively simple and lightweight.
+Think danbooru, minus everything needed to serve thousands of strangers. It should be simple enough for selfhosters to deploy. Contributions are welcome. That said, I want to keep this application relatively simple and lightweight.
+
+![George Costanza memes](.assets/george.png)
 
 ## Features
 
