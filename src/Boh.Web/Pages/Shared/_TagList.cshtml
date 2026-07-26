@@ -43,11 +43,16 @@
 
     @if (Model.CanEdit)
     {
+        @* The event.target guard is essential, not defensive noise. htmx events bubble, and
+           the input inside this form fires its own request on every keystroke for
+           autocomplete. Without the check, each suggestion fetch completing would reset the
+           form and wipe what the user was typing — leaving them unable to enter more than a
+           single character. Only clear when this form's own submission succeeded. *@
         <form class="tag-add"
               hx-post="/Posts/Detail/@Model.PostId?handler=AddTags"
               hx-target="#tag-list"
               hx-swap="outerHTML"
-              hx-on::after-request="this.reset()"
+              hx-on::after-request="if (event.target === this &amp;&amp; event.detail.successful) this.reset()"
               autocomplete="off">
             <input type="text" name="tags" placeholder="add tags…"
                    aria-label="Add tags"
