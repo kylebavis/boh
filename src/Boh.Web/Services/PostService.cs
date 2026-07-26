@@ -227,6 +227,58 @@ public sealed class PostService(
             .Select(p => (int?)p.Id)
             .FirstOrDefaultAsync(ct);
 
+    /// <summary>
+    /// Narrows a post query by a resolved search. Null means the search cannot match anything,
+    /// which is distinct from matching nothing — the caller should not run a query at all.
+    /// </summary>
+    private static IQueryable<Post>? ApplySearch(IQueryable<Post> query, ResolvedSearch? search)
+    {
+        if (search is { Unsatisfiable: true }) return null;
+        if (search is null) return query;
+
+        // Filtering on tag id rather than name keeps this on the PostTags index and
+        // avoids repeating string comparisons per term.
+        foreach (var tagId in search.Include)
+        {
+            var id = tagId;
+            query = query.Where(p => p.PostTags.Any(pt => pt.TagId == id));
+        }
+
+        foreach (var tagId in search.Exclude)
+        {
+            var id = tagId;
+            query = query.Where(p => !p.PostTags.Any(pt => pt.TagId == id));
+        }
+
+        return query;
+    }
+
+    /// <summary>
+    /// Picks a post at random, honouring the active search so "random" stays within whatever
+    /// the user is currently looking at. Returns null only when nothing matches.
+    /// </summary>
+    /// <remarks>
+    /// Ordering the whole table by RANDOM() would sort every row to take one. Counting first
+    /// and skipping to an offset costs an indexed count plus a single-row read, which stays
+    /// flat as the collection grows.
+    /// </remarks>
+    public async Task<int?> GetRandomIdAsync(ResolvedSearch? search, CancellationToken ct)
+    {
+        var query = ApplySearch(db.Posts.AsNoTracking(), search);
+        if (query is null) return null;
+
+        var total = await query.CountAsync(ct);
+        if (total == 0) return null;
+
+        var offset = Random.Shared.Next(total);
+
+        return await query
+            .OrderBy(p => p.Id)
+            .Skip(offset)
+            .Select(p => (int?)p.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public Task<Post?> GetAsync(int id, CancellationToken ct) =>
         db.Posts
             .Include(p => p.PostTags).ThenInclude(pt => pt.Tag)
@@ -237,28 +289,11 @@ public sealed class PostService(
     public async Task<(IReadOnlyList<Post> Posts, int TotalCount)> ListAsync(
         ResolvedSearch? search, int page, int pageSize, CancellationToken ct)
     {
+        var query = ApplySearch(db.Posts.AsNoTracking(), search);
+
         // A required tag that does not exist cannot be satisfied by any post, so there is
         // nothing to query for.
-        if (search is { Unsatisfiable: true }) return ([], 0);
-
-        var query = db.Posts.AsNoTracking().AsQueryable();
-
-        if (search is not null)
-        {
-            // Filtering on tag id rather than name keeps this on the PostTags index and
-            // avoids repeating string comparisons per term.
-            foreach (var tagId in search.Include)
-            {
-                var id = tagId;
-                query = query.Where(p => p.PostTags.Any(pt => pt.TagId == id));
-            }
-
-            foreach (var tagId in search.Exclude)
-            {
-                var id = tagId;
-                query = query.Where(p => !p.PostTags.Any(pt => pt.TagId == id));
-            }
-        }
+        if (query is null) return ([], 0);
 
         var ordered = query.OrderByDescending(p => p.UploadedAt).ThenByDescending(p => p.Id);
 

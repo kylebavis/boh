@@ -75,6 +75,12 @@
                 </li>
             </ul>
             <ul>
+                @* Keeps the active search, so Random from a filtered gallery stays in it. *@
+                <li>
+                    <a href="/Posts/Random@(string.IsNullOrWhiteSpace(ViewData["Query"] as string)
+                        ? "" : $"?q={Uri.EscapeDataString((string)ViewData["Query"]!)}")"
+                       title="Jump to a random post">Random</a>
+                </li>
                 <li><a href="/Tags">Tags</a></li>
                 @if (!showAccountControls || signedIn)
                 {

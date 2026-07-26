@@ -386,7 +386,14 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     position: relative;
 }
 
+/*
+   display and the li resets are load-bearing, not tidiness. The search box lives inside
+   <nav>, and Pico styles `nav ul { display: flex }` with `nav li { display: inline-block }`
+   — which this dropdown inherits simply by being nested there. That laid the suggestions out
+   as columns, each collapsed to one character wide, rendering the names vertically.
+*/
 .suggestion-list {
+    display: block;
     position: absolute;
     z-index: 20;
     inset-inline: 0;
@@ -397,8 +404,15 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     border: 1px solid var(--pico-muted-border-color);
     border-radius: var(--pico-border-radius);
     box-shadow: var(--pico-card-box-shadow);
-    max-height: 60vh;
+    /* Roughly eight rows; beyond that the list scrolls rather than covering the page. */
+    max-height: 21rem;
     overflow-y: auto;
+}
+
+.suggestion-list li {
+    display: block;
+    margin: 0;
+    padding: 0;
 }
 
 .suggestion {
@@ -420,8 +434,14 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     background: var(--pico-secondary-background);
 }
 
+/* One tag per line: a long name is truncated rather than wrapped, so every row stays the
+   same height and the list can be scanned down. */
 .suggestion-name {
-    word-break: break-word;
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--tag-color, inherit);
 }
 
