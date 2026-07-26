@@ -114,6 +114,29 @@ public class GalleryDlTagMapperTests
         Assert.Equal(["artist:foo"], tags);
     }
 
+    /// <summary>
+    /// A value containing a colon must not have a namespace inferred from it. Previously the
+    /// mapper concatenated "ns:value" and relied on where the first colon landed, so a bare
+    /// general tag like "nier:automata" produced the bogus namespace "nier".
+    /// </summary>
+    [Fact]
+    public void A_colon_inside_a_value_does_not_invent_a_namespace()
+    {
+        var namespaced = Map("""{ "copyright": "nier:automata" }""");
+        Assert.Equal(["copyright:nier:automata"], namespaced);
+
+        var general = Map("""{ "tags": ["nier:automata"] }""");
+        Assert.Equal(["nier:automata"], general);
+    }
+
+    [Fact]
+    public void Emoticon_tags_from_an_importer_survive()
+    {
+        var tags = Map("""{ "tags": ":d ^_^ >_<" }""");
+
+        Assert.Equal([":d", "^_^", ">_<"], tags);
+    }
+
     [Fact]
     public void Unrecognized_fields_are_ignored_rather_than_guessed_at()
     {

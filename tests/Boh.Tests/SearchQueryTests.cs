@@ -50,7 +50,8 @@ public class SearchQueryTests
     {
         // A bare dash or stray punctuation must not turn into a term that matches everything.
         Assert.True(SearchQuery.Parse("-").IsEmpty);
-        Assert.True(SearchQuery.Parse("!!! &").IsEmpty);
+        // '&' and ',' are still outside the allowed charset; '!' is not, so it is a real tag now.
+        Assert.True(SearchQuery.Parse("& ,,,").IsEmpty);
     }
 
     [Fact]

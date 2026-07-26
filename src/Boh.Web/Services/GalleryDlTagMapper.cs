@@ -68,8 +68,10 @@ public static class GalleryDlTagMapper
         {
             if (string.IsNullOrWhiteSpace(raw)) return;
 
-            var candidate = ns.Length == 0 ? raw : $"{ns}:{raw}";
-            if (!TagName.TryParse(candidate, out var tag)) return;
+            // TryParseInNamespace rather than concatenating "ns:raw" and letting the parser
+            // find the split: a value that itself contains a colon — "nier:automata" — would
+            // otherwise have its own namespace inferred when it arrives without a category.
+            if (!TagName.TryParseInNamespace(ns, raw, out var tag)) return;
 
             if (ns.Length == 0 && claimed.Contains(tag.Name)) return;
             if (!seen.Add(tag)) return;
