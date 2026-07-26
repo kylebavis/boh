@@ -66,6 +66,26 @@ public sealed class TestApp : WebApplicationFactory<Program>
             postId, Boh.Web.Tags.TagName.ParseMany(string.Join(' ', tags)), CancellationToken.None);
     }
 
+    public async Task AddAliasAsync(string alias, string canonical)
+    {
+        using var scope = Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<TagService>();
+
+        Assert.True(Boh.Web.Tags.TagName.TryParse(alias, out var a));
+        Assert.True(Boh.Web.Tags.TagName.TryParse(canonical, out var c));
+        Assert.IsType<TagLinkResult.Ok>(await service.AddAliasAsync(a, c, CancellationToken.None));
+    }
+
+    public async Task AddImplicationAsync(string child, string parent)
+    {
+        using var scope = Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<TagService>();
+
+        Assert.True(Boh.Web.Tags.TagName.TryParse(child, out var ch));
+        Assert.True(Boh.Web.Tags.TagName.TryParse(parent, out var pa));
+        Assert.IsType<TagLinkResult.Ok>(await service.AddImplicationAsync(ch, pa, CancellationToken.None));
+    }
+
     public async Task<string> GetHtmlAsync(HttpClient client, string url)
     {
         var response = await client.GetAsync(url);

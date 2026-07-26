@@ -1,5 +1,6 @@
 @page "/Tags/Admin"
 @model Boh.Web.Pages.Tags.AdminModel
+@using Boh.Web.ViewModels
 @{
     ViewData["Title"] = "Tag administration";
 }
@@ -77,24 +78,24 @@
 
 <section>
     <h2>Move or rename a tag</h2>
-    <p><small class="muted">Also how a tag is put into a namespace — <code>foo</code> to <code>artist:foo</code>. If the destination already exists the two are merged, keeping every post, alias and implication.</small></p>
+    <p><small class="muted">Also how a tag is put into a namespace — <code>foo</code> to <code>artist:foo</code>. If the destination already exists the two are merged, keeping every post, alias and implication. The old name stops existing, so anything that keeps using it — including an importer — wants an alias instead.</small></p>
 
     <form method="post" asp-page-handler="MoveTag" class="pair-form">
-        <input type="text" name="from" placeholder="existing tag" aria-label="Existing tag" required />
+        <partial name="_TagSuggestField" model='new TagSuggestField("from", "existing tag", "Existing tag")' />
         <span class="pair-arrow">&rarr;</span>
-        <input type="text" name="to" placeholder="new name" aria-label="New name" required />
+        <partial name="_TagSuggestField" model='new TagSuggestField("to", "new name", "New name")' />
         <button type="submit">Move</button>
     </form>
 </section>
 
 <section>
     <h2>Aliases</h2>
-    <p><small class="muted">An alias never reaches storage — tagging a post with it stores the canonical tag instead. Creating one migrates existing posts.</small></p>
+    <p><small class="muted">An alias never reaches storage — tagging a post with it stores the canonical tag instead. Creating one migrates existing posts. Unlike a move, the old name keeps redirecting for good.</small></p>
 
     <form method="post" asp-page-handler="AddAlias" class="pair-form">
-        <input type="text" name="alias" placeholder="alias tag" aria-label="Alias tag" required />
+        <partial name="_TagSuggestField" model='new TagSuggestField("alias", "alias tag", "Alias tag")' />
         <span class="pair-arrow">&rarr;</span>
-        <input type="text" name="canonical" placeholder="canonical tag" aria-label="Canonical tag" required />
+        <partial name="_TagSuggestField" model='new TagSuggestField("canonical", "canonical tag", "Canonical tag")' />
         <button type="submit">Add alias</button>
     </form>
 
@@ -104,8 +105,17 @@
     }
     else
     {
-        <div class="scroll-x">
-            <table>
+        <div class="table-tools">
+            <input type="search" placeholder="filter aliases…" aria-label="Filter aliases"
+                   autocomplete="off" spellcheck="false"
+                   data-filter-table="#alias-table" data-filter-status="#alias-filter-status" />
+            <small id="alias-filter-status" class="muted" role="status" aria-live="polite">
+                @Model.Aliases.Count alias@(Model.Aliases.Count == 1 ? "" : "es")
+            </small>
+        </div>
+
+        <div class="scroll-x scroll-y">
+            <table id="alias-table">
                 <thead>
                     <tr><th scope="col">Alias</th><th scope="col">Canonical</th><th scope="col"></th></tr>
                 </thead>
@@ -115,7 +125,7 @@
                         <tr>
                             <td>@alias.Alias</td>
                             <td><a href="/?q=@Uri.EscapeDataString(alias.Canonical)">@alias.Canonical</a></td>
-                            <td>
+                            <td class="row-actions">
                                 <form method="post" asp-page-handler="RemoveAlias">
                                     <input type="hidden" name="aliasTagId" value="@alias.AliasTagId" />
                                     <button type="submit" class="secondary outline">Remove</button>
@@ -123,6 +133,9 @@
                             </td>
                         </tr>
                     }
+                    <tr class="filter-empty" hidden>
+                        <td colspan="3"><small class="muted">No aliases match that filter.</small></td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -134,9 +147,9 @@
     <p><small class="muted">Tagging a post with the child also applies the parent, transitively. Implied tags are marked on the post and cannot be removed by hand.</small></p>
 
     <form method="post" asp-page-handler="AddImplication" class="pair-form">
-        <input type="text" name="child" placeholder="child tag" aria-label="Child tag" required />
+        <partial name="_TagSuggestField" model='new TagSuggestField("child", "child tag", "Child tag")' />
         <span class="pair-arrow">implies</span>
-        <input type="text" name="parent" placeholder="parent tag" aria-label="Parent tag" required />
+        <partial name="_TagSuggestField" model='new TagSuggestField("parent", "parent tag", "Parent tag")' />
         <button type="submit">Add implication</button>
     </form>
 
@@ -146,8 +159,17 @@
     }
     else
     {
-        <div class="scroll-x">
-            <table>
+        <div class="table-tools">
+            <input type="search" placeholder="filter implications…" aria-label="Filter implications"
+                   autocomplete="off" spellcheck="false"
+                   data-filter-table="#implication-table" data-filter-status="#implication-filter-status" />
+            <small id="implication-filter-status" class="muted" role="status" aria-live="polite">
+                @Model.Implications.Count implication@(Model.Implications.Count == 1 ? "" : "s")
+            </small>
+        </div>
+
+        <div class="scroll-x scroll-y">
+            <table id="implication-table">
                 <thead>
                     <tr><th scope="col">Child</th><th scope="col">Implies</th><th scope="col"></th></tr>
                 </thead>
@@ -157,7 +179,7 @@
                         <tr>
                             <td><a href="/?q=@Uri.EscapeDataString(implication.Child)">@implication.Child</a></td>
                             <td><a href="/?q=@Uri.EscapeDataString(implication.Parent)">@implication.Parent</a></td>
-                            <td>
+                            <td class="row-actions">
                                 <form method="post" asp-page-handler="RemoveImplication">
                                     <input type="hidden" name="childTagId" value="@implication.ChildTagId" />
                                     <input type="hidden" name="parentTagId" value="@implication.ParentTagId" />
@@ -166,6 +188,9 @@
                             </td>
                         </tr>
                     }
+                    <tr class="filter-empty" hidden>
+                        <td colspan="3"><small class="muted">No implications match that filter.</small></td>
+                    </tr>
                 </tbody>
             </table>
         </div>

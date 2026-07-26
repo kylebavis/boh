@@ -234,6 +234,25 @@ through chains. Implied tags are marked on the post and cannot be removed by han
 the tag that caused them. A tag you added yourself is never treated as implied, so it
 survives even if the implying tag is later removed. Cycles are rejected.
 
+### Moving a tag vs aliasing it
+
+Both consolidate posts onto a single tag, which makes them look interchangeable. What differs
+is what the old name does afterwards.
+
+A **move** renames the tag in place, keeping its posts, aliases and implications. If the
+destination already exists the two are merged and the source tag is deleted — so typing the
+old name later creates a fresh, unrelated tag and the collection splits again.
+
+An **alias** leaves the old name in place as a permanent redirect, so it keeps resolving
+however often it is used.
+
+Move a tag to correct its own identity: a typo nobody should type again, or putting `foo` into
+a namespace. Alias it for a synonym or spelling that will keep being typed — including by an
+importer, which is where an alias earns its keep and a merge does not.
+
+Both tables have a filter box, and long ones scroll within a fixed height, so no section of
+the admin page buries the ones below it.
+
 ## Importing
 
 **Import** in the nav takes a URL and hands it to gallery-dl, which supports

@@ -1,0 +1,19 @@
+@model Boh.Web.ViewModels.TagSuggestField
+
+@* The panel is a sibling of the input inside a positioned wrapper, so the dropdown spans the
+   field's width. It cannot be a direct child of .pair-form: that is a flex row, and a bare
+   panel there would become a zero-width flex item with nothing to align to. *@
+<span class="suggest-field">
+    <input type="text" name="@Model.Name" id="@Model.Id" required
+           placeholder="@Model.Placeholder" aria-label="@Model.Label"
+           autocomplete="off" spellcheck="false"
+           role="combobox" aria-expanded="false" aria-autocomplete="list"
+           aria-controls="@Model.SuggestionsId"
+           data-suggest-for="#@Model.SuggestionsId"
+           data-suggest-single="true"
+           hx-get="/Tags/Autocomplete"
+           hx-trigger="keyup changed delay:200ms"
+           hx-target="#@Model.SuggestionsId"
+           hx-swap="innerHTML" />
+    <div id="@Model.SuggestionsId" class="suggestions"></div>
+</span>

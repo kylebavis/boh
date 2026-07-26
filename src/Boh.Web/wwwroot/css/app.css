@@ -241,6 +241,52 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     -webkit-overflow-scrolling: touch;
 }
 
+/*
+   Caps a listing's height so one section cannot bury the next. The tag admin page stacks
+   four of them, and after the szurubooru import its ~80 aliases pushed the implications
+   form entirely below the fold — the feature looked missing.
+*/
+.scroll-y {
+    max-height: min(60vh, 26rem);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
+/* Keeps the column headers in view while the body scrolls under them. The border cannot
+   travel with a sticky cell in every browser, so an inset shadow draws the divider. */
+.scroll-y thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--pico-background-color);
+    box-shadow: inset 0 -1px var(--pico-muted-border-color);
+}
+
+/* Filter box above a capped table, with its result count beside it. */
+.table-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.table-tools input {
+    margin: 0;
+    flex: 1 1 12rem;
+    max-width: 22rem;
+    min-width: 0;
+}
+
+/* Pico treats a <small> directly after an input as helper text and gives it
+   `display: block; width: 100%`, which as a flex item pushed the row count onto its own
+   line. Reset it back to sitting beside the box. */
+.table-tools small {
+    display: inline;
+    width: auto;
+    margin: 0;
+}
+
 /* Tags ----------------------------------------------------------------- */
 
 .muted {
@@ -384,6 +430,23 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
 
 .suggestions {
     position: relative;
+}
+
+/*
+   Wraps a single completing input and its dropdown so the panel has a full-width box to
+   align to. It takes the flex sizing the input would otherwise get, because inside
+   .pair-form the wrapper is the flex item now, not the input.
+*/
+.suggest-field {
+    display: block;
+    position: relative;
+    flex: 1 1 10rem;
+    min-width: 0;
+}
+
+.suggest-field input {
+    margin: 0;
+    width: 100%;
 }
 
 /*
@@ -708,7 +771,10 @@ section + section {
         flex-basis: 100%;
     }
 
+    /* One field per row. .suggest-field is included because it, not the input it wraps, is
+       the flex item once a field carries autocomplete. */
     .pair-form input,
+    .pair-form .suggest-field,
     .filter-form input {
         flex-basis: 100%;
     }
