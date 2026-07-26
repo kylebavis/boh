@@ -90,12 +90,26 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            # Every semver pattern above needs a tag ref, and `latest` is gated on one, so a
+            # manual run would otherwise derive no tags at all — and the merge below fails
+            # with "can't push with no tags specified" only after both architectures have
+            # already been built and pushed. These keep a workflow_dispatch useful.
+            type=raw,value=edge,enable=${{ github.ref_type != 'tag' }}
+            type=sha,format=short,enable=${{ github.ref_type != 'tag' }}
 
       - name: Combine the per-architecture images
         run: |
           cd /tmp/digests
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '${{ steps.meta.outputs.json }}') \
+
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '${{ steps.meta.outputs.json }}')
+          if [ -z "$tags" ]; then
+            echo "::error::No tags were derived, so there is nothing to publish the manifest as." >&2
+            echo "Tag the commit (v1.2.3) or check the metadata-action configuration." >&2
+            exit 1
+          fi
+
+          echo "Publishing manifest as: $tags"
+          docker buildx imagetools create $tags \
             $(for f in *; do echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@$(cat "$f")"; done)
 
       - name: Show the result
