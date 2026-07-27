@@ -78,7 +78,7 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         });
 
         await db.SaveChangesAsync(ct);
-        logger.LogInformation("Created user {Username} (admin: {IsAdmin})", name, isAdmin);
+        logger.LogInformation("Created user {Username} (admin: {IsAdmin})", SanitizeForLog(name), isAdmin);
 
         return new UserResult.Ok();
     }
@@ -225,6 +225,9 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
 
     private Task<int> CountOtherAdminsAsync(int excludingUserId, CancellationToken ct) =>
         db.Users.CountAsync(u => u.IsAdmin && u.Id != excludingUserId, ct);
+
+    private static string SanitizeForLog(string? value) =>
+        (value ?? "").Replace("\r", "").Replace("\n", "");
 
     private static string Normalize(string? username) => (username ?? "").Trim().ToLowerInvariant();
 
