@@ -12,6 +12,33 @@ header nav {
     gap: 0.25rem 0.5rem;
 }
 
+/*
+   Pico lays every `nav ul` out as a single non-wrapping flex row, so wrapping the nav alone
+   was not enough: the list of links stayed one rigid row and, on a phone, pushed the theme
+   toggle past the right edge and left the whole page scrolling sideways. Letting the lists
+   wrap too spills the links onto as many rows as the width needs.
+*/
+header nav > ul {
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+/* Rows break between links, never inside one: "Sign out" was splitting across two lines. */
+header nav > ul > li > a,
+header nav .link-button {
+    white-space: nowrap;
+}
+
+/* The one nav label that is not a fixed word and so could still outgrow a phone row. The
+   anchor already carries the full name as its title. */
+header nav .nav-user {
+    display: inline-block;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+}
+
 header nav .brand {
     text-decoration: none;
     font-size: 1.25rem;
@@ -742,6 +769,21 @@ section + section {
 /* Responsive ----------------------------------------------------------- */
 
 @media (max-width: 768px) {
+    /*
+       Pico's 1rem of vertical padding on a nav item reads as breathing room around a
+       single row; once the links wrap it stacks into a 2rem trench between every pair of
+       rows. Tightened to a 44px row pitch: enough that the links' own padded hit areas
+       (40px tall, drawn outside the list item by Pico's negative margins) still clear one
+       another, and no more than the tap target the rest of the app uses.
+    */
+    header nav > ul > li {
+        padding-block: 0.5rem;
+    }
+
+    header nav > ul {
+        row-gap: 0.25rem;
+    }
+
     /* Full-width stacked buttons are easier to hit than a wrapped row. */
     .post-actions a[role="button"],
     .post-actions button,
