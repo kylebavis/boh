@@ -95,7 +95,7 @@
                 {
                     @if (signedIn)
                     {
-                        <li><a href="/Account" title="Signed in as @User.Identity!.Name">@User.Identity!.Name</a></li>
+                        <li><a href="/Account" class="nav-user" title="Signed in as @User.Identity!.Name">@User.Identity!.Name</a></li>
                         <li>
                             <form method="post" action="/Account/Logout" class="inline-form">
                                 @Html.AntiForgeryToken()
