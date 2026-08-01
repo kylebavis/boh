@@ -16,7 +16,7 @@
       Because these are C decoders handling untrusted uploads, ResourceLimits and a
       format allowlist are applied in MagickMediaProcessor.
     -->
-    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.15.0" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.16.0" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.2.1" />
 
     <!--
