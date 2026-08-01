@@ -25,7 +25,7 @@
       upstream SQLite versions and ships 3.50.3+, which contains the fix.
       Remove this pin once EF Core's own dependency moves past it.
     -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
   </ItemGroup>
 
 </Project>
