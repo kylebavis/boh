@@ -30,22 +30,68 @@
     <title>@(title is null ? "boh" : $"{title} — boh")</title>
 
     @* Must run synchronously, before the stylesheet paints, or the default theme
-       renders first and visibly flips once a deferred script catches up. *@
+       renders first and visibly flips once a deferred script catches up.
+
+       It also owns applying a theme, rather than leaving that to app.js: resolving
+       "auto" against the OS is the part that has to happen pre-paint, and having one
+       copy of that logic is worth the inline script being a few lines longer. app.js
+       only wires the button and the media-query listener to it. *@
     <script>
         (function () {
-            var choice = 'auto';
-            try {
-                var stored = localStorage.getItem('boh:theme');
-                if (stored === 'light' || stored === 'dark') choice = stored;
-            } catch (e) { /* storage blocked; auto is a fine fallback */ }
+            var MODE_KEY = '@Boh.Web.Themes.ModeStorageKey';
+            var PALETTE_KEY = '@Boh.Web.Themes.PaletteStorageKey';
 
-            document.documentElement.dataset.themeChoice = choice;
-            if (choice !== 'auto') document.documentElement.dataset.theme = choice;
+            @* Signed in: the palettes come off the auth ticket, so they are already correct
+               on the very first render and follow the account between devices. Otherwise
+               this is "{}" and the fallback below reads whatever this browser has. *@
+            var palettes = @Html.Raw(Boh.Web.Themes.PaletteMapJson(
+                Boh.Web.Security.UserPrincipal.GetLightTheme(User),
+                Boh.Web.Security.UserPrincipal.GetDarkTheme(User)));
+            var fromServer = @(signedIn ? "true" : "false");
+
+            var choice = '@Boh.Web.Themes.DefaultMode';
+            try {
+                if (!fromServer) palettes = JSON.parse(localStorage.getItem(PALETTE_KEY)) || {};
+
+                var stored = localStorage.getItem(MODE_KEY);
+                if (stored === 'light' || stored === 'dark' || stored === 'auto') choice = stored;
+            } catch (e) { /* storage blocked or corrupt; the defaults are a fine fallback */ }
+
+            var media = window.matchMedia('(prefers-color-scheme: dark)');
+
+            function apply(next) {
+                choice = next;
+
+                // "auto" is resolved here rather than left to Pico's own media query so that
+                // everything downstream has a definite mode to look up a palette with. The
+                // listener in app.js keeps it honest when the OS flips.
+                var mode = next === 'auto' ? (media.matches ? 'dark' : 'light') : next;
+                var root = document.documentElement;
+
+                root.dataset.themeChoice = next;
+                root.dataset.theme = mode;
+
+                var name = palettes[mode];
+                if (name) root.dataset.themeName = name;
+                else delete root.dataset.themeName;
+            }
+
+            window.bohTheme = {
+                media: media,
+                apply: apply,
+                choice: function () { return choice; },
+
+                // Lets the account page preview a pick without a round trip.
+                palettes: function (next) { palettes = next; }
+            };
+
+            apply(choice);
         })();
     </script>
 
     <link rel="stylesheet" href="~/css/pico.min.css" />
     <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/themes.css" asp-append-version="true" />
     <link rel="icon" href="~/favicon.ico" />
     <script src="~/js/htmx.min.js" defer></script>
     <script src="~/js/app.js" asp-append-version="true" defer></script>
@@ -109,6 +155,8 @@
                     }
                 }
                 <li>
+                    @* Cycles auto -> light -> dark. Which palette each side uses is an
+                       account setting; this button only chooses the side. *@
                     <button type="button" id="theme-toggle" class="secondary outline"
                             aria-label="Theme: follow system" title="Theme: follow system">
                         <svg class="icon icon-auto" viewBox="0 0 24 24" aria-hidden="true"

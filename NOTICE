@@ -53,3 +53,33 @@ SQLitePCLRaw — Apache-2.0, bundling SQLite (public domain)
     https://www.sqlite.org/copyright.html
     Pinned ahead of the version Entity Framework Core resolves, to pick up a
     SQLite release containing the fix for CVE-2025-6965.
+
+
+Colour schemes
+--------------
+
+The packaged themes in src/Boh.Web/wwwroot/css/themes.css are adapted from the
+schemes below. They are derived works, not copies: each upstream palette is
+built for syntax highlighting on a single background, and individual tones were
+shifted along their own hue until every pair boh renders as text met WCAG AA.
+scripts/build-themes.py records the source values and performs the adaptation.
+
+Nord — MIT
+    https://github.com/nordtheme/nord
+
+Dracula — MIT
+    https://github.com/dracula/visual-studio-code
+
+Monokai — MIT
+    https://github.com/microsoft/vscode (extensions/theme-monokai)
+    Based on the original scheme by Wimer Hazenberg.
+
+Gruvbox — MIT
+    https://github.com/morhetz/gruvbox
+    Declared in the project's package.json; the repository carries no LICENSE file.
+
+Catppuccin — MIT
+    https://github.com/catppuccin/palette
+
+Solarized — MIT
+    https://github.com/altercation/solarized

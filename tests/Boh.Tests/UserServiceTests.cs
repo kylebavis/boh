@@ -302,6 +302,69 @@ public class UserServiceTests
         Assert.NotNull(await env.Users.AuthenticateAsync("admin", "a-different-password", Ct));
     }
 
+    // ---- theme preferences ---------------------------------------------
+
+    [Fact]
+    public async Task Theme_preferences_are_stored_per_mode()
+    {
+        using var env = new TestEnvironment();
+        var adminId = await SeedAdminAsync(env);
+
+        await env.Users.SetThemesAsync(adminId, "solarized-light", "nord", Ct);
+
+        var user = await env.Users.FindByIdAsync(adminId, Ct);
+        Assert.Equal("solarized-light", user!.LightTheme);
+        Assert.Equal("nord", user.DarkTheme);
+    }
+
+    /// <summary>
+    /// A dark scheme on the light side would render its own text colours against the wrong
+    /// background. The values come from a pair of selects, so a bad one means a stale id or
+    /// a hand-edited post — neither worth an error message when falling back to the stock
+    /// look is a perfectly good outcome.
+    /// </summary>
+    [Theory]
+    [InlineData("nord", "solarized-light")]
+    [InlineData("no-such-theme", "no-such-theme")]
+    [InlineData("", "")]
+    public async Task A_palette_that_does_not_belong_falls_back_to_the_default(string light, string dark)
+    {
+        using var env = new TestEnvironment();
+        var adminId = await SeedAdminAsync(env);
+
+        await env.Users.SetThemesAsync(adminId, light, dark, Ct);
+
+        var user = await env.Users.FindByIdAsync(adminId, Ct);
+        Assert.Null(user!.LightTheme);
+        Assert.Null(user.DarkTheme);
+    }
+
+    [Fact]
+    public async Task A_theme_can_be_cleared_back_to_the_default()
+    {
+        using var env = new TestEnvironment();
+        var adminId = await SeedAdminAsync(env);
+        await env.Users.SetThemesAsync(adminId, "gruvbox-light", "dracula", Ct);
+
+        env.Db.ChangeTracker.Clear();
+        await env.Users.SetThemesAsync(adminId, null, "dracula", Ct);
+
+        var user = await env.Users.FindByIdAsync(adminId, Ct);
+        Assert.Null(user!.LightTheme);
+        Assert.Equal("dracula", user.DarkTheme);
+    }
+
+    [Fact]
+    public async Task Setting_a_theme_for_a_deleted_user_is_rejected()
+    {
+        using var env = new TestEnvironment();
+        await SeedAdminAsync(env);
+
+        var result = await env.Users.SetThemesAsync(9999, "gruvbox-light", "nord", Ct);
+
+        Assert.IsType<UserResult.Rejected>(result);
+    }
+
     /// <summary>
     /// The seeded account is the documented way back in, so an accidental demotion must not
     /// survive a restart.

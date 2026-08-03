@@ -1,0 +1,330 @@
+/*
+   Packaged colour schemes.
+   =========================================================================
+   Each theme is a flat entry in the picker: it owns its light/dark polarity rather than
+   varying with one. Selecting a theme sets three attributes on <html> (see Themes.cs):
+
+       data-theme-choice   the raw selection, for the picker to reflect
+       data-theme          light | dark  — the Pico base the palette is built on
+       data-theme-name     the palette below
+
+   data-theme still lands on the element because Pico bakes stroke colours into its icon
+   data URIs per mode: a dark palette without data-theme="dark" gets dark chevrons and
+   checkmarks on its own dark surfaces, and no amount of variable overriding reaches them.
+   Sitting on the correct base also means any Pico variable this file misses falls back to
+   something of the right polarity rather than inverting.
+
+   Adding a theme is two edits: a block of the fifteen --boh-* tokens here, and an entry in
+   Themes.Palettes. The mapping onto Pico's ~90 variables is written once, below.
+
+   The token values are not copied verbatim from upstream. Editor schemes are built for
+   syntax on a single background, not for web chrome, and across these nine every one of
+   them failed WCAG AA somewhere boh renders text — 46 failing pairs on the first pass.
+   Tokens that fell short were moved along their own hue until they cleared, and the
+   derivation is reproducible: see scripts/build-themes.py.
+*/
+
+/* Mapping ---------------------------------------------------------------
+   The palette contract, expressed once against Pico. Every value below resolves through
+   the --boh-* tokens, so a palette block never mentions a Pico variable. */
+
+:root[data-theme-name] {
+    /* Hover moves the accent toward the theme's own foreground, which lightens it on a
+       dark palette and darkens it on a light one — so one rule serves both polarities and
+       contrast against the accent's label colour can only improve. */
+    --boh-accent-hover: color-mix(in oklab, var(--boh-accent), var(--boh-fg) 25%);
+
+    --pico-background-color: var(--boh-bg);
+    --pico-color: var(--boh-fg);
+    --pico-muted-color: var(--boh-fg-muted);
+    --pico-border-color: var(--boh-border);
+    --pico-muted-border-color: var(--boh-border-muted);
+    --pico-text-selection-color: color-mix(in srgb, var(--boh-accent) 25%, transparent);
+
+    --pico-h1-color: var(--boh-fg-strong);
+    --pico-h2-color: var(--boh-fg-strong);
+    --pico-h3-color: var(--boh-fg-strong);
+    --pico-h4-color: var(--boh-fg-strong);
+    --pico-h5-color: var(--boh-fg-strong);
+    --pico-h6-color: var(--boh-fg-strong);
+
+    /* Primary — links, and the accent fill. */
+    --pico-primary: var(--boh-accent);
+    --pico-primary-background: var(--boh-accent);
+    --pico-primary-border: var(--boh-accent);
+    --pico-primary-inverse: var(--boh-accent-fg);
+    --pico-primary-underline: color-mix(in srgb, var(--boh-accent) 50%, transparent);
+    --pico-primary-hover: var(--boh-accent-hover);
+    --pico-primary-hover-background: var(--boh-accent-hover);
+    --pico-primary-hover-border: var(--boh-accent-hover);
+    --pico-primary-hover-underline: var(--boh-accent-hover);
+    --pico-primary-focus: color-mix(in srgb, var(--boh-accent) 37%, transparent);
+
+    /* Secondary — the quiet fill used by chips, the theme picker and Cancel buttons. */
+    --pico-secondary: var(--boh-fg-muted);
+    --pico-secondary-background: var(--boh-surface-2);
+    --pico-secondary-border: var(--boh-surface-2);
+    --pico-secondary-inverse: var(--boh-fg);
+    --pico-secondary-underline: color-mix(in srgb, var(--boh-fg-muted) 50%, transparent);
+    --pico-secondary-hover: var(--boh-fg);
+    --pico-secondary-hover-background: var(--boh-overlay);
+    --pico-secondary-hover-border: var(--boh-overlay);
+    --pico-secondary-hover-underline: var(--boh-fg);
+    --pico-secondary-focus: color-mix(in srgb, var(--boh-fg-muted) 37%, transparent);
+
+    /* Contrast — the loudest button the theme can draw. */
+    --pico-contrast: var(--boh-fg-strong);
+    --pico-contrast-background: var(--boh-fg-strong);
+    --pico-contrast-border: var(--boh-fg-strong);
+    --pico-contrast-inverse: var(--boh-bg);
+    --pico-contrast-underline: color-mix(in srgb, var(--boh-fg-strong) 50%, transparent);
+    --pico-contrast-hover: var(--boh-fg);
+    --pico-contrast-hover-background: var(--boh-fg);
+    --pico-contrast-hover-border: var(--boh-fg);
+    --pico-contrast-hover-underline: var(--boh-fg);
+    --pico-contrast-focus: color-mix(in srgb, var(--boh-fg-muted) 37%, transparent);
+
+    --pico-card-background-color: var(--boh-surface);
+    --pico-card-border-color: var(--boh-border-muted);
+    --pico-card-sectioning-background-color: var(--boh-surface-2);
+
+    --pico-dropdown-background-color: var(--boh-surface);
+    --pico-dropdown-border-color: var(--boh-border-muted);
+    --pico-dropdown-color: var(--boh-fg);
+    --pico-dropdown-hover-background-color: var(--boh-surface-2);
+
+    --pico-form-element-background-color: var(--boh-overlay);
+    --pico-form-element-selected-background-color: var(--boh-surface-2);
+    --pico-form-element-border-color: var(--boh-border);
+    --pico-form-element-color: var(--boh-fg);
+    --pico-form-element-placeholder-color: var(--boh-fg-muted);
+    --pico-form-element-active-background-color: var(--boh-overlay);
+    --pico-form-element-active-border-color: var(--boh-accent);
+    --pico-form-element-focus-color: var(--boh-accent);
+    --pico-form-element-invalid-border-color: var(--boh-danger);
+    --pico-form-element-invalid-active-border-color: var(--boh-danger);
+    --pico-form-element-invalid-focus-color: var(--boh-danger);
+    --pico-form-element-valid-border-color: var(--boh-success);
+    --pico-form-element-valid-active-border-color: var(--boh-success);
+    --pico-form-element-valid-focus-color: var(--boh-success);
+
+    --pico-switch-background-color: var(--boh-surface-2);
+    --pico-switch-checked-background-color: var(--boh-accent);
+    --pico-switch-color: var(--boh-accent-fg);
+    --pico-range-border-color: var(--boh-surface-2);
+    --pico-range-active-border-color: var(--boh-border);
+    --pico-range-thumb-color: var(--boh-accent);
+    --pico-range-thumb-border-color: var(--boh-bg);
+    --pico-range-thumb-active-color: var(--boh-accent-hover);
+    --pico-progress-background-color: var(--boh-surface-2);
+    --pico-progress-color: var(--boh-accent);
+
+    --pico-code-background-color: var(--boh-surface-2);
+    --pico-code-color: var(--boh-fg-muted);
+    --pico-code-kbd-background-color: var(--boh-fg-strong);
+    --pico-code-kbd-color: var(--boh-bg);
+
+    --pico-mark-background-color: var(--boh-warning);
+    --pico-mark-color: var(--boh-warning-fg);
+    --pico-ins-color: var(--boh-success);
+    --pico-del-color: var(--boh-danger);
+
+    --pico-blockquote-border-color: var(--boh-border-muted);
+    --pico-blockquote-footer-color: var(--boh-fg-muted);
+
+    --pico-table-border-color: var(--boh-border-muted);
+    --pico-table-row-stripped-background-color: color-mix(in srgb, var(--boh-surface-2) 50%, transparent);
+
+    --pico-accordion-border-color: var(--boh-border-muted);
+    --pico-accordion-active-summary-color: var(--boh-accent);
+    --pico-accordion-close-summary-color: var(--boh-fg);
+    --pico-accordion-open-summary-color: var(--boh-fg-muted);
+
+    --pico-tooltip-background-color: var(--boh-fg-strong);
+    --pico-tooltip-color: var(--boh-bg);
+
+    --pico-modal-overlay-background-color: color-mix(in srgb, var(--boh-bg) 70%, transparent);
+}
+
+/*
+   The sticky table headers in app.css paint over scrolling rows, so they need an opaque
+   fill. --pico-background-color is opaque in every palette, but the header sits inside a
+   card in the tag admin, where the page colour is the wrong one.
+*/
+:root[data-theme-name] .scroll-y thead th {
+    background: var(--boh-surface);
+}
+
+/* Palettes --------------------------------------------------------------
+   Fifteen tokens each. Provenance and licence for every scheme is recorded in NOTICE. */
+
+/* Nord — arcticicestudio/nord, MIT */
+:root[data-theme-name="nord"] {
+    --boh-bg: #2e3440;
+    --boh-surface: #3b4252;
+    --boh-surface-2: #434c5e;
+    --boh-overlay: #3b4252;
+    --boh-fg: #d8dee9;
+    --boh-fg-strong: #eceff4;
+    --boh-fg-muted: #b4bccb;
+    --boh-border: #63718b;
+    --boh-border-muted: #495265;
+    --boh-accent: #8ec5d4;
+    --boh-accent-fg: #2e3440;
+    --boh-danger: #eeaab1;
+    --boh-success: #a3be8c;
+    --boh-warning: #ebcb8b;
+    --boh-warning-fg: #2e3440;
+}
+
+/* Dracula — dracula/visual-studio-code, MIT */
+:root[data-theme-name="dracula"] {
+    --boh-bg: #282a36;
+    --boh-surface: #343746;
+    --boh-surface-2: #424450;
+    --boh-overlay: #44475a;
+    --boh-fg: #f8f8f2;
+    --boh-fg-strong: #ffffff;
+    --boh-fg-muted: #b1b6d2;
+    --boh-border: #5f647e;
+    --boh-border-muted: #424659;
+    --boh-accent: #c6a0fb;
+    --boh-accent-fg: #282a36;
+    --boh-danger: #ff9595;
+    --boh-success: #50fa7b;
+    --boh-warning: #f1fa8c;
+    --boh-warning-fg: #282a36;
+}
+
+/* Monokai — microsoft/vscode theme-monokai, MIT */
+:root[data-theme-name="monokai"] {
+    --boh-bg: #272822;
+    --boh-surface: #32332c;
+    --boh-surface-2: #414339;
+    --boh-overlay: #414339;
+    --boh-fg: #f8f8f2;
+    --boh-fg-strong: #ffffff;
+    --boh-fg-muted: #b4af99;
+    --boh-border: #75715e;
+    --boh-border-muted: #414339;
+    --boh-accent: #66d9ef;
+    --boh-accent-fg: #272822;
+    --boh-danger: #ff89b3;
+    --boh-success: #a6e22e;
+    --boh-warning: #e6db74;
+    --boh-warning-fg: #272822;
+}
+
+/* Gruvbox Dark — morhetz/gruvbox, MIT */
+:root[data-theme-name="gruvbox-dark"] {
+    --boh-bg: #282828;
+    --boh-surface: #32302f;
+    --boh-surface-2: #3c3836;
+    --boh-overlay: #504945;
+    --boh-fg: #ebdbb2;
+    --boh-fg-strong: #fbf1c7;
+    --boh-fg-muted: #c6b9a1;
+    --boh-border: #665c54;
+    --boh-border-muted: #44403d;
+    --boh-accent: #89a99d;
+    --boh-accent-fg: #282828;
+    --boh-danger: #ff7a6b;
+    --boh-success: #b8bb26;
+    --boh-warning: #fabd2f;
+    --boh-warning-fg: #282828;
+}
+
+/* Catppuccin Mocha — catppuccin/palette, MIT */
+:root[data-theme-name="catppuccin-mocha"] {
+    --boh-bg: #1e1e2e;
+    --boh-surface: #313244;
+    --boh-surface-2: #45475a;
+    --boh-overlay: #313244;
+    --boh-fg: #cdd6f4;
+    --boh-fg-strong: #cdd6f4;
+    --boh-fg-muted: #afb6ce;
+    --boh-border: #5c6076;
+    --boh-border-muted: #45475a;
+    --boh-accent: #8fb8fb;
+    --boh-accent-fg: #1e1e2e;
+    --boh-danger: #f89db7;
+    --boh-success: #a6e3a1;
+    --boh-warning: #f9e2af;
+    --boh-warning-fg: #1e1e2e;
+}
+
+/* Solarized Dark — altercation/solarized, MIT */
+:root[data-theme-name="solarized-dark"] {
+    --boh-bg: #002b36;
+    --boh-surface: #073642;
+    --boh-surface-2: #0e4b59;
+    --boh-overlay: #073642;
+    --boh-fg: #eee8d5;
+    --boh-fg-strong: #fdf6e3;
+    --boh-fg-muted: #a9b4b4;
+    --boh-border: #586e75;
+    --boh-border-muted: #074656;
+    --boh-accent: #64b9f5;
+    --boh-accent-fg: #002b36;
+    --boh-danger: #fd9492;
+    --boh-success: #859900;
+    --boh-warning: #b58900;
+    --boh-warning-fg: #002b36;
+}
+
+/* Gruvbox Light — morhetz/gruvbox, MIT */
+:root[data-theme-name="gruvbox-light"] {
+    --boh-bg: #f9f5d7;
+    --boh-surface: #fbf1c7;
+    --boh-surface-2: #ebdbb2;
+    --boh-overlay: #ffffff;
+    --boh-fg: #3c3836;
+    --boh-fg-strong: #282828;
+    --boh-fg-muted: #6a5f55;
+    --boh-border: #baaa8e;
+    --boh-border-muted: #d5c4a1;
+    --boh-accent: #076678;
+    --boh-accent-fg: #f9f5d7;
+    --boh-danger: #9d0006;
+    --boh-success: #77720d;
+    --boh-warning: #fabd2f;
+    --boh-warning-fg: #282828;
+}
+
+/* Catppuccin Latte — catppuccin/palette, MIT */
+:root[data-theme-name="catppuccin-latte"] {
+    --boh-bg: #e6e9ef;
+    --boh-surface: #eff1f5;
+    --boh-surface-2: #dce0e8;
+    --boh-overlay: #ffffff;
+    --boh-fg: #4c4f69;
+    --boh-fg-strong: #4c4f69;
+    --boh-fg-muted: #5f6276;
+    --boh-border: #a1a5b5;
+    --boh-border-muted: #ccd0da;
+    --boh-accent: #0353f1;
+    --boh-accent-fg: #e6e9ef;
+    --boh-danger: #c70b33;
+    --boh-success: #277816;
+    --boh-warning: #df8e1d;
+    --boh-warning-fg: #000000;
+}
+
+/* Solarized Light — altercation/solarized, MIT */
+:root[data-theme-name="solarized-light"] {
+    --boh-bg: #eee8d5;
+    --boh-surface: #fdf6e3;
+    --boh-surface-2: #e4ddc9;
+    --boh-overlay: #fdf6e3;
+    --boh-fg: #073642;
+    --boh-fg-strong: #002b36;
+    --boh-fg-muted: #52646b;
+    --boh-border: #93a1a1;
+    --boh-border-muted: #d7d0ba;
+    --boh-accent: #0f65a2;
+    --boh-accent-fg: #eee8d5;
+    --boh-danger: #c21714;
+    --boh-success: #5f6e00;
+    --boh-warning: #b58900;
+    --boh-warning-fg: #002b36;
+}

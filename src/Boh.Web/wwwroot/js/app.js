@@ -1,73 +1,114 @@
-// Theme toggle: cycles auto -> light -> dark -> auto.
+// Theme toggle, and the theme preference form on the account page.
 //
-// "auto" is represented by the *absence* of data-theme, which is what lets Pico's
-// prefers-color-scheme rules take over. data-theme-choice always reflects the user's
-// selection so CSS can show the matching icon even in the auto case.
+// Three attributes on <html> carry the state, all set before first paint by the inline
+// script in <head>:
 //
-// The initial attributes are set by an inline script in <head>; this file only handles
-// interaction and label sync, so it is safe to load deferred.
+//   data-theme-choice  auto | light | dark — which side of the toggle is showing, and what
+//                      drives the button's icon
+//   data-theme         light | dark, the Pico base. Always present: "auto" is resolved
+//                      against the OS rather than left to prefers-color-scheme, so that a
+//                      palette can be looked up by a definite mode
+//   data-theme-name    the packaged palette keying a block in themes.css, absent when that
+//                      side is set to Pico's stock look
+//
+// That inline script also exposes window.bohTheme so the resolve-and-apply logic lives in
+// exactly one place. This file only wires events to it.
 (function () {
     'use strict';
 
-    var STORAGE_KEY = 'boh:theme';
-    var ORDER = ['auto', 'light', 'dark'];
-    var LABELS = {
-        auto: 'Theme: follow system',
-        light: 'Theme: light',
-        dark: 'Theme: dark'
+    var MODE_KEY = 'boh:theme';
+    var PALETTE_KEY = 'boh:palettes';
+    var CYCLE = ['auto', 'light', 'dark'];
+    var LABELS = { auto: 'Theme: follow system', light: 'Theme: light', dark: 'Theme: dark' };
+
+    var theme = window.bohTheme;
+    if (!theme) return;
+
+    function store(key, value) {
+        try {
+            localStorage.setItem(key, value);
+        } catch (e) {
+            // Storage unavailable (private mode, cookies blocked). The change still applies
+            // for this page view; it just will not persist.
+        }
+    }
+
+    var toggle = document.getElementById('theme-toggle');
+
+    var label = function (choice) {
+        if (!toggle) return;
+
+        var text = LABELS[choice] || LABELS.auto;
+        toggle.setAttribute('aria-label', text);
+        toggle.setAttribute('title', text);
     };
 
-    function readChoice() {
-        try {
-            var stored = localStorage.getItem(STORAGE_KEY);
-            return stored === 'light' || stored === 'dark' ? stored : 'auto';
-        } catch (e) {
-            return 'auto';
-        }
-    }
+    label(theme.choice());
 
-    function writeChoice(choice) {
-        try {
-            if (choice === 'auto') localStorage.removeItem(STORAGE_KEY);
-            else localStorage.setItem(STORAGE_KEY, choice);
-        } catch (e) {
-            // Storage unavailable (private mode, cookies blocked). The theme still
-            // applies for this page view; it just will not persist.
-        }
-    }
+    if (toggle) {
+        toggle.addEventListener('click', function () {
+            var next = CYCLE[(CYCLE.indexOf(theme.choice()) + 1) % CYCLE.length];
 
-    function apply(choice) {
-        var root = document.documentElement;
-
-        root.dataset.themeChoice = choice;
-        if (choice === 'auto') delete root.dataset.theme;
-        else root.dataset.theme = choice;
-
-        var button = document.getElementById('theme-toggle');
-        if (button) {
-            button.setAttribute('aria-label', LABELS[choice]);
-            button.setAttribute('title', LABELS[choice]);
-        }
-    }
-
-    function init() {
-        // Sync the button's label with whatever the inline script already applied.
-        apply(readChoice());
-
-        var button = document.getElementById('theme-toggle');
-        if (!button) return;
-
-        button.addEventListener('click', function () {
-            var next = ORDER[(ORDER.indexOf(readChoice()) + 1) % ORDER.length];
-            writeChoice(next);
-            apply(next);
+            theme.apply(next);
+            label(next);
+            store(MODE_KEY, next);
         });
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+    // Following the OS only means anything if it keeps following it.
+    theme.media.addEventListener('change', function () {
+        if (theme.choice() === 'auto') theme.apply('auto');
+    });
+
+    // The account page's palette form. Signed in it posts to the server and this only
+    // previews the change; with no account to store it against — BOH_AUTH_MODE=none —
+    // localStorage is the whole of the persistence.
+    var form = document.getElementById('theme-form');
+    if (!form) return;
+
+    var selects = form.querySelectorAll('select[data-theme-mode]');
+    var local = form.dataset.themeStore === 'local';
+
+    function palettes() {
+        var map = {};
+        Array.prototype.forEach.call(selects, function (select) {
+            if (select.value) map[select.dataset.themeMode] = select.value;
+        });
+        return map;
+    }
+
+    // Without an account the server renders both selects as "Default", because it has
+    // nothing to render them from. Fill them in from where the choice actually lives.
+    if (local) {
+        var stored = {};
+        try {
+            stored = JSON.parse(localStorage.getItem(PALETTE_KEY)) || {};
+        } catch (e) { /* absent or corrupt; "Default" in both is the right fallback */ }
+
+        Array.prototype.forEach.call(selects, function (select) {
+            select.value = stored[select.dataset.themeMode] || '';
+        });
+    }
+
+    // Live preview. Only the side currently showing can change on screen — picking a dark
+    // scheme while in light mode does nothing visible until the toggle is used, which is
+    // honest about what was actually selected.
+    Array.prototype.forEach.call(selects, function (select) {
+        select.addEventListener('change', function () {
+            var map = palettes();
+
+            theme.palettes(map);
+            theme.apply(theme.choice());
+
+            if (local) store(PALETTE_KEY, JSON.stringify(map));
+        });
+    });
+
+    if (local) {
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            store(PALETTE_KEY, JSON.stringify(palettes()));
+        });
     }
 })();
 

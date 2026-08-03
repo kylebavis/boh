@@ -160,6 +160,27 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         return new UserResult.Ok();
     }
 
+    /// <summary>
+    /// Stores the palette to use on each side of the header toggle.
+    /// </summary>
+    /// <remarks>
+    /// Anything that is not a palette belonging to that mode is stored as null — the stock
+    /// look — rather than rejected. The values come from a pair of selects, so a bad one means
+    /// a stale id or a hand-edited post, neither of which is worth an error message; silently
+    /// landing on the default is the better failure.
+    /// </remarks>
+    public async Task<UserResult> SetThemesAsync(int userId, string? light, string? dark, CancellationToken ct)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null) return new UserResult.Rejected("That user no longer exists.");
+
+        user.LightTheme = Themes.Normalize(light, Themes.LightMode);
+        user.DarkTheme = Themes.Normalize(dark, Themes.DarkMode);
+
+        await db.SaveChangesAsync(ct);
+        return new UserResult.Ok();
+    }
+
     // ---- seeding -------------------------------------------------------
 
     /// <summary>
