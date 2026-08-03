@@ -18,16 +18,19 @@ else
         Signed in as <strong>@Model.Username</strong>
         <small class="muted">(@(Model.IsAdmin ? "administrator" : "user"))</small>
     </p>
+}
 
-    @if (Model.Message is not null)
-    {
-        <div class="notice" role="status">@Model.Message</div>
-    }
-    @if (Model.Error is not null)
-    {
-        <div class="notice notice-error" role="alert">@Model.Error</div>
-    }
+@if (Model.Message is not null)
+{
+    <div class="notice" role="status">@Model.Message</div>
+}
+@if (Model.Error is not null)
+{
+    <div class="notice notice-error" role="alert">@Model.Error</div>
+}
 
+@if (!Model.AuthDisabled)
+{
     <section>
         <h2>Change password</h2>
 
@@ -55,3 +58,43 @@ else
         </form>
     </section>
 }
+
+<section>
+    <h2>Theme</h2>
+
+    <p>
+        The button in the header switches between light and dark, or follows your system.
+        These choose which colour scheme each side uses.
+    </p>
+
+    @* Where the choice gets stored. With no account to store against, app.js intercepts the
+       submit and writes to localStorage instead. Spelled out as a value rather than a bare
+       marker attribute: Razor renders a null attribute value as data-theme-local="", which
+       hasAttribute() reads as present, so the account case would have taken the wrong path. *@
+    <form method="post" asp-page-handler="Theme" id="theme-form"
+          data-theme-store="@(Model.AuthDisabled ? "local" : "account")">
+        <div class="theme-fields">
+            @foreach (var field in new[]
+            {
+                (Id: "light-theme", Name: "lightTheme", Legend: "Light",
+                 Mode: Boh.Web.Themes.LightMode, Current: Model.LightTheme),
+                (Id: "dark-theme", Name: "darkTheme", Legend: "Dark",
+                 Mode: Boh.Web.Themes.DarkMode, Current: Model.DarkTheme),
+            })
+            {
+                <label for="@field.Id">
+                    @field.Legend
+                    <select id="@field.Id" name="@field.Name" data-theme-mode="@field.Mode">
+                        <option value="" selected="@(string.IsNullOrEmpty(field.Current))">Default</option>
+                        @foreach (var theme in Boh.Web.Themes.For(field.Mode))
+                        {
+                            <option value="@theme.Id" selected="@(theme.Id == field.Current)">@theme.Label</option>
+                        }
+                    </select>
+                </label>
+            }
+        </div>
+
+        <button type="submit">Save theme</button>
+    </form>
+</section>

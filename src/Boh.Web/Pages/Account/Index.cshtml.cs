@@ -18,6 +18,14 @@ public class IndexModel(UserService users, BohOptions options) : PageModel
     public bool AuthDisabled => options.AuthDisabled;
     public int MinPasswordLength => UserService.MinPasswordLength;
 
+    /// <summary>
+    /// The stored palette for each side of the header toggle. Null is the stock Pico look.
+    /// With authentication off there is no row to read, so these stay null and the form
+    /// falls back to browser storage.
+    /// </summary>
+    public string? LightTheme { get; private set; }
+    public string? DarkTheme { get; private set; }
+
     [TempData] public string? Message { get; set; }
     public string? Error { get; private set; }
 
@@ -54,9 +62,40 @@ public class IndexModel(UserService users, BohOptions options) : PageModel
         return RedirectToPage();
     }
 
+    public async Task<IActionResult> OnPostThemeAsync(string? lightTheme, string? darkTheme, CancellationToken ct)
+    {
+        Load();
+
+        // The form is client-side only in this mode; reaching the handler means someone
+        // posted directly, and there is still no row to write to.
+        if (options.AuthDisabled)
+        {
+            Error = "Authentication is disabled on this instance, so there is no account to save against.";
+            return Page();
+        }
+
+        var userId = UserPrincipal.GetId(User);
+        if (userId is null) return Forbid();
+
+        var result = await users.SetThemesAsync(userId.Value, lightTheme, darkTheme, ct);
+        if (result is UserResult.Rejected rejected)
+        {
+            Error = rejected.Reason;
+            return Page();
+        }
+
+        // No need to reissue the cookie here: the palettes ride on the auth ticket, and
+        // RevalidateUserEvents compares it against the row on every request, so the redirect
+        // below already arrives carrying the new claims.
+        Message = "Theme saved.";
+        return RedirectToPage();
+    }
+
     private void Load()
     {
         Username = User.Identity?.Name;
         IsAdmin = UserPrincipal.IsAdmin(User);
+        LightTheme = UserPrincipal.GetLightTheme(User);
+        DarkTheme = UserPrincipal.GetDarkTheme(User);
     }
 }

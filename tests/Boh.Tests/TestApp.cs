@@ -19,9 +19,19 @@ public sealed class TestApp : WebApplicationFactory<Program>
         Path.Combine(Path.GetTempPath(), "boh-web-tests", Guid.NewGuid().ToString("N"));
 
     private readonly int _pageSize;
+    private readonly string _authMode;
 
     /// <param name="pageSize">Small by default so a handful of posts spans several pages.</param>
-    public TestApp(int pageSize = 2) => _pageSize = pageSize;
+    /// <param name="authMode">
+    /// Defaults to "none": writes are what these tests exercise, and there is no sign-in flow
+    /// to drive. Pass "password" to render the pages an instance with accounts would serve —
+    /// signed out, since the client carries no cookie.
+    /// </param>
+    public TestApp(int pageSize = 2, string authMode = "none")
+    {
+        _pageSize = pageSize;
+        _authMode = authMode;
+    }
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
@@ -33,8 +43,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
         {
             ["BOH_DATA_PATH"] = _root,
             ["BOH_PAGE_SIZE"] = _pageSize.ToString(),
-            // Writes are what these tests exercise, and there is no sign-in flow to drive.
-            ["BOH_AUTH_MODE"] = "none",
+            ["BOH_AUTH_MODE"] = _authMode,
+            ["BOH_ADMIN_PASSWORD"] = AdminPassword,
         }));
 
         return base.CreateHost(builder);
@@ -91,6 +101,35 @@ public sealed class TestApp : WebApplicationFactory<Program>
         var response = await client.GetAsync(url);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return await response.Content.ReadAsStringAsync();
+    }
+
+    /// <summary>The password the admin account is seeded with when running with accounts on.</summary>
+    public const string AdminPassword = "test-admin-password";
+
+    /// <summary>
+    /// Signs the client in as the seeded administrator. Only meaningful on an app built with
+    /// <c>authMode: "password"</c>; the returned client carries the auth cookie from then on.
+    /// </summary>
+    public async Task<HttpClient> SignInAsync()
+    {
+        // Follows redirects so the cookie handler sees the post-login navigation, and so the
+        // antiforgery token comes from a fully rendered form.
+        var client = CreateClient();
+
+        var form = await GetHtmlAsync(client, "/Account/Login");
+        var token = Regex.Match(form, "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"");
+        Assert.True(token.Success, "no antiforgery token on the login form");
+
+        var response = await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["Username"] = UserService.AdminUsername,
+                ["Password"] = AdminPassword,
+                ["__RequestVerificationToken"] = token.Groups[1].Value,
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return client;
     }
 
     private const string CardPattern = "<a class=\"gallery-item\" href=\"([^\"]+)\"";

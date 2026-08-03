@@ -125,6 +125,8 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.HasIndex(u => u.Username).IsUnique();
             e.Property(u => u.PasswordHash).HasMaxLength(256).IsRequired();
             e.Property(u => u.CreatedAt).HasConversion(UtcMilliseconds);
+            e.Property(u => u.LightTheme).HasMaxLength(32);
+            e.Property(u => u.DarkTheme).HasMaxLength(32);
         });
     }
 }

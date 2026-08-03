@@ -40,7 +40,11 @@ public sealed class RevalidateUserEvents : CookieAuthenticationEvents
 
         // Promotion or demotion since the cookie was issued: reissue rather than reject, so
         // the change applies without forcing an otherwise valid session to sign in again.
-        if (user.IsAdmin != UserPrincipal.IsAdmin(principal))
+        // Theme choices ride the same path — they are on the ticket so the layout can apply
+        // them before paint, which means a change made in one tab has to reach the others.
+        if (user.IsAdmin != UserPrincipal.IsAdmin(principal)
+            || user.LightTheme != UserPrincipal.GetLightTheme(principal)
+            || user.DarkTheme != UserPrincipal.GetDarkTheme(principal))
         {
             context.ReplacePrincipal(UserPrincipal.Create(user));
             context.ShouldRenew = true;

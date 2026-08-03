@@ -75,6 +75,15 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     display: block;
 }
 
+/* Theme preferences on the account page -------------------------------- */
+
+.theme-fields {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    align-items: start;
+}
+
 /* Gallery -------------------------------------------------------------- */
 
 .gallery {
