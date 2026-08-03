@@ -9,7 +9,19 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
-  - package-ecosystem: "dotnet-sdk"
+  # Workflow actions are pinned to commit SHAs, so nothing upstream can change
+  # what a tag resolves to underneath us. That also means no update arrives on its
+  # own: this is the only thing moving those pins, and it rewrites the trailing
+  # version comment alongside the SHA.
+  # "/" is correct: the ecosystem always looks in .github/workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # The sdk:10.0 and aspnet:10.0 base images in the Dockerfile. Tracks the tags
+  # themselves, so this fires when a new major lands, not on every patch rebuild.
+  - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
