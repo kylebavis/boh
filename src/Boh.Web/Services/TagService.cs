@@ -144,7 +144,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         var tags = await GetOrCreateManyAsync(names, ct);
 
         var explicitIds = tags.Values.Select(t => ResolveAlias(aliasMap, t.Id)).ToHashSet();
-        var impliedIds = AncestorsOf(implications, explicitIds);
+        var impliedIds = AncestorsOf(implications, aliasMap, explicitIds);
 
         var desired = new Dictionary<int, TagSource>();
         foreach (var id in explicitIds) desired[id] = TagSource.Explicit;
@@ -235,7 +235,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
         // If the parent already reaches the child, adding this edge closes a loop and the
         // closure walk would never terminate on its own.
-        if (AncestorsOf(implications, [parentId]).Contains(childId))
+        if (AncestorsOf(implications, aliasMap, [parentId]).Contains(childId))
             return new TagLinkResult.Rejected(
                 $"'{parentName.Display}' already implies '{childName.Display}'; that would form a cycle.");
 
@@ -310,6 +310,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     private async Task<int> RebuildImpliedAsync(IReadOnlyCollection<int>? postIds, CancellationToken ct)
     {
         var implications = await LoadImplicationsAsync(ct);
+        var aliasMap = await LoadAliasMapAsync(ct);
 
         var query = db.PostTags.AsQueryable();
         if (postIds is not null) query = query.Where(pt => postIds.Contains(pt.PostId));
@@ -325,7 +326,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
                                    .Select(r => r.TagId)
                                    .ToHashSet();
 
-            var desiredImplied = AncestorsOf(implications, explicitIds);
+            var desiredImplied = AncestorsOf(implications, aliasMap, explicitIds);
             var currentImplied = group.Where(r => r.Source == TagSource.Implied).ToList();
 
             foreach (var row in currentImplied.Where(r => !desiredImplied.Contains(r.TagId)))
@@ -647,7 +648,15 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     /// themselves — a seed that is also an ancestor stays explicit rather than being
     /// demoted to implied.
     /// </summary>
-    private static HashSet<int> AncestorsOf(ILookup<int, int> childToParents, IReadOnlyCollection<int> seeds)
+    /// <remarks>
+    /// Parents are resolved through <paramref name="aliasMap"/> on the way out. An
+    /// implication is stored canonically when it is created, but aliasing a tag afterwards
+    /// leaves every existing edge pointing at what is now an alias — and an implied row is
+    /// the one way an aliased tag could still reach a post. The alias's own edges are walked
+    /// as well, since they remain real implications after the redirect.
+    /// </remarks>
+    private static HashSet<int> AncestorsOf(
+        ILookup<int, int> childToParents, Dictionary<int, int> aliasMap, IReadOnlyCollection<int> seeds)
     {
         var ancestors = new HashSet<int>();
         var visited = new HashSet<int>(seeds);
@@ -657,9 +666,14 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         {
             foreach (var parent in childToParents[queue.Dequeue()])
             {
-                if (!visited.Add(parent)) continue;
-                ancestors.Add(parent);
-                queue.Enqueue(parent);
+                var canonical = ResolveAlias(aliasMap, parent);
+
+                // Follow the alias's edges without letting the alias itself become implied.
+                if (canonical != parent && visited.Add(parent)) queue.Enqueue(parent);
+
+                if (!visited.Add(canonical)) continue;
+                ancestors.Add(canonical);
+                queue.Enqueue(canonical);
             }
         }
 
