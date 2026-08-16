@@ -192,6 +192,58 @@ public class TagServiceTests
         Assert.Equal(["child", "parent"], await env.TagsOnAsync(post));
     }
 
+    /// <summary>
+    /// An implication is stored canonically, but aliasing its parent afterwards leaves the
+    /// edge pointing at what is now an alias. An implied row was the one way an aliased tag
+    /// could still land on a post — most visibly on import, where every tag arrives derived.
+    /// </summary>
+    [Fact]
+    public async Task An_implied_tag_aliased_after_the_edge_was_added_resolves()
+    {
+        using var env = new TestEnvironment();
+        var post = await env.CreatePostAsync();
+
+        await env.Tags.AddImplicationAsync(new TagName("", "cat"), new TagName("", "feline"), Ct);
+        await env.Tags.AddAliasAsync(new TagName("", "feline"), new TagName("", "cat_species"), Ct);
+
+        await env.Tags.AddPostTagsAsync(post, Names("cat"), Ct);
+
+        Assert.Equal(["cat", "cat_species"], await env.TagsOnAsync(post));
+    }
+
+    [Fact]
+    public async Task Aliasing_an_implied_tag_migrates_posts_that_already_derived_it()
+    {
+        using var env = new TestEnvironment();
+        var post = await env.CreatePostAsync();
+        await env.Tags.AddImplicationAsync(new TagName("", "cat"), new TagName("", "feline"), Ct);
+        await env.Tags.AddPostTagsAsync(post, Names("cat"), Ct);
+
+        await env.Tags.AddAliasAsync(new TagName("", "feline"), new TagName("", "cat_species"), Ct);
+
+        Assert.Equal(["cat", "cat_species"], await env.TagsOnAsync(post));
+        Assert.Equal(TagSource.Implied, await env.SourceOfAsync(post, "cat_species"));
+    }
+
+    /// <summary>
+    /// Redirecting a tag must not sever the chain above it: edges stored against the alias
+    /// are still real implications and have to keep contributing their own ancestors.
+    /// </summary>
+    [Fact]
+    public async Task An_aliased_tag_still_contributes_the_tags_it_implied()
+    {
+        using var env = new TestEnvironment();
+        var post = await env.CreatePostAsync();
+
+        await env.Tags.AddImplicationAsync(new TagName("", "cat"), new TagName("", "feline"), Ct);
+        await env.Tags.AddImplicationAsync(new TagName("", "feline"), new TagName("", "animal"), Ct);
+        await env.Tags.AddAliasAsync(new TagName("", "feline"), new TagName("", "cat_species"), Ct);
+
+        await env.Tags.AddPostTagsAsync(post, Names("cat"), Ct);
+
+        Assert.Equal(["animal", "cat", "cat_species"], await env.TagsOnAsync(post));
+    }
+
     [Fact]
     public async Task Removing_an_implication_strips_the_tags_it_had_produced()
     {

@@ -125,14 +125,27 @@ public sealed class GalleryDlImporter(
             switch (result)
             {
                 case PostCreateResult.Created createdPost:
-                    var tagNames = GalleryDlTagMapper.Map(metadata);
-                    if (tagNames.Count > 0) await tags.AddPostTagsAsync(createdPost.Post.Id, tagNames, ct);
+                    var mapped = GalleryDlTagMapper.Map(metadata);
+                    var stored = new List<string>();
+
+                    if (mapped.Count > 0)
+                    {
+                        await tags.AddPostTagsAsync(createdPost.Post.Id, mapped, ct);
+
+                        // Read the tags back rather than reporting what the mapper produced:
+                        // an aliased name is stored as its canonical form, and the summary
+                        // showing the alias makes it look as though the alias was ignored.
+                        stored = (await tags.GetExplicitTagNamesAsync(createdPost.Post.Id, ct))
+                            .Select(t => t.Display)
+                            .OrderBy(t => t, StringComparer.Ordinal)
+                            .ToList();
+                    }
 
                     created.Add(new ImportedItem(
                         createdPost.Post.Id,
                         createdPost.Post.Sha256,
                         fileName,
-                        tagNames.Select(t => t.Display).ToList()));
+                        stored));
                     break;
 
                 case PostCreateResult.Duplicate duplicate:
