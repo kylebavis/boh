@@ -22,6 +22,7 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
     public DbSet<PostTag> PostTags => Set<PostTag>();
     public DbSet<TagAlias> TagAliases => Set<TagAlias>();
     public DbSet<TagNamespace> TagNamespaces => Set<TagNamespace>();
+    public DbSet<TagNamespaceAlias> TagNamespaceAliases => Set<TagNamespaceAlias>();
     public DbSet<TagImplication> TagImplications => Set<TagImplication>();
     public DbSet<User> Users => Set<User>();
 
@@ -83,6 +84,16 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.HasIndex(n => n.Name).IsUnique();
             e.Property(n => n.Name).HasMaxLength(TagName.MaxNamespaceLength);
             e.Property(n => n.Color).HasMaxLength(16);
+        });
+
+        // Keyed by the alias namespace itself rather than a surrogate id: a namespace has no
+        // row of its own to reference, and one namespace can only redirect one way.
+        b.Entity<TagNamespaceAlias>(e =>
+        {
+            e.HasKey(a => a.Alias);
+            e.Property(a => a.Alias).HasMaxLength(TagName.MaxNamespaceLength);
+            e.Property(a => a.Canonical).HasMaxLength(TagName.MaxNamespaceLength).IsRequired();
+            e.HasIndex(a => a.Canonical);
         });
 
         b.Entity<TagAlias>(e =>

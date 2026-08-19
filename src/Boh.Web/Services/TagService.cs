@@ -62,7 +62,9 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
         if (colon > 0)
         {
-            var ns = raw[..colon];
+            // Typing an aliased namespace completes against the one it redirects to, so a
+            // habit like "copyright:" keeps working instead of returning nothing.
+            var ns = ResolveNamespace(await LoadNamespaceAliasesAsync(ct), raw[..colon]);
             var namePrefix = raw[(colon + 1)..];
             query = query.Where(t => t.Namespace == ns && t.Name.StartsWith(namePrefix));
         }
@@ -178,6 +180,12 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         var alias = tags[aliasName];
         var canonical = tags[canonicalName];
 
+        // Two spellings can already be one tag — aliasing copyright:x to series:x when the
+        // copyright namespace itself redirects. There is nothing left to alias.
+        if (alias.Id == canonical.Id)
+            return new TagLinkResult.Rejected(
+                $"'{aliasName.Display}' and '{canonicalName.Display}' are already the same tag.");
+
         var aliasMap = await LoadAliasMapAsync(ct);
 
         if (ResolveAlias(aliasMap, canonical.Id) == alias.Id)
@@ -213,6 +221,98 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     public async Task RemoveAliasAsync(int aliasTagId, CancellationToken ct)
     {
         await db.TagAliases.Where(a => a.AliasTagId == aliasTagId).ExecuteDeleteAsync(ct);
+    }
+
+    // ---- namespace aliases ---------------------------------------------
+
+    /// <summary>
+    /// Redirects a whole namespace, so every tag imported into it from now on lands in the
+    /// canonical one instead, and every tag already there is moved across.
+    /// </summary>
+    /// <remarks>
+    /// The alias row is written before the migration runs, so the migration cannot leave
+    /// tags stranded in a namespace that nothing redirects — if it fails part way, the
+    /// redirect is still in force and re-adding it finishes the job.
+    /// </remarks>
+    public async Task<TagLinkResult> AddNamespaceAliasAsync(string? alias, string? canonical, CancellationToken ct)
+    {
+        if (!TagName.TryParseNamespace(alias, out var aliasNs))
+            return new TagLinkResult.Rejected("Enter a namespace to redirect, for example 'copyright'.");
+
+        if (!TagName.TryParseNamespace(canonical, out var canonicalNs))
+            return new TagLinkResult.Rejected("Enter a namespace to redirect to, for example 'series'.");
+
+        if (aliasNs == canonicalNs)
+            return new TagLinkResult.Rejected("A namespace cannot be an alias of itself.");
+
+        var map = await LoadNamespaceAliasesAsync(ct);
+
+        if (map.ContainsKey(aliasNs))
+            return new TagLinkResult.Rejected($"'{aliasNs}:' is already an alias.");
+
+        // Chains are resolved on read, so the destination may itself redirect onwards —
+        // which is fine unless it comes back here, where resolution would never settle.
+        var target = ResolveNamespace(map, canonicalNs);
+        if (target == aliasNs)
+            return new TagLinkResult.Rejected(
+                $"'{canonicalNs}:' already resolves to '{aliasNs}:'; that would form a loop.");
+
+        db.TagNamespaceAliases.Add(new TagNamespaceAlias { Alias = aliasNs, Canonical = canonicalNs });
+        await db.SaveChangesAsync(ct);
+
+        var moved = await MigrateNamespaceAsync(aliasNs, target, ct);
+
+        logger.LogInformation("Aliased namespace {Alias} to {Canonical}, moving {Count} tag(s)",
+            aliasNs, target, moved);
+
+        return new TagLinkResult.Ok();
+    }
+
+    /// <summary>
+    /// Stops a namespace redirecting. Tags already migrated stay where they were moved to;
+    /// nothing is moved back, because there is no record of which tags came from where.
+    /// </summary>
+    public async Task RemoveNamespaceAliasAsync(string alias, CancellationToken ct) =>
+        await db.TagNamespaceAliases.Where(a => a.Alias == alias).ExecuteDeleteAsync(ct);
+
+    /// <summary>Every namespace redirect, keyed by the namespace being redirected.</summary>
+    public async Task<Dictionary<string, string>> GetNamespaceAliasesAsync(CancellationToken ct) =>
+        await LoadNamespaceAliasesAsync(ct);
+
+    /// <summary>
+    /// Empties a namespace into another, renaming each tag or merging it into the one
+    /// already holding that name. Returns how many tags were moved.
+    /// </summary>
+    /// <remarks>
+    /// Works from a list of names rather than tracked entities because a merge clears the
+    /// change tracker; entities held across iterations would silently detach and their
+    /// renames would never be saved.
+    /// </remarks>
+    private async Task<int> MigrateNamespaceAsync(string from, string to, CancellationToken ct)
+    {
+        var names = await db.Tags.AsNoTracking()
+            .Where(t => t.Namespace == from)
+            .Select(t => t.Name)
+            .ToListAsync(ct);
+
+        foreach (var name in names)
+        {
+            var source = await FindAsync(new TagName(from, name), ct);
+            if (source is null) continue;
+
+            var destination = await FindAsync(new TagName(to, name), ct);
+
+            if (destination is null)
+            {
+                source.Namespace = to;
+                await db.SaveChangesAsync(ct);
+                continue;
+            }
+
+            await MergeTagsAsync(source, destination, ct);
+        }
+
+        return names.Count;
     }
 
     // ---- implications --------------------------------------------------
@@ -364,6 +464,11 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     /// </remarks>
     public async Task<TagLinkResult> MoveTagAsync(TagName from, TagName to, CancellationToken ct)
     {
+        // Only the destination is resolved through namespace aliases: a move must not put a
+        // tag back into a namespace that redirects away, while the source is left alone so
+        // anything still sitting in an aliased namespace remains addressable by its real name.
+        to = ResolveNamespace(await LoadNamespaceAliasesAsync(ct), to);
+
         if (from == to) return new TagLinkResult.Rejected("Those are the same tag.");
 
         var source = await FindAsync(from, ct);
@@ -580,35 +685,67 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     }
 
     private async Task<Dictionary<TagName, Tag>> LookupManyAsync(
-        IReadOnlyCollection<TagName> names, CancellationToken ct)
+        IReadOnlyCollection<TagName> names, CancellationToken ct) =>
+        await LookupManyAsync(names, await LoadNamespaceAliasesAsync(ct), ct);
+
+    /// <summary>
+    /// Finds the stored tag behind each requested name. Keyed by the name as it was asked
+    /// for, not the name that was found, so a caller can look up what it passed in even
+    /// when a namespace alias redirected it somewhere else.
+    /// </summary>
+    private async Task<Dictionary<TagName, Tag>> LookupManyAsync(
+        IReadOnlyCollection<TagName> names,
+        IReadOnlyDictionary<string, string> namespaceAliases,
+        CancellationToken ct)
     {
         if (names.Count == 0) return [];
 
+        var targets = names.Distinct().ToDictionary(n => n, n => ResolveNamespace(namespaceAliases, n));
+
         // EF cannot translate a Contains over (namespace, name) pairs, so filter on the
         // name column — which is indexed and highly selective — and pair up in memory.
-        var candidateNames = names.Select(n => n.Name).Distinct().ToList();
+        var candidateNames = targets.Values.Select(n => n.Name).Distinct().ToList();
         var candidates = await db.Tags
             .Where(t => candidateNames.Contains(t.Name))
             .ToListAsync(ct);
 
-        var wanted = names.ToHashSet();
-        return candidates
-            .Where(t => wanted.Contains(new TagName(t.Namespace, t.Name)))
-            .ToDictionary(t => new TagName(t.Namespace, t.Name));
+        // Safe as a dictionary key: (Namespace, Name) carries a unique index.
+        var found = candidates.ToDictionary(t => new TagName(t.Namespace, t.Name));
+
+        var result = new Dictionary<TagName, Tag>();
+        foreach (var (requested, target) in targets)
+        {
+            if (found.TryGetValue(target, out var tag)) result[requested] = tag;
+        }
+
+        return result;
     }
 
     private async Task<Dictionary<TagName, Tag>> GetOrCreateManyAsync(
         IReadOnlyCollection<TagName> names, CancellationToken ct)
     {
-        var result = await LookupManyAsync(names, ct);
+        var namespaceAliases = await LoadNamespaceAliasesAsync(ct);
+        var result = await LookupManyAsync(names, namespaceAliases, ct);
 
         var missing = names.Distinct().Where(n => !result.ContainsKey(n)).ToList();
         if (missing.Count == 0) return result;
 
+        // Two requested names can resolve to one tag — `copyright:x` and `series:x` when
+        // the namespace is aliased — so new rows are tracked by their canonical name to
+        // avoid inserting the same tag twice and tripping the unique index.
+        var created = new Dictionary<TagName, Tag>();
+
         foreach (var name in missing)
         {
-            var tag = new Tag { Namespace = name.Namespace, Name = name.Name };
-            db.Tags.Add(tag);
+            var target = ResolveNamespace(namespaceAliases, name);
+
+            if (!created.TryGetValue(target, out var tag))
+            {
+                tag = new Tag { Namespace = target.Namespace, Name = target.Name };
+                db.Tags.Add(tag);
+                created[target] = tag;
+            }
+
             result[name] = tag;
         }
 
@@ -628,6 +765,36 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
             .ToListAsync(ct);
 
         return rows.ToLookup(r => r.ChildTagId, r => r.ParentTagId);
+    }
+
+    private async Task<Dictionary<string, string>> LoadNamespaceAliasesAsync(CancellationToken ct) =>
+        await db.TagNamespaceAliases.AsNoTracking()
+            .ToDictionaryAsync(a => a.Alias, a => a.Canonical, ct);
+
+    /// <summary>Rewrites a tag's namespace through the alias chain, leaving its name alone.</summary>
+    private static TagName ResolveNamespace(IReadOnlyDictionary<string, string> map, TagName name)
+    {
+        if (map.Count == 0 || name.Namespace.Length == 0) return name;
+
+        var ns = ResolveNamespace(map, name.Namespace);
+        return ns == name.Namespace ? name : name with { Namespace = ns };
+    }
+
+    /// <summary>
+    /// Follows a namespace alias chain to its end, bounded exactly as
+    /// <see cref="ResolveAlias"/> is so a malformed chain cannot spin.
+    /// </summary>
+    private static string ResolveNamespace(IReadOnlyDictionary<string, string> map, string ns)
+    {
+        var current = ns;
+
+        for (var depth = 0; depth < MaxAliasDepth; depth++)
+        {
+            if (!map.TryGetValue(current, out var next) || next == current) break;
+            current = next;
+        }
+
+        return current;
     }
 
     private static int ResolveAlias(Dictionary<int, int> aliasMap, int tagId)

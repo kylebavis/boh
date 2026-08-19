@@ -143,6 +143,48 @@
 </section>
 
 <section>
+    <h2>Namespace aliases</h2>
+    <p><small class="muted">Redirects a whole namespace instead of one tag at a time — alias <code>copyright</code> to <code>series</code> and every imported <code>copyright:star_wars</code> is stored as <code>series:star_wars</code>, including titles nothing has tagged yet. Adding one moves the tags already in that namespace across, merging any the destination already has.</small></p>
+
+    <form method="post" asp-page-handler="AddNamespaceAlias" class="pair-form">
+        <input type="text" name="alias" placeholder="copyright" aria-label="Alias namespace" required />
+        <span class="pair-arrow">&rarr;</span>
+        <input type="text" name="canonical" placeholder="series" aria-label="Canonical namespace" required />
+        <button type="submit">Add namespace alias</button>
+    </form>
+
+    @if (Model.NamespaceAliases.Count == 0)
+    {
+        <p class="muted"><small>No namespace aliases defined.</small></p>
+    }
+    else
+    {
+        <div class="scroll-x">
+            <table>
+                <thead>
+                    <tr><th scope="col">Namespace</th><th scope="col">Redirects to</th><th scope="col"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var alias in Model.NamespaceAliases)
+                    {
+                        <tr>
+                            <td><code>@alias.Alias:</code></td>
+                            <td><code>@alias.Canonical:</code></td>
+                            <td class="row-actions">
+                                <form method="post" asp-page-handler="RemoveNamespaceAlias">
+                                    <input type="hidden" name="alias" value="@alias.Alias" />
+                                    <button type="submit" class="secondary outline">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section>
     <h2>Implications</h2>
     <p><small class="muted">Tagging a post with the child also applies the parent, transitively. Implied tags are marked on the post and cannot be removed by hand.</small></p>
 
