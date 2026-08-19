@@ -328,12 +328,51 @@ public class TagNamespaceAliasTests
     [InlineData("copyright", "")]
     [InlineData("has space", "series")]
     [InlineData("copyright", "no:colons")]
+    // A namespace reaches the log once it is accepted, so a line break in an accepted one
+    // would let a forged log entry be written. It cannot be accepted in the first place.
+    [InlineData("copy\nright", "series")]
+    [InlineData("copyright", "ser\ries")]
+    [InlineData("copyright\r\nfatal: forged", "series")]
+    [InlineData("copyright\0", "series")]
     public async Task An_unusable_namespace_is_rejected(string alias, string canonical)
     {
         using var env = new TestEnvironment();
 
         Assert.IsType<TagLinkResult.Rejected>(
             await env.Tags.AddNamespaceAliasAsync(alias, canonical, Ct));
+    }
+
+    /// <summary>
+    /// The property behind the log-forging question: whatever a namespace alias is asked to
+    /// be, what actually gets stored — and therefore logged — is only ever <c>[a-z0-9_]</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("copyright")]
+    [InlineData("  COPYRIGHT  ")]
+    [InlineData("copy\nright")]
+    [InlineData("copyright\r\nfatal: forged")]
+    [InlineData("copy right")]
+    [InlineData("copy:right")]
+    [InlineData("copy-right")]
+    [InlineData("copyright\0")]
+    [InlineData("copy\tright")]
+    [InlineData("\u00a9opyright")]
+    [InlineData("copy\u2028right")]
+    [InlineData("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")]
+    public async Task An_accepted_namespace_is_always_plain_alphanumeric(string attempt)
+    {
+        using var env = new TestEnvironment();
+
+        await env.Tags.AddNamespaceAliasAsync(attempt, "series", Ct);
+
+        // Whether it was accepted or rejected, anything that reached storage \u2014 and so can
+        // reach a log line \u2014 is plain and short.
+        var stored = await env.Tags.GetNamespaceAliasesAsync(Ct);
+
+        foreach (var value in stored.SelectMany(a => new[] { a.Key, a.Value }))
+        {
+            Assert.Matches("^[a-z0-9_]{1,32}$", value);
+        }
     }
 
     [Fact]
