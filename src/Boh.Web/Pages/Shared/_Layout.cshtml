@@ -111,6 +111,8 @@
                     <form action="/" method="get" role="search" autocomplete="off">
                         <input type="search" name="q" value="@(ViewData["Query"] as string)"
                                placeholder="tag search…" aria-label="Search posts by tag"
+                               role="combobox" aria-expanded="false" aria-autocomplete="list"
+                               aria-controls="search-suggestions"
                                data-suggest-for="#search-suggestions"
                                hx-get="/Tags/Autocomplete"
                                hx-trigger="keyup changed delay:200ms"

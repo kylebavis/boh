@@ -56,6 +56,8 @@
               autocomplete="off">
             <input type="text" name="tags" placeholder="add tags…"
                    aria-label="Add tags"
+                   role="combobox" aria-expanded="false" aria-autocomplete="list"
+                   aria-controls="tag-add-suggestions"
                    data-suggest-for="#tag-add-suggestions"
                    hx-get="/Tags/Autocomplete"
                    hx-trigger="keyup changed delay:200ms"

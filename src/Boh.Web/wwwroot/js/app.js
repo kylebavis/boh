@@ -112,16 +112,36 @@
     }
 })();
 
-// Tag autocomplete: clicking a suggestion replaces the token being typed rather than the
-// whole field, so a partly-written multi-tag query survives.
+// Tag autocomplete: taking a suggestion replaces the token being typed rather than the whole
+// field, so a partly-written multi-tag query survives.
 //
 // Fields marked data-suggest-single hold exactly one tag (the tag-admin forms), so there a
 // suggestion replaces the whole value.
+//
+// The list is reachable from the keyboard as well as the mouse: Down and Up walk it, Enter
+// takes the highlighted row, Escape and Tab dismiss it. Nothing is highlighted until an
+// arrow key is pressed — so Enter on a freshly typed term still submits the form, which is
+// what someone who typed the whole tag out expects.
 (function () {
     'use strict';
 
+    var ACTIVE = 'is-active';
+
     function inputFor(panel) {
         return document.querySelector('[data-suggest-for="#' + panel.id + '"]');
+    }
+
+    function panelFor(input) {
+        var selector = input.getAttribute('data-suggest-for');
+        return selector ? document.querySelector(selector) : null;
+    }
+
+    function options(panel) {
+        return Array.prototype.slice.call(panel.querySelectorAll('.suggestion'));
+    }
+
+    function highlighted(panel) {
+        return panel.querySelector('.suggestion.' + ACTIVE);
     }
 
     /*
@@ -147,13 +167,24 @@
         }
     });
 
-    // Reflects dropdown state for screen readers on the fields that declare a combobox role.
+    // Reflects dropdown state for screen readers, and stamps the row ids that
+    // aria-activedescendant points at. Those ids cannot come from the fragment: one partial
+    // serves every panel on the page, so uniqueness is only knowable here, from the panel.
     document.addEventListener('htmx:afterSwap', function (event) {
         var panel = event.target;
         if (!panel || !panel.classList || !panel.classList.contains('suggestions')) return;
 
+        options(panel).forEach(function (option, index) {
+            option.id = panel.id + '-option-' + index;
+        });
+
         var input = inputFor(panel);
-        if (input && input.hasAttribute('aria-expanded')) {
+        if (!input) return;
+
+        // A fresh list invalidates whatever was highlighted against the previous one.
+        input.removeAttribute('aria-activedescendant');
+
+        if (input.hasAttribute('aria-expanded')) {
             input.setAttribute('aria-expanded', panel.childElementCount > 0 ? 'true' : 'false');
         }
     });
@@ -162,9 +193,47 @@
         panel.innerHTML = '';
 
         var input = inputFor(panel);
-        if (input && input.hasAttribute('aria-expanded')) {
+        if (!input) return;
+
+        input.removeAttribute('aria-activedescendant');
+
+        if (input.hasAttribute('aria-expanded')) {
             input.setAttribute('aria-expanded', 'false');
         }
+    }
+
+    function highlight(panel, option) {
+        options(panel).forEach(function (candidate) {
+            var on = candidate === option;
+            candidate.classList.toggle(ACTIVE, on);
+            candidate.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+
+        var input = inputFor(panel);
+        if (!input) return;
+
+        if (option) {
+            input.setAttribute('aria-activedescendant', option.id);
+            // The list caps at roughly eight rows and scrolls past that, so walking off the
+            // bottom has to bring the row into view.
+            if (option.scrollIntoView) option.scrollIntoView({ block: 'nearest' });
+        } else {
+            input.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function move(panel, delta) {
+        var list = options(panel);
+        if (list.length === 0) return;
+
+        var current = list.indexOf(highlighted(panel));
+
+        // From nothing, Down starts at the top and Up at the bottom; both ends wrap round.
+        var next = current === -1
+            ? (delta > 0 ? 0 : list.length - 1)
+            : (current + delta + list.length) % list.length;
+
+        highlight(panel, list[next]);
     }
 
     function replaceLastToken(value, replacement) {
@@ -178,18 +247,11 @@
         return tokens.join(' ') + ' ';
     }
 
-    // Delegated so it keeps working after HTMX swaps the suggestion list.
-    document.addEventListener('click', function (event) {
-        var button = event.target.closest('.suggestion');
-        if (!button) return;
-
-        var panel = button.closest('.suggestions');
-        if (!panel) return;
-
+    function take(panel, option) {
         var input = inputFor(panel);
         if (!input) return;
 
-        var tag = button.dataset.tag || '';
+        var tag = option.dataset.tag || '';
 
         // A single-tag field takes the whole value, and with no trailing space: it is submitted
         // as-is to a handler that parses one tag name, not a list.
@@ -197,6 +259,15 @@
 
         close(panel);
         input.focus();
+    }
+
+    // Delegated so it keeps working after HTMX swaps the suggestion list.
+    document.addEventListener('click', function (event) {
+        var button = event.target.closest('.suggestion');
+        if (!button) return;
+
+        var panel = button.closest('.suggestions');
+        if (panel) take(panel, button);
     });
 
     // Dismiss suggestions when focus moves elsewhere.
@@ -212,8 +283,41 @@
     });
 
     document.addEventListener('keydown', function (event) {
-        if (event.key !== 'Escape') return;
-        document.querySelectorAll('.suggestions').forEach(close);
+        if (event.key === 'Escape') {
+            document.querySelectorAll('.suggestions').forEach(close);
+            return;
+        }
+
+        var input = event.target;
+        if (!input || !input.matches || !input.matches('[data-suggest-for]')) return;
+
+        var panel = panelFor(input);
+        if (!panel) return;
+
+        // Tab is the exception that acts on an already-empty panel: it dismisses on the way
+        // out, and leaves the focus move itself alone.
+        if (event.key === 'Tab') {
+            close(panel);
+            return;
+        }
+
+        if (options(panel).length === 0) return;
+
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            // Otherwise the caret jumps to the far end of the field as the list moves.
+            event.preventDefault();
+            move(panel, event.key === 'ArrowDown' ? 1 : -1);
+            return;
+        }
+
+        if (event.key === 'Enter') {
+            var option = highlighted(panel);
+            if (!option) return;
+
+            // Only swallow the submit when there is a pick to apply.
+            event.preventDefault();
+            take(panel, option);
+        }
     });
 })();
 
