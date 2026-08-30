@@ -528,8 +528,11 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     border-radius: var(--pico-border-radius);
 }
 
+/* The keyboard walk marks a row rather than focusing it: focus stays in the input so typing
+   can carry on, which is what aria-activedescendant is for. */
 .suggestion:hover,
-.suggestion:focus-visible {
+.suggestion:focus-visible,
+.suggestion.is-active {
     background: var(--pico-secondary-background);
 }
 
