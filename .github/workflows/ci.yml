@@ -83,4 +83,82 @@ jobs:
           docker exec boh-ci gallery-dl --version >/dev/null
           echo "bundled tools OK"
 
-          docker rm -f boh-ci >/dev/null
+      # The importer drives gallery-dl through a CLI and a file-naming convention that
+      # nothing else in the build would notice changing. A renamed flag reaches the user
+      # as "gallery-dl downloaded nothing from that URL"; a moved sidecar is worse, since
+      # ReadSidecar treats a miss as "this extractor has no metadata" and imports the post
+      # with no tags, no error and no log line. Dependabot bumps the pin weekly now, so
+      # these are asserted here rather than left to whoever reads the changelog.
+      - name: Verify the gallery-dl contract
+        run: |
+          set -o pipefail
+
+          # pip resolved the version the image actually carries; requirements.txt only
+          # states the intent.
+          pinned=$(sed -n 's/^gallery-dl==//p' requirements.txt)
+          installed=$(docker exec boh-ci gallery-dl --version)
+          if [ "$installed" != "$pinned" ]; then
+            echo "requirements.txt pins $pinned but the image has $installed"
+            exit 1
+          fi
+
+          # Every flag GalleryDlImporter.BuildArguments passes. Matched as whole words so
+          # --range cannot be satisfied by the presence of --chapter-range.
+          docker exec boh-ci gallery-dl --help | grep -oE -- '--[a-z0-9-]+' | sort -u > flags.txt
+          for flag in --write-metadata --directory --range --retries --config; do
+            if ! grep -qxF -- "$flag" flags.txt; then
+              echo "gallery-dl no longer accepts $flag (see GalleryDlImporter.BuildArguments)"
+              exit 1
+            fi
+          done
+          echo "importer flags OK"
+
+          # A real download, served from inside the container: no network egress, and no
+          # third-party site has to stay up for the build to pass. The README image is the
+          # subject only because it is the one media file already in the repo.
+          docker cp assets/george.png boh-ci:/tmp/george.png
+          docker exec -d boh-ci python3 -m http.server 8000 --bind 127.0.0.1 --directory /tmp
+          for i in $(seq 1 15); do
+            if docker exec boh-ci curl -fsS -o /dev/null http://127.0.0.1:8000/george.png; then
+              break
+            fi
+            if [ "$i" -eq 15 ]; then
+              echo "the loopback file server never came up"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          docker exec boh-ci gallery-dl \
+            --write-metadata \
+            --directory /tmp/dl \
+            --range 1-1 \
+            --retries 2 \
+            http://127.0.0.1:8000/george.png
+
+          # What is pinned here is the sidecar convention, not the file name: the direct-link
+          # extractor names downloads after the URL ({domain}{path}), so the check derives the
+          # expected sidecar from whatever arrived, exactly as ReadSidecar does.
+          docker exec boh-ci sh -c '
+            cd /tmp/dl || exit 1
+            media=$(ls | grep -v "\.json$" || true)
+            if [ -z "$media" ]; then
+              echo "gallery-dl wrote no media file"
+              exit 1
+            fi
+            if [ "$(printf "%s\n" "$media" | wc -l)" -ne 1 ]; then
+              echo "expected one media file, got: $media"
+              exit 1
+            fi
+            if [ ! -f "$media.json" ]; then
+              echo "no sidecar at $media.json — imports would silently produce untagged posts"
+              ls -la
+              exit 1
+            fi
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$media.json"
+          '
+          echo "sidecar convention OK"
+
+      - name: Remove the smoke-test container
+        if: always()
+        run: docker rm -f boh-ci >/dev/null 2>&1 || true
