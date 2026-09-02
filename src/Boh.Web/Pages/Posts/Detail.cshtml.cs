@@ -52,9 +52,18 @@ public class DetailModel(PostService posts, TagService tags, BohOptions options)
         return await TagFragmentAsync(id, null, ct);
     }
 
-    public async Task<IActionResult> OnPostRemoveTagAsync(int id, string? tag, CancellationToken ct)
+    /// <summary>
+    /// Takes the namespace and name as separate parameters rather than one
+    /// <c>namespace:name</c> string, because the two are not recoverable from the joined
+    /// form. A tag with no namespace whose name contains a colon — <c>artist:orb_enjoyer</c>,
+    /// the shape an import produces when the site packs its own category into the tag text —
+    /// parses back as namespace <c>artist</c>, naming a tag the post does not carry. The
+    /// removal then rewrote the post's tags without dropping anything and returned the
+    /// unchanged list, so the chip stayed put with no error to explain it.
+    /// </summary>
+    public async Task<IActionResult> OnPostRemoveTagAsync(int id, string? ns, string? name, CancellationToken ct)
     {
-        if (TagName.TryParse(tag, out var parsed)) await tags.RemovePostTagAsync(id, parsed, ct);
+        if (TagName.TryParseInNamespace(ns, name, out var parsed)) await tags.RemovePostTagAsync(id, parsed, ct);
 
         return await TagFragmentAsync(id, null, ct);
     }
