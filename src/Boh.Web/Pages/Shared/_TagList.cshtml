@@ -32,7 +32,7 @@
                     {
                         <button type="button" class="tag-remove"
                                 aria-label="Remove tag @tag.Display"
-                                hx-post="/Posts/Detail/@Model.PostId?handler=RemoveTag&tag=@Uri.EscapeDataString(tag.Display)"
+                                hx-post="/Posts/Detail/@Model.PostId?handler=RemoveTag&ns=@Uri.EscapeDataString(tag.Namespace)&name=@Uri.EscapeDataString(tag.Name)"
                                 hx-target="#tag-list"
                                 hx-swap="outerHTML">&times;</button>
                     }

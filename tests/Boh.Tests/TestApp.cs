@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Boh.Web.Services;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -76,6 +77,28 @@ public sealed class TestApp : WebApplicationFactory<Program>
             postId, Boh.Web.Tags.TagName.ParseMany(string.Join(' ', tags)), CancellationToken.None);
     }
 
+    /// <summary>
+    /// Applies already-parsed tags, for shapes the text parser cannot reach. An importer
+    /// stores a name through <see cref="Boh.Web.Tags.TagName.TryParseInNamespace"/>, which
+    /// leaves a colon inside the name alone; <c>ParseMany</c> would split on it instead.
+    /// </summary>
+    public async Task TagAsync(int postId, IReadOnlyCollection<Boh.Web.Tags.TagName> tags)
+    {
+        using var scope = Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<TagService>();
+
+        await service.SetPostTagsAsync(postId, tags, CancellationToken.None);
+    }
+
+    /// <summary>The explicit tags a post carries, read back as stored.</summary>
+    public async Task<List<Boh.Web.Tags.TagName>> ExplicitTagsAsync(int postId)
+    {
+        using var scope = Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<TagService>();
+
+        return await service.GetExplicitTagNamesAsync(postId, CancellationToken.None);
+    }
+
     public async Task AddAliasAsync(string alias, string canonical)
     {
         using var scope = Services.CreateScope();
@@ -94,6 +117,26 @@ public sealed class TestApp : WebApplicationFactory<Program>
         Assert.True(Boh.Web.Tags.TagName.TryParse(child, out var ch));
         Assert.True(Boh.Web.Tags.TagName.TryParse(parent, out var pa));
         Assert.IsType<TagLinkResult.Ok>(await service.AddImplicationAsync(ch, pa, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// Issues the request an <c>hx-post</c> control would, carrying the antiforgery token the
+    /// layout hands htmx in <c>hx-headers</c>. Reading the token off the page rather than
+    /// disabling antiforgery keeps these tests on the same path the browser takes.
+    /// </summary>
+    public static async Task<HttpResponseMessage> PostHxAsync(HttpClient client, string url, string pageHtml)
+    {
+        var token = Regex.Match(pageHtml, "hx-headers='([^']*)'");
+        Assert.True(token.Success, "the layout rendered no hx-headers");
+
+        using var headers = JsonDocument.Parse(WebUtility.HtmlDecode(token.Groups[1].Value));
+
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Add(
+            "RequestVerificationToken",
+            headers.RootElement.GetProperty("RequestVerificationToken").GetString());
+
+        return await client.SendAsync(request);
     }
 
     public async Task<string> GetHtmlAsync(HttpClient client, string url)
