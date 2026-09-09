@@ -10,12 +10,13 @@ namespace Boh.Web.Services;
 /// started rather than where each file lives. Extractors that know the per-file page put it
 /// in the sidecar, so prefer that when it is there.
 /// <para>
-/// The field names are the ones gallery-dl 1.32 actually populates with a page address:
-/// <c>post_url</c> (instagram, newgrounds, skeb, cien, arcalive, ganknow, imagehosts),
-/// <c>page_url</c> (artfight) and <c>webpage_url</c> (anything routed through ytdl). Deliberately
-/// absent is the far more common <c>url</c>, which nearly always holds the media file itself —
-/// a direct CDN link that often expires, and a worse record than the gallery it came from.
-/// Booru extractors publish no page field at all; those imports keep falling back.
+/// The field names are the ones gallery-dl 1.32 actually populates with a page address,
+/// checked against the pinned version rather than guessed: <c>post_url</c> (instagram,
+/// newgrounds, imagehosts and a handful of smaller extractors), <c>page_url</c>, and
+/// <c>webpage_url</c> for anything routed through ytdl. Deliberately absent is the far more
+/// common <c>url</c>, which nearly always holds the media file itself — a direct CDN link that
+/// often expires, and a worse record than the gallery it came from. Booru and social-media
+/// extractors mostly publish no page field at all; those imports keep falling back.
 /// </para>
 /// </remarks>
 public static class GalleryDlSourceMapper

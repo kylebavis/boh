@@ -85,16 +85,16 @@ public class SearchQueryTests
     [Fact]
     public void A_url_prefix_searches_sources_rather_than_tags()
     {
-        var term = Assert.IsType<QueryTerm.SourceMatch>(Assert.Single(AllTermsOf("url:pixiv.net")));
+        var term = Assert.IsType<QueryTerm.SourceMatch>(Assert.Single(AllTermsOf("url:twitter.com")));
 
-        Assert.Equal("pixiv.net", term.Text);
+        Assert.Equal("twitter.com", term.Text);
         Assert.False(term.Exclude);
     }
 
     [Fact]
     public void A_url_term_can_be_negated()
     {
-        var term = Assert.IsType<QueryTerm.SourceMatch>(Assert.Single(AllTermsOf("-url:pixiv.net")));
+        var term = Assert.IsType<QueryTerm.SourceMatch>(Assert.Single(AllTermsOf("-url:twitter.com")));
 
         Assert.True(term.Exclude);
     }
@@ -106,9 +106,9 @@ public class SearchQueryTests
     [Fact]
     public void The_source_tag_namespace_is_untouched()
     {
-        var term = Assert.IsType<QueryTerm.TagMatch>(Assert.Single(AllTermsOf("source:danbooru")));
+        var term = Assert.IsType<QueryTerm.TagMatch>(Assert.Single(AllTermsOf("source:twitter")));
 
-        Assert.Equal("source:danbooru", term.Tag.Display);
+        Assert.Equal("source:twitter", term.Tag.Display);
     }
 
     /// <summary>
@@ -119,17 +119,17 @@ public class SearchQueryTests
     public void A_url_keeps_the_punctuation_a_tag_would_lose()
     {
         var term = Assert.IsType<QueryTerm.SourceMatch>(
-            Assert.Single(AllTermsOf("url:https://www.pixiv.net/en/artworks/123?x=1")));
+            Assert.Single(AllTermsOf("url:https://twitter.com/someone/status/123?x=1")));
 
-        Assert.Equal("https://www.pixiv.net/en/artworks/123?x=1", term.Text);
+        Assert.Equal("https://twitter.com/someone/status/123?x=1", term.Text);
     }
 
     [Fact]
     public void A_url_term_is_case_folded_like_everything_else()
     {
-        var term = Assert.IsType<QueryTerm.SourceMatch>(Assert.Single(AllTermsOf("URL:Pixiv.NET")));
+        var term = Assert.IsType<QueryTerm.SourceMatch>(Assert.Single(AllTermsOf("URL:Twitter.COM")));
 
-        Assert.Equal("pixiv.net", term.Text);
+        Assert.Equal("twitter.com", term.Text);
     }
 
     [Fact]
@@ -153,13 +153,13 @@ public class SearchQueryTests
     [Fact]
     public void Repeated_identical_url_terms_collapse()
     {
-        Assert.Single(AllTermsOf("url:pixiv.net url:PIXIV.net"));
+        Assert.Single(AllTermsOf("url:twitter.com url:TWITTER.com"));
     }
 
     [Fact]
     public void Tag_and_url_terms_mix_in_one_query()
     {
-        var terms = AllTermsOf("landscape url:pixiv.net -rating:explicit -url:none");
+        var terms = AllTermsOf("landscape url:twitter.com -rating:explicit -url:none");
 
         Assert.Equal(4, terms.Length);
         Assert.IsType<QueryTerm.TagMatch>(terms[0]);

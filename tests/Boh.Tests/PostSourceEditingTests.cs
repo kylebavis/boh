@@ -13,7 +13,7 @@ public class PostSourceEditingTests
 {
     private static CancellationToken Ct => CancellationToken.None;
 
-    private const string Booru = "https://example.invalid/posts/1";
+    private const string Origin = "https://example.invalid/posts/1";
     private const string Mirror = "https://elsewhere.invalid/art/42";
 
     /// <summary>The rendered source links, in the order the page lists them.</summary>
@@ -64,11 +64,11 @@ public class PostSourceEditingTests
 
         Assert.Empty(SourcesIn(await app.GetHtmlAsync(client, $"/Posts/Detail/{postId}")));
 
-        var fragment = await AddAsync(app, client, postId, Booru);
+        var fragment = await AddAsync(app, client, postId, Origin);
 
         // The fragment htmx swaps in is already the updated list.
-        Assert.Equal([Booru], SourcesIn(fragment));
-        Assert.Equal([Booru], SourcesIn(await app.GetHtmlAsync(client, $"/Posts/Detail/{postId}")));
+        Assert.Equal([Origin], SourcesIn(fragment));
+        Assert.Equal([Origin], SourcesIn(await app.GetHtmlAsync(client, $"/Posts/Detail/{postId}")));
     }
 
     [Fact]
@@ -78,12 +78,12 @@ public class PostSourceEditingTests
         var client = app.CreateNonRedirectingClient();
         var postId = await app.CreatePostAsync(42);
 
-        var one = await AddAsync(app, client, postId, Booru);
+        var one = await AddAsync(app, client, postId, Origin);
         Assert.Contains("<h2>Source</h2>", one);
 
         var two = await AddAsync(app, client, postId, Mirror);
 
-        Assert.Equal([Booru, Mirror], SourcesIn(two));
+        Assert.Equal([Origin, Mirror], SourcesIn(two));
 
         // The heading is inside the swapped element precisely so this changes with it.
         Assert.Contains("<h2>Sources</h2>", two);
@@ -96,11 +96,11 @@ public class PostSourceEditingTests
         var client = app.CreateNonRedirectingClient();
         var postId = await app.CreatePostAsync(43);
 
-        await AddAsync(app, client, postId, Booru);
+        await AddAsync(app, client, postId, Origin);
         await AddAsync(app, client, postId, Mirror);
 
         var page = await app.GetHtmlAsync(client, $"/Posts/Detail/{postId}");
-        var response = await TestApp.PostHxAsync(client, RemoveControlFor(page, Booru), page);
+        var response = await TestApp.PostHxAsync(client, RemoveControlFor(page, Origin), page);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal([Mirror], SourcesIn(await response.Content.ReadAsStringAsync()));
@@ -141,10 +141,10 @@ public class PostSourceEditingTests
         var client = app.CreateNonRedirectingClient();
         var postId = await app.CreatePostAsync(46);
 
-        await AddAsync(app, client, postId, Booru);
-        var again = await AddAsync(app, client, postId, Booru);
+        await AddAsync(app, client, postId, Origin);
+        var again = await AddAsync(app, client, postId, Origin);
 
-        Assert.Equal([Booru], SourcesIn(again));
+        Assert.Equal([Origin], SourcesIn(again));
     }
 
     /// <summary>
@@ -196,7 +196,7 @@ public class PostSourceEditingTests
         {
             var posts = scope.ServiceProvider.GetRequiredService<PostService>();
             postId = Assert.IsType<PostCreateResult.Created>(await posts.CreateAsync(
-                new MemoryStream(TestEnvironment.MakePng(49, 49)), null, Booru, Ct)).Post.Id;
+                new MemoryStream(TestEnvironment.MakePng(49, 49)), null, Origin, Ct)).Post.Id;
         }
 
         var signedIn = await app.GetHtmlAsync(await app.SignInAsync(), $"/Posts/Detail/{postId}");
@@ -206,7 +206,7 @@ public class PostSourceEditingTests
         var signedOut = await app.GetHtmlAsync(client, $"/Posts/Detail/{postId}");
 
         // The source itself is still shown; only the controls are gone.
-        Assert.Equal([Booru], SourcesIn(signedOut));
+        Assert.Equal([Origin], SourcesIn(signedOut));
         Assert.DoesNotContain("handler=AddSource", signedOut);
         Assert.DoesNotContain("handler=RemoveSource", signedOut);
     }

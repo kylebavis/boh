@@ -178,7 +178,11 @@ public sealed class PostService(
             // first, which leaves the post in exactly the state this call wanted. Detaching
             // matters because an import reuses one context across every file it downloaded.
             db.Entry(row).State = EntityState.Detached;
-            logger.LogDebug(ex, "Source {Url} was already recorded on post {PostId}", source, postId);
+
+            // The URL is deliberately not in the message. It originates with whoever submitted
+            // it, and a log line is the wrong place to repeat user input — the post id and the
+            // exception identify this race well enough to debug it.
+            logger.LogDebug(ex, "A source was already recorded on post {PostId}", postId);
             return false;
         }
 
@@ -196,14 +200,12 @@ public sealed class PostService(
 
     /// <summary>
     /// Null means "nothing to record": an empty URL, which is what a direct upload passes, or
-    /// one that is not an address anyone could follow. Rejecting here rather than trusting
-    /// callers keeps a junk value out of the table whichever entry point produced it.
+    /// one that is not an address anyone could follow. Validating and canonicalizing here
+    /// rather than trusting callers means no entry point can put a junk or malformed value in
+    /// the table — see <see cref="SourceUrls.TryCanonicalize"/> for why the rewrite matters.
     /// </summary>
-    private static string? NormalizeSource(string? url)
-    {
-        var trimmed = url?.Trim();
-        return SourceUrls.IsAcceptable(trimmed) ? trimmed : null;
-    }
+    private static string? NormalizeSource(string? url) =>
+        SourceUrls.TryCanonicalize(url, out var canonical) ? canonical : null;
 
     /// <summary>
     /// A missing thumbnail degrades the gallery but does not invalidate the post, so a
@@ -334,10 +336,10 @@ public sealed class PostService(
         {
             switch (term)
             {
-                // Lowercasing both sides rather than relying on the column's collation: the
-                // stored URL keeps the case it arrived with, and a search for "Pixiv" should
-                // still find it. SQLite's lower() is ASCII-only, which a URL never exceeds in
-                // the part anyone searches by.
+                // Lowercasing both sides rather than relying on the column's collation: a
+                // stored path keeps whatever case it arrived with, and a search typed in
+                // another case should still find it. SQLite's lower() is ASCII-only, which a
+                // URL never exceeds in the part anyone searches by.
                 case QueryTerm.SourceMatch(var text, var exclude):
                     var needle = text;
                     query = exclude

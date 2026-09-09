@@ -10,8 +10,8 @@ public class SourceSearchTests
 {
     private static CancellationToken Ct => CancellationToken.None;
 
-    private const string Pixiv = "https://www.pixiv.net/en/artworks/98765432";
-    private const string Danbooru = "https://danbooru.donmai.us/posts/1234567";
+    private const string Twitter = "https://twitter.com/someone/status/1234567890";
+    private const string Flickr = "https://www.flickr.com/photos/someone/9876543210";
 
     /// <summary>The post ids a search finds, newest first as the gallery orders them.</summary>
     private static async Task<int[]> FindAsync(TestEnvironment env, string query)
@@ -35,12 +35,12 @@ public class SourceSearchTests
     {
         using var env = new TestEnvironment();
 
-        var pixiv = await CreateWithSourceAsync(env, 20, Pixiv);
-        var danbooru = await CreateWithSourceAsync(env, 21, Danbooru);
+        var twitter = await CreateWithSourceAsync(env, 20, Twitter);
+        var flickr = await CreateWithSourceAsync(env, 21, Flickr);
         var uploaded = await env.CreatePostAsync(22);
 
-        Assert.Equal([pixiv], await FindAsync(env, "url:pixiv.net"));
-        Assert.Equal([danbooru], await FindAsync(env, "url:donmai.us"));
+        Assert.Equal([twitter], await FindAsync(env, "url:twitter.com"));
+        Assert.Equal([flickr], await FindAsync(env, "url:flickr.com"));
 
         // Every post is still reachable with no search at all.
         Assert.Equal(3, (await FindAsync(env, "")).Length);
@@ -52,25 +52,29 @@ public class SourceSearchTests
     public async Task Any_part_of_the_address_matches()
     {
         using var env = new TestEnvironment();
-        var id = await CreateWithSourceAsync(env, 23, Pixiv);
+        var id = await CreateWithSourceAsync(env, 23, Twitter);
 
         Assert.Equal([id], await FindAsync(env, "url:https"));
-        Assert.Equal([id], await FindAsync(env, "url:pixiv"));
-        Assert.Equal([id], await FindAsync(env, "url:artworks"));
-        Assert.Equal([id], await FindAsync(env, "url:98765432"));
-        Assert.Equal([id], await FindAsync(env, $"url:{Pixiv}"));
+        Assert.Equal([id], await FindAsync(env, "url:twitter"));
+        Assert.Equal([id], await FindAsync(env, "url:someone"));
+        Assert.Equal([id], await FindAsync(env, "url:1234567890"));
+        Assert.Equal([id], await FindAsync(env, $"url:{Twitter}"));
 
-        Assert.Empty(await FindAsync(env, "url:tumblr"));
+        Assert.Empty(await FindAsync(env, "url:reddit"));
     }
 
+    /// <summary>
+    /// The path keeps whatever case it was stored with — only the host is lowercased on the
+    /// way in — so this is a real difference in case between the column and the search text.
+    /// </summary>
     [Fact]
     public async Task Matching_ignores_case_on_both_sides()
     {
         using var env = new TestEnvironment();
-        var id = await CreateWithSourceAsync(env, 24, "https://WWW.Pixiv.NET/en/artworks/1");
+        var id = await CreateWithSourceAsync(env, 24, "https://example.invalid/Photos/SomeOne");
 
-        Assert.Equal([id], await FindAsync(env, "url:pixiv.net"));
-        Assert.Equal([id], await FindAsync(env, "url:PIXIV.NET"));
+        Assert.Equal([id], await FindAsync(env, "url:photos/someone"));
+        Assert.Equal([id], await FindAsync(env, "url:PHOTOS/SOMEONE"));
     }
 
     [Fact]
@@ -78,14 +82,14 @@ public class SourceSearchTests
     {
         using var env = new TestEnvironment();
 
-        var pixiv = await CreateWithSourceAsync(env, 25, Pixiv);
-        var danbooru = await CreateWithSourceAsync(env, 26, Danbooru);
+        var twitter = await CreateWithSourceAsync(env, 25, Twitter);
+        var flickr = await CreateWithSourceAsync(env, 26, Flickr);
         var uploaded = await env.CreatePostAsync(27);
 
-        var found = await FindAsync(env, "-url:pixiv.net");
+        var found = await FindAsync(env, "-url:twitter.com");
 
-        Assert.DoesNotContain(pixiv, found);
-        Assert.Contains(danbooru, found);
+        Assert.DoesNotContain(twitter, found);
+        Assert.Contains(flickr, found);
 
         // A post with no source at all does not contain the text either, so it survives.
         Assert.Contains(uploaded, found);
@@ -100,14 +104,14 @@ public class SourceSearchTests
     {
         using var env = new TestEnvironment();
 
-        var id = await CreateWithSourceAsync(env, 28, Pixiv);
-        Assert.True(await env.Posts.AddSourceAsync(id, Danbooru, Ct));
+        var id = await CreateWithSourceAsync(env, 28, Twitter);
+        Assert.True(await env.Posts.AddSourceAsync(id, Flickr, Ct));
 
-        Assert.Equal([id], await FindAsync(env, "url:pixiv.net"));
-        Assert.Equal([id], await FindAsync(env, "url:donmai.us"));
+        Assert.Equal([id], await FindAsync(env, "url:twitter.com"));
+        Assert.Equal([id], await FindAsync(env, "url:flickr.com"));
 
         // And excluding either one excludes the post, since it is reachable from both.
-        Assert.Empty(await FindAsync(env, "-url:donmai.us"));
+        Assert.Empty(await FindAsync(env, "-url:flickr.com"));
     }
 
     [Fact]
@@ -115,14 +119,14 @@ public class SourceSearchTests
     {
         using var env = new TestEnvironment();
 
-        var sourced = await CreateWithSourceAsync(env, 29, Pixiv);
+        var sourced = await CreateWithSourceAsync(env, 29, Twitter);
         var bare = await env.CreatePostAsync(30);
 
         Assert.Equal([bare], await FindAsync(env, "url:none"));
         Assert.Equal([sourced], await FindAsync(env, "-url:none"));
 
         // Recording one moves the post from one side to the other.
-        Assert.True(await env.Posts.AddSourceAsync(bare, Danbooru, Ct));
+        Assert.True(await env.Posts.AddSourceAsync(bare, Flickr, Ct));
         Assert.Empty(await FindAsync(env, "url:none"));
     }
 
@@ -131,20 +135,20 @@ public class SourceSearchTests
     {
         using var env = new TestEnvironment();
 
-        var both = await CreateWithSourceAsync(env, 31, Pixiv);
-        Assert.True(await env.Posts.AddSourceAsync(both, Danbooru, Ct));
+        var both = await CreateWithSourceAsync(env, 31, Twitter);
+        Assert.True(await env.Posts.AddSourceAsync(both, Flickr, Ct));
         await env.Tags.SetPostTagsAsync(both, TagName.ParseMany("landscape"), Ct);
 
-        var pixivOnly = await CreateWithSourceAsync(env, 32, Pixiv);
-        await env.Tags.SetPostTagsAsync(pixivOnly, TagName.ParseMany("landscape"), Ct);
+        var twitterOnly = await CreateWithSourceAsync(env, 32, Twitter);
+        await env.Tags.SetPostTagsAsync(twitterOnly, TagName.ParseMany("landscape"), Ct);
 
-        var untagged = await CreateWithSourceAsync(env, 33, Pixiv);
-        Assert.True(await env.Posts.AddSourceAsync(untagged, Danbooru, Ct));
+        var untagged = await CreateWithSourceAsync(env, 33, Twitter);
+        Assert.True(await env.Posts.AddSourceAsync(untagged, Flickr, Ct));
 
         // Terms are ANDed, exactly as tag terms are.
-        Assert.Equal([both], await FindAsync(env, "landscape url:pixiv.net url:donmai.us"));
-        Assert.Equal([pixivOnly], await FindAsync(env, "landscape url:pixiv.net -url:donmai.us"));
-        Assert.Empty(await FindAsync(env, "landscape url:tumblr.com"));
+        Assert.Equal([both], await FindAsync(env, "landscape url:twitter.com url:flickr.com"));
+        Assert.Equal([twitterOnly], await FindAsync(env, "landscape url:twitter.com -url:flickr.com"));
+        Assert.Empty(await FindAsync(env, "landscape url:reddit.com"));
     }
 
     /// <summary>
@@ -155,9 +159,9 @@ public class SourceSearchTests
     public async Task An_unsatisfiable_tag_beats_a_matching_url_term()
     {
         using var env = new TestEnvironment();
-        await CreateWithSourceAsync(env, 34, Pixiv);
+        await CreateWithSourceAsync(env, 34, Twitter);
 
-        Assert.Empty(await FindAsync(env, "url:pixiv.net nonexistent_tag"));
+        Assert.Empty(await FindAsync(env, "url:twitter.com nonexistent_tag"));
     }
 
     /// <summary>
@@ -187,12 +191,12 @@ public class SourceSearchTests
     {
         using var env = new TestEnvironment();
 
-        var pixiv = await CreateWithSourceAsync(env, 37, Pixiv);
-        await CreateWithSourceAsync(env, 38, Danbooru);
+        var twitter = await CreateWithSourceAsync(env, 37, Twitter);
+        await CreateWithSourceAsync(env, 38, Flickr);
 
-        var resolved = await env.Tags.ResolveSearchAsync(SearchQuery.Parse("url:pixiv.net"), Ct);
+        var resolved = await env.Tags.ResolveSearchAsync(SearchQuery.Parse("url:twitter.com"), Ct);
 
         // Only one post can satisfy it, so the pick is deterministic.
-        Assert.Equal(pixiv, await env.Posts.GetRandomIdAsync(resolved, Ct));
+        Assert.Equal(twitter, await env.Posts.GetRandomIdAsync(resolved, Ct));
     }
 }

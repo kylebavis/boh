@@ -27,7 +27,7 @@ public class GalleryDlSourceMapperTests
     [Fact]
     public void page_url_and_webpage_url_are_accepted_too()
     {
-        Assert.Equal("https://artfight.net/attack/1", PageUrl("""{ "page_url": "https://artfight.net/attack/1" }"""));
+        Assert.Equal("https://example.invalid/gallery/attack/1", PageUrl("""{ "page_url": "https://example.invalid/gallery/attack/1" }"""));
         Assert.Equal("https://example.invalid/watch", PageUrl("""{ "webpage_url": "https://example.invalid/watch" }"""));
     }
 

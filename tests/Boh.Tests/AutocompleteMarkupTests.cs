@@ -88,12 +88,12 @@ public class AutocompleteMarkupTests
         using var app = new TestApp();
         var client = app.CreateNonRedirectingClient();
         var id = await app.CreatePostAsync(25);
-        await app.TagAsync(id, "url:pixiv");
+        await app.TagAsync(id, "url:example");
 
         Assert.DoesNotContain("class=\"suggestion\"",
-            await app.GetHtmlAsync(client, "/Tags/Autocomplete?q=url:pix"));
+            await app.GetHtmlAsync(client, "/Tags/Autocomplete?q=url:exam"));
 
         Assert.Contains("class=\"suggestion\"",
-            await app.GetHtmlAsync(client, "/Tags/Autocomplete?tags=url:pix"));
+            await app.GetHtmlAsync(client, "/Tags/Autocomplete?tags=url:exam"));
     }
 }

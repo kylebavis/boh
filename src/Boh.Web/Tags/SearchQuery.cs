@@ -37,7 +37,7 @@ public sealed record SearchQuery(IReadOnlyList<QueryTerm> Terms)
     /// <summary>
     /// The prefix that searches source URLs. Deliberately not <c>source:</c>, which is
     /// already a tag namespace — the importer puts gallery-dl's category there, so posts
-    /// carry tags like <c>source:danbooru</c>. Taking that prefix for a URL predicate would
+    /// carry tags like <c>source:twitter</c>. Taking that prefix for a URL predicate would
     /// leave those tags with no way to search for them.
     /// </summary>
     public const string SourcePrefix = "url:";

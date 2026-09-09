@@ -37,7 +37,10 @@ public sealed class GalleryDlImporter(
 
     public async Task<ImportResult> ImportAsync(string url, int? uploadedById, CancellationToken ct)
     {
-        if (!SourceUrls.IsAcceptable(url))
+        // Canonical from here on: what gets fetched, logged and recorded is the rewritten form,
+        // never the raw submission. Uri.TryCreate alone would let control characters through
+        // into the log — see SourceUrls.TryCanonicalize.
+        if (!SourceUrls.TryCanonicalize(url, out var galleryUrl))
         {
             return new ImportResult([], [], SourceUrls.Requirement);
         }
@@ -48,7 +51,7 @@ public sealed class GalleryDlImporter(
 
         try
         {
-            var result = await runner.RunAsync("gallery-dl", BuildArguments(url, workingDirectory),
+            var result = await runner.RunAsync("gallery-dl", BuildArguments(galleryUrl, workingDirectory),
                 TimeSpan.FromSeconds(options.ImportTimeoutSec), ct);
 
             if (result.TimedOut)
@@ -73,11 +76,11 @@ public sealed class GalleryDlImporter(
                         : $"gallery-dl downloaded nothing from that URL: {detail}");
             }
 
-            return await IngestAsync(mediaFiles, url, uploadedById, ct);
+            return await IngestAsync(mediaFiles, galleryUrl, uploadedById, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Import of {Url} failed", url);
+            logger.LogError(ex, "Import of {Url} failed", galleryUrl);
             return new ImportResult([], [], "The import failed. The server log has the details.");
         }
         finally
