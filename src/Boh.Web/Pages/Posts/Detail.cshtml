@@ -28,6 +28,12 @@
             <partial name="_TagList" model="Model.TagView" />
         </div>
 
+        @* Its own section rather than a row in the facts list below: sources are editable and
+           there can be several, so they need the room a <dd> in a two-column grid does not have. *@
+        <div class="source-section">
+            <partial name="_SourceList" model="Model.SourceView" />
+        </div>
+
         <dl class="post-facts">
             <div>
                 <dt>Dimensions</dt>
@@ -54,22 +60,6 @@
                 <dt>Uploaded</dt>
                 <dd><time datetime="@post.UploadedAt.ToString("o")">@post.UploadedAt.ToString("yyyy-MM-dd HH:mm") UTC</time></dd>
             </div>
-
-            @if (post.Sources.Count > 0)
-            {
-                <div class="fact-wide">
-                    <dt>@(post.Sources.Count == 1 ? "Source" : "Sources")</dt>
-                    <dd>
-                        @* Recorded order, so the address the post arrived with stays first. *@
-                        <ul class="source-list">
-                            @foreach (var source in post.Sources)
-                            {
-                                <li><a href="@source.Url" rel="noreferrer noopener nofollow">@source.Url</a></li>
-                            }
-                        </ul>
-                    </dd>
-                </div>
-            }
 
             <div class="fact-wide">
                 <dt>SHA-256</dt>

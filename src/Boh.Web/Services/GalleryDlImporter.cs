@@ -37,9 +37,9 @@ public sealed class GalleryDlImporter(
 
     public async Task<ImportResult> ImportAsync(string url, int? uploadedById, CancellationToken ct)
     {
-        if (!IsAcceptableUrl(url))
+        if (!SourceUrls.IsAcceptable(url))
         {
-            return new ImportResult([], [], "Enter an absolute http:// or https:// URL.");
+            return new ImportResult([], [], SourceUrls.Requirement);
         }
 
         Directory.CreateDirectory(options.ImportTempDir);
@@ -109,7 +109,7 @@ public sealed class GalleryDlImporter(
     }
 
     private async Task<ImportResult> IngestAsync(
-        List<string> mediaFiles, string sourceUrl, int? uploadedById, CancellationToken ct)
+        List<string> mediaFiles, string galleryUrl, int? uploadedById, CancellationToken ct)
     {
         var created = new List<ImportedItem>();
         var skipped = new List<SkippedItem>();
@@ -119,8 +119,13 @@ public sealed class GalleryDlImporter(
             var fileName = Path.GetFileName(path);
             var metadata = ReadSidecar(path);
 
+            // The page this particular file lives on, when the extractor reports one. The
+            // typed URL is only a fallback: importing an artist's gallery would otherwise
+            // stamp all forty posts with the same address, which points at none of them.
+            var source = GalleryDlSourceMapper.PageUrl(metadata) ?? galleryUrl;
+
             await using var stream = File.OpenRead(path);
-            var result = await posts.CreateAsync(stream, uploadedById, sourceUrl, ct);
+            var result = await posts.CreateAsync(stream, uploadedById, source, ct);
 
             switch (result)
             {
@@ -163,7 +168,7 @@ public sealed class GalleryDlImporter(
         }
 
         logger.LogInformation("Imported {Created} file(s) from {Url}, skipped {Skipped}",
-            created.Count, sourceUrl, skipped.Count);
+            created.Count, galleryUrl, skipped.Count);
 
         return new ImportResult(created, skipped, null);
     }
@@ -188,10 +193,6 @@ public sealed class GalleryDlImporter(
             return null;
         }
     }
-
-    private static bool IsAcceptableUrl(string? url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var parsed)
-        && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps);
 
     private static string? FirstMeaningfulLine(string output)
     {

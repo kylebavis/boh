@@ -115,6 +115,12 @@ public class PostSourceTests
         Assert.False(await env.Posts.AddSourceAsync(id, null, Ct));
         Assert.False(await env.Posts.AddSourceAsync(id, "   ", Ct));
 
+        // Not an address anyone could follow. The service refuses rather than trusting its
+        // callers, so no entry point can put junk in the table.
+        Assert.False(await env.Posts.AddSourceAsync(id, "not a url", Ct));
+        Assert.False(await env.Posts.AddSourceAsync(id, "/posts/1", Ct));
+        Assert.False(await env.Posts.AddSourceAsync(id, "javascript:alert(1)", Ct));
+
         Assert.True(await env.Posts.AddSourceAsync(id, Booru, Ct));
 
         // Surrounding whitespace is not a different address.
@@ -208,7 +214,7 @@ public class PostSourceTests
 
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), $"/Posts/Detail/{postId}");
 
-        Assert.Contains("<dt>Sources</dt>", html);
+        Assert.Contains("<h2>Sources</h2>", html);
         Assert.Contains($"href=\"{Booru}\"", html);
         Assert.Contains($"href=\"{Mirror}\"", html);
     }

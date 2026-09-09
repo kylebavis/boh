@@ -21,6 +21,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
     private readonly int _pageSize;
     private readonly string _authMode;
+    private readonly bool _publicRead;
 
     /// <param name="pageSize">Small by default so a handful of posts spans several pages.</param>
     /// <param name="authMode">
@@ -28,10 +29,15 @@ public sealed class TestApp : WebApplicationFactory<Program>
     /// to drive. Pass "password" to render the pages an instance with accounts would serve —
     /// signed out, since the client carries no cookie.
     /// </param>
-    public TestApp(int pageSize = 2, string authMode = "none")
+    /// <param name="publicRead">
+    /// Only meaningful alongside <c>authMode: "password"</c>: it is the configuration where a
+    /// signed-out visitor can see a page but not its editing controls.
+    /// </param>
+    public TestApp(int pageSize = 2, string authMode = "none", bool publicRead = false)
     {
         _pageSize = pageSize;
         _authMode = authMode;
+        _publicRead = publicRead;
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
@@ -45,6 +51,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
             ["BOH_DATA_PATH"] = _root,
             ["BOH_PAGE_SIZE"] = _pageSize.ToString(),
             ["BOH_AUTH_MODE"] = _authMode,
+            ["BOH_PUBLIC_READ"] = _publicRead.ToString(),
             ["BOH_ADMIN_PASSWORD"] = AdminPassword,
         }));
 
@@ -124,7 +131,12 @@ public sealed class TestApp : WebApplicationFactory<Program>
     /// layout hands htmx in <c>hx-headers</c>. Reading the token off the page rather than
     /// disabling antiforgery keeps these tests on the same path the browser takes.
     /// </summary>
-    public static async Task<HttpResponseMessage> PostHxAsync(HttpClient client, string url, string pageHtml)
+    /// <param name="fields">
+    /// Form values to send, for handlers that read one. Omit for a control that carries
+    /// everything it needs in its query string, which is what a remove button does.
+    /// </param>
+    public static async Task<HttpResponseMessage> PostHxAsync(
+        HttpClient client, string url, string pageHtml, Dictionary<string, string>? fields = null)
     {
         var token = Regex.Match(pageHtml, "hx-headers='([^']*)'");
         Assert.True(token.Success, "the layout rendered no hx-headers");
@@ -135,6 +147,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
         request.Headers.Add(
             "RequestVerificationToken",
             headers.RootElement.GetProperty("RequestVerificationToken").GetString());
+
+        if (fields is not null) request.Content = new FormUrlEncodedContent(fields);
 
         return await client.SendAsync(request);
     }

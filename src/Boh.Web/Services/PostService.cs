@@ -185,13 +185,23 @@ public sealed class PostService(
     }
 
     /// <summary>
-    /// Null means "nothing to record" — the only distinction the sources list cares about,
-    /// since an empty URL is what a direct upload passes.
+    /// Removes one recorded source. Scoped to the post rather than keyed on the row id alone,
+    /// so a stale or forged id cannot reach a source belonging to a different post.
+    /// </summary>
+    public async Task<bool> RemoveSourceAsync(int postId, int sourceId, CancellationToken ct) =>
+        await db.PostSources
+            .Where(s => s.Id == sourceId && s.PostId == postId)
+            .ExecuteDeleteAsync(ct) > 0;
+
+    /// <summary>
+    /// Null means "nothing to record": an empty URL, which is what a direct upload passes, or
+    /// one that is not an address anyone could follow. Rejecting here rather than trusting
+    /// callers keeps a junk value out of the table whichever entry point produced it.
     /// </summary>
     private static string? NormalizeSource(string? url)
     {
         var trimmed = url?.Trim();
-        return string.IsNullOrEmpty(trimmed) ? null : trimmed;
+        return SourceUrls.IsAcceptable(trimmed) ? trimmed : null;
     }
 
     /// <summary>

@@ -1,0 +1,57 @@
+@model Boh.Web.ViewModels.PostSourceView
+
+@* The heading lives inside the swapped element on purpose: it changes with the count, and
+   an htmx swap that replaced only the list would leave "Source" above two of them. *@
+<div id="source-list">
+    <h2>@(Model.Sources.Count == 1 ? "Source" : "Sources")</h2>
+
+    @if (Model.Error is not null)
+    {
+        <p class="source-error" role="alert"><small>@Model.Error</small></p>
+    }
+
+    @if (Model.Sources.Count == 0)
+    {
+        <p><small class="muted">No sources recorded.</small></p>
+    }
+    else
+    {
+        <ul class="source-list">
+            @foreach (var source in Model.Sources)
+            {
+                <li>
+                    <a href="@source.Url" rel="noreferrer noopener nofollow">@source.Url</a>
+                    @if (Model.CanEdit)
+                    {
+                        <button type="button" class="source-remove"
+                                aria-label="Remove source @source.Url"
+                                hx-post="/Posts/Detail/@Model.PostId?handler=RemoveSource&sourceId=@source.Id"
+                                hx-target="#source-list"
+                                hx-swap="outerHTML">&times;</button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+
+    @if (Model.CanEdit)
+    {
+        @* Unlike the tag form there is no autocomplete firing from this input, so clearing on
+           success needs no event.target guard — nothing else in here issues a request. *@
+        <form class="source-add"
+              hx-post="/Posts/Detail/@Model.PostId?handler=AddSource"
+              hx-target="#source-list"
+              hx-swap="outerHTML"
+              hx-on::after-request="if (event.detail.successful) this.reset()"
+              autocomplete="off">
+            @* type="url" so a phone offers the right keyboard and a malformed address is
+               caught before a round trip — htmx honours HTML5 validation and will not send an
+               invalid form, so in a browser that native check is what a typo meets first.
+               Deliberately not `required`: an empty box is a slip, not worth an error. The
+               server validates regardless, and the error line above is what reports it to
+               anything reaching the handler without a browser in front of it. *@
+            <input type="url" name="url" placeholder="add a source URL…" aria-label="Add a source URL" />
+            <button type="submit">Add</button>
+        </form>
+    }
+</div>
