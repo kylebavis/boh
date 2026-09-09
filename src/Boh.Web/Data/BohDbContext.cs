@@ -18,6 +18,7 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
         v => DateTimeOffset.FromUnixTimeMilliseconds(v));
 
     public DbSet<Post> Posts => Set<Post>();
+    public DbSet<PostSource> PostSources => Set<PostSource>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<PostTag> PostTags => Set<PostTag>();
     public DbSet<TagAlias> TagAliases => Set<TagAlias>();
@@ -38,13 +39,26 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
 
             e.Property(p => p.FileExtension).HasMaxLength(16).IsRequired();
             e.Property(p => p.MimeType).HasMaxLength(128).IsRequired();
-            e.Property(p => p.SourceUrl).HasMaxLength(2048);
             e.Property(p => p.Description).HasMaxLength(8192);
 
             e.HasOne(p => p.UploadedBy)
                 .WithMany()
                 .HasForeignKey(p => p.UploadedById)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<PostSource>(e =>
+        {
+            e.Property(s => s.Url).HasMaxLength(2048).IsRequired();
+
+            // A post cannot list the same address twice. That is what lets an import record
+            // its URL on an already-stored file without checking whether it did so before.
+            e.HasIndex(s => new { s.PostId, s.Url }).IsUnique();
+
+            e.HasOne(s => s.Post)
+                .WithMany(p => p.Sources)
+                .HasForeignKey(s => s.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<Tag>(e =>

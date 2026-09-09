@@ -76,4 +76,24 @@ public class AutocompleteMarkupTests
         // Highlighting sets this to true on one row; without it there is nothing to flip.
         Assert.Contains("aria-selected=\"false\"", row.Value);
     }
+
+    /// <summary>
+    /// In a search, <c>url:</c> introduces a source predicate, so there is no namespace to
+    /// complete — but the same text in the post editor is an ordinary namespace and must
+    /// still complete, which is why the suppression is scoped to the search box.
+    /// </summary>
+    [Fact]
+    public async Task A_url_search_term_offers_no_tag_suggestions()
+    {
+        using var app = new TestApp();
+        var client = app.CreateNonRedirectingClient();
+        var id = await app.CreatePostAsync(25);
+        await app.TagAsync(id, "url:example");
+
+        Assert.DoesNotContain("class=\"suggestion\"",
+            await app.GetHtmlAsync(client, "/Tags/Autocomplete?q=url:exam"));
+
+        Assert.Contains("class=\"suggestion\"",
+            await app.GetHtmlAsync(client, "/Tags/Autocomplete?tags=url:exam"));
+    }
 }

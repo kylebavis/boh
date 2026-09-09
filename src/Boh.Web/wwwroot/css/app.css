@@ -329,9 +329,38 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     color: var(--pico-muted-color);
 }
 
-.tag-section h2 {
+.tag-section h2,
+.source-section h2 {
     font-size: 1rem;
     margin-bottom: 0.5rem;
+}
+
+.source-section {
+    margin-top: 1.25rem;
+}
+
+/* Stacked full-width rows rather than the tags' wrapping pills: a URL is long, and several
+   of them side by side would be unreadable. */
+.source-list {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+}
+
+.source-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.source-list li + li {
+    margin-top: 0.25rem;
+}
+
+/* Long addresses wrap instead of widening the page; the remove button keeps its place. */
+.source-list a {
+    min-width: 0;
+    overflow-wrap: break-word;
 }
 
 /* Wrapping pills rather than one tag per line: a stacked list turned a dozen tags into a
@@ -420,7 +449,8 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     flex-shrink: 0;
 }
 
-.tag-remove {
+.tag-remove,
+.source-remove {
     all: unset;
     cursor: pointer;
     flex-shrink: 0;
@@ -435,16 +465,20 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
 }
 
 .tag-remove:hover,
-.tag-remove:focus-visible {
+.tag-remove:focus-visible,
+.source-remove:hover,
+.source-remove:focus-visible {
     color: var(--pico-del-color);
     background: var(--pico-secondary-background);
 }
 
-.tag-error {
+.tag-error,
+.source-error {
     color: var(--pico-del-color);
 }
 
-.tag-add {
+.tag-add,
+.source-add {
     display: flex;
     gap: 0.4rem;
     margin: 0;
@@ -452,11 +486,13 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     max-width: 28rem;
 }
 
-.tag-add input {
+.tag-add input,
+.source-add input {
     margin: 0;
 }
 
-.tag-add button {
+.tag-add button,
+.source-add button {
     margin: 0;
     width: auto;
     flex-shrink: 0;

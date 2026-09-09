@@ -14,7 +14,8 @@ Think danbooru, minus everything needed to serve thousands of strangers. It shou
 - Tag **aliases** — `scenery` can redirect to `landscape` everywhere
 - Tag **implications** — `meme:pondering_my_orb` can automatically apply `format:reaction_image`
 - Import from third-party sites via bundled [gallery-dl](https://github.com/mikf/gallery-dl), mapping site metadata onto tags
-- Duplicate detection: the same file cannot be posted twice
+- Duplicate detection: the same file cannot be posted twice — importing it again from somewhere else adds that address to the post's sources instead
+- Several source URLs per post, added and removed by hand on the post, and searchable with `url:twitter.com`. An import records the page each file came from where the site reports one, falling back to the URL you typed
 - Thumbnails rebuildable from originals, so they can live on disposable storage
 - Light/dark/auto toggle in the header, with the colour scheme for each side chosen per user on the account page — nine packaged (Nord, Dracula, Monokai, Gruvbox, Catppuccin, Solarized); mobile-first layout
 - Optional public browsing with private writes
@@ -183,6 +184,22 @@ landscape -rating:explicit            landscape, excluding explicit
 ```
 
 Terms combine with AND. Names are normalized identically on write and on search, so `Artist:Foo` and `artist:foo` are the same tag.
+
+### Searching by source
+
+`url:` searches a post's source URLs instead of its tags, matching anywhere in the address:
+
+```
+url:twitter.com                       posts sourced from twitter
+url:flickr.com -url:twitter.com       on flickr but not twitter
+landscape url:twitter.com             combines with tags like any other term
+url:none                              posts with no source recorded
+-url:none                             posts that have one
+```
+
+A post with several sources matches on any of them. Matching ignores case, and the text is literal — `%` and `_` are ordinary characters, not wildcards.
+
+The prefix is `url:` rather than the `source:` other boorus use because `source` is already a tag namespace here: an import stores the site it came from as a tag like `source:twitter`, and `source:` in a search still finds those tags. The one address you cannot search for is the literal word `none`.
 
 ### Aliases and implications
 

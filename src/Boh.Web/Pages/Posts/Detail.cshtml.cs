@@ -11,6 +11,7 @@ public class DetailModel(PostService posts, TagService tags, BohOptions options)
 {
     public Post Post { get; private set; } = null!;
     public PostTagView TagView { get; private set; } = null!;
+    public PostSourceView SourceView { get; private set; } = null!;
 
     /// <summary>True when the current visitor may modify this post.</summary>
     public bool CanEdit => options.AuthDisabled || User.Identity?.IsAuthenticated == true;
@@ -34,6 +35,7 @@ public class DetailModel(PostService posts, TagService tags, BohOptions options)
 
         Post = post;
         TagView = BuildTagView(post, await tags.GetNamespaceColorsAsync(ct));
+        SourceView = BuildSourceView(post);
         return Page();
     }
 
@@ -69,6 +71,32 @@ public class DetailModel(PostService posts, TagService tags, BohOptions options)
     }
 
     /// <summary>
+    /// Adding a source by hand, which is the only way a direct upload gets one — an import
+    /// records where it fetched from, but nothing knows where a file dragged in came from.
+    /// </summary>
+    public async Task<IActionResult> OnPostAddSourceAsync(int id, CancellationToken ct)
+    {
+        var url = Request.Form["url"].ToString().Trim();
+
+        if (!SourceUrls.IsAcceptable(url))
+        {
+            return await SourceFragmentAsync(id,
+                url.Length == 0 ? null : SourceUrls.Requirement, ct);
+        }
+
+        // A URL the post already carries is not an error worth reporting: the list the visitor
+        // is looking at already says so, and it comes back re-rendered either way.
+        await posts.AddSourceAsync(id, url, ct);
+        return await SourceFragmentAsync(id, null, ct);
+    }
+
+    public async Task<IActionResult> OnPostRemoveSourceAsync(int id, int sourceId, CancellationToken ct)
+    {
+        await posts.RemoveSourceAsync(id, sourceId, ct);
+        return await SourceFragmentAsync(id, null, ct);
+    }
+
+    /// <summary>
     /// <paramref name="q"/> and <paramref name="fromPage"/> come from hidden fields on the
     /// delete form, so the visitor lands back in the listing they deleted from. The gallery
     /// clamps an overshooting page, which covers deleting the last post on the final page.
@@ -88,6 +116,26 @@ public class DetailModel(PostService posts, TagService tags, BohOptions options)
         var colors = await tags.GetNamespaceColorsAsync(ct);
         return Partial("_TagList", BuildTagView(post, colors) with { Error = error });
     }
+
+    /// <summary>Re-renders just the source block, which is what HTMX swaps in.</summary>
+    private async Task<IActionResult> SourceFragmentAsync(int postId, string? error, CancellationToken ct)
+    {
+        var post = await posts.GetAsync(postId, ct);
+        if (post is null) return NotFound();
+
+        return Partial("_SourceList", BuildSourceView(post) with { Error = error });
+    }
+
+    /// <summary>
+    /// Sorted here rather than relying on the query's ordering. Re-reading the post in the
+    /// same request that just added a source finds that row already tracked, and EF fixes it
+    /// into the collection ahead of the rows the query returned — so the freshly added source
+    /// jumped to the top of the swapped-in fragment and settled back on the next page load.
+    /// </summary>
+    private PostSourceView BuildSourceView(Post post) => new(
+        post.Id,
+        [.. post.Sources.OrderBy(s => s.Id).Select(s => new PostSourceEntry(s.Id, s.Url))],
+        CanEdit);
 
     private PostTagView BuildTagView(Post post, IReadOnlyDictionary<string, string> namespaceColors)
     {
