@@ -12,7 +12,20 @@ public sealed record TagSuggestion(string Display, int PostCount, string? AliasO
 /// set when a required tag does not exist at all, in which case no post can match and the
 /// caller should skip querying entirely.
 /// </summary>
-public sealed record ResolvedSearch(IReadOnlyList<int> Include, IReadOnlyList<int> Exclude, bool Unsatisfiable);
+/// <remarks>
+/// <paramref name="Sources"/> arrives unchanged from the parser. Unlike a tag, a URL fragment
+/// has nothing to resolve against — no alias graph, no row that must already exist — so it is
+/// carried here only to keep one object describing a whole search.
+/// </remarks>
+public sealed record ResolvedSearch(
+    IReadOnlyList<int> Include,
+    IReadOnlyList<int> Exclude,
+    bool Unsatisfiable,
+    IReadOnlyList<QueryTerm> Sources)
+{
+    public ResolvedSearch(IReadOnlyList<int> include, IReadOnlyList<int> exclude, bool unsatisfiable)
+        : this(include, exclude, unsatisfiable, []) { }
+}
 
 public abstract record TagLinkResult
 {
@@ -109,13 +122,22 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     {
         if (query.IsEmpty) return new ResolvedSearch([], [], false);
 
+        // Source terms need no lookup, so a search made only of them must not pay for the
+        // alias graph or a round trip that asks about no tags at all.
+        var sources = query.Terms
+            .Where(t => t is QueryTerm.SourceMatch or QueryTerm.SourceMissing)
+            .ToList();
+
+        var tagTerms = query.TagTerms.ToList();
+        if (tagTerms.Count == 0) return new ResolvedSearch([], [], false, sources);
+
         var aliasMap = await LoadAliasMapAsync(ct);
-        var found = await LookupManyAsync(query.TagTerms.Select(t => t.Tag).ToList(), ct);
+        var found = await LookupManyAsync(tagTerms.Select(t => t.Tag).ToList(), ct);
 
         var include = new List<int>();
         var exclude = new List<int>();
 
-        foreach (var term in query.TagTerms)
+        foreach (var term in tagTerms)
         {
             if (!found.TryGetValue(term.Tag, out var tag))
             {
@@ -128,7 +150,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
             (term.Exclude ? exclude : include).Add(canonical);
         }
 
-        return new ResolvedSearch(include.Distinct().ToList(), exclude.Distinct().ToList(), false);
+        return new ResolvedSearch(include.Distinct().ToList(), exclude.Distinct().ToList(), false, sources);
     }
 
     // ---- post tagging --------------------------------------------------

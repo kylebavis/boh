@@ -1,5 +1,6 @@
 using Boh.Web.Data;
 using Boh.Web.Data.Entities;
+using Boh.Web.Tags;
 using Microsoft.EntityFrameworkCore;
 
 namespace Boh.Web.Services;
@@ -327,6 +328,29 @@ public sealed class PostService(
         {
             var id = tagId;
             query = query.Where(p => !p.PostTags.Any(pt => pt.TagId == id));
+        }
+
+        foreach (var term in search.Sources)
+        {
+            switch (term)
+            {
+                // Lowercasing both sides rather than relying on the column's collation: the
+                // stored URL keeps the case it arrived with, and a search for "Pixiv" should
+                // still find it. SQLite's lower() is ASCII-only, which a URL never exceeds in
+                // the part anyone searches by.
+                case QueryTerm.SourceMatch(var text, var exclude):
+                    var needle = text;
+                    query = exclude
+                        ? query.Where(p => !p.Sources.Any(s => s.Url.ToLower().Contains(needle)))
+                        : query.Where(p => p.Sources.Any(s => s.Url.ToLower().Contains(needle)));
+                    break;
+
+                case QueryTerm.SourceMissing(var exclude):
+                    query = exclude
+                        ? query.Where(p => p.Sources.Any())
+                        : query.Where(p => !p.Sources.Any());
+                    break;
+            }
         }
 
         return query;
