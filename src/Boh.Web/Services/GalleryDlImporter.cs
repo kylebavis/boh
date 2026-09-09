@@ -148,8 +148,12 @@ public sealed class GalleryDlImporter(
                         stored));
                     break;
 
+                // Skipped as a post, but not as information: the file being reachable from
+                // this URL too is recorded on the post that already holds it.
                 case PostCreateResult.Duplicate duplicate:
-                    skipped.Add(new SkippedItem(fileName, $"already stored as post {duplicate.ExistingPostId}"));
+                    skipped.Add(new SkippedItem(fileName, duplicate.SourceAdded
+                        ? $"already stored as post {duplicate.ExistingPostId}; added this URL as another source"
+                        : $"already stored as post {duplicate.ExistingPostId}"));
                     break;
 
                 case PostCreateResult.Rejected rejected:

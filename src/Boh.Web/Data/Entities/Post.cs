@@ -25,8 +25,11 @@ public class Post
 
     public bool IsVideo { get; set; }
 
-    /// <summary>Origin URL when the post arrived via gallery-dl import; empty for direct uploads.</summary>
-    public string SourceUrl { get; set; } = "";
+    /// <summary>
+    /// Where this file came from, in the order the addresses were recorded. Empty for a
+    /// direct upload, and more than one entry once the same file turns up elsewhere.
+    /// </summary>
+    public List<PostSource> Sources { get; } = [];
 
     public string Description { get; set; } = "";
 

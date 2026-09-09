@@ -227,6 +227,18 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     overflow-wrap: break-word;
 }
 
+/* A list because a post can have several origins, but it should read as plain stacked
+   links rather than a bulleted list sitting inside a definition. */
+.source-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.source-list li + li {
+    margin-top: 0.25rem;
+}
+
 /* A 64-character digest has no break opportunities and would push the page wide. */
 .post-facts code {
     word-break: break-all;

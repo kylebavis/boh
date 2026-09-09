@@ -10,8 +10,12 @@ public abstract record PostCreateResult
 
     public sealed record Created(Post Post) : PostCreateResult;
 
-    /// <summary>The identical file is already stored; <paramref name="ExistingPostId"/> holds it.</summary>
-    public sealed record Duplicate(int ExistingPostId) : PostCreateResult;
+    /// <summary>
+    /// The identical file is already stored; <paramref name="ExistingPostId"/> holds it.
+    /// <paramref name="SourceAdded"/> is true when the incoming URL was not among that
+    /// post's sources and has now been recorded on it.
+    /// </summary>
+    public sealed record Duplicate(int ExistingPostId, bool SourceAdded = false) : PostCreateResult;
 
     public sealed record Rejected(string Reason) : PostCreateResult;
 }
@@ -50,6 +54,15 @@ public sealed class PostService(
     private static readonly TimeSpan RepairTimeBudget = TimeSpan.FromSeconds(60);
     private const int RepairMaxPerRun = 500;
 
+    /// <summary>
+    /// Stores a file as a new post, or reports the post that already holds those bytes.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="sourceUrl"/> is attached to whichever post ends up holding the
+    /// content, new or already stored. Finding the same bytes at a second address is a fact
+    /// about the file worth keeping, and dropping it was the only way the old single-URL
+    /// column could handle it.
+    /// </remarks>
     public async Task<PostCreateResult> CreateAsync(
         Stream content,
         int? uploadedById,
@@ -57,6 +70,7 @@ public sealed class PostService(
         CancellationToken ct)
     {
         var staged = await store.StageAsync(content, ct);
+        var source = NormalizeSource(sourceUrl);
 
         try
         {
@@ -67,7 +81,11 @@ public sealed class PostService(
                 .Select(p => (int?)p.Id)
                 .FirstOrDefaultAsync(ct);
 
-            if (existingId is not null) return new PostCreateResult.Duplicate(existingId.Value);
+            if (existingId is not null)
+            {
+                return new PostCreateResult.Duplicate(
+                    existingId.Value, await AddSourceAsync(existingId.Value, source, ct));
+            }
 
             var probe = await processors.ProbeAsync(staged.TempPath, ct);
             if (probe is null)
@@ -93,10 +111,11 @@ public sealed class PostService(
                 Height = info.Height,
                 DurationSec = info.DurationSec,
                 IsVideo = info.IsVideo,
-                SourceUrl = sourceUrl,
                 UploadedAt = DateTimeOffset.UtcNow,
                 UploadedById = uploadedById
             };
+
+            if (source is not null) post.Sources.Add(new PostSource { Url = source });
 
             db.Posts.Add(post);
 
@@ -107,13 +126,17 @@ public sealed class PostService(
             catch (DbUpdateException)
             {
                 // Most likely the unique index on Sha256: another request stored the same
-                // content between our existence check and this insert.
+                // content between our existence check and this insert. The pending source row
+                // is detached alongside the post, or the retry below would try to insert it
+                // again against a post id that was never assigned.
+                foreach (var pending in post.Sources) db.Entry(pending).State = EntityState.Detached;
                 db.Entry(post).State = EntityState.Detached;
 
                 var racedId = await FindBySha(staged.Sha256, ct);
                 if (racedId is null) throw;
 
-                return new PostCreateResult.Duplicate(racedId.Value);
+                return new PostCreateResult.Duplicate(
+                    racedId.Value, await AddSourceAsync(racedId.Value, source, ct));
             }
 
             return new PostCreateResult.Created(post);
@@ -123,6 +146,52 @@ public sealed class PostService(
             // No-op once CommitOriginal has moved the file into place.
             store.Discard(staged);
         }
+    }
+
+    /// <summary>
+    /// Records another origin for a post. Returns true only when a row was actually added,
+    /// so a caller can tell "we learned something new about this file" from "we already knew".
+    /// </summary>
+    /// <remarks>
+    /// Blank input and an address the post already carries are both ordinary outcomes rather
+    /// than errors — re-importing the same gallery is a normal thing to do, and it must stay
+    /// a no-op however many times it happens.
+    /// </remarks>
+    public async Task<bool> AddSourceAsync(int postId, string? url, CancellationToken ct)
+    {
+        var source = NormalizeSource(url);
+        if (source is null) return false;
+
+        if (await db.PostSources.AnyAsync(s => s.PostId == postId && s.Url == source, ct)) return false;
+
+        var row = new PostSource { PostId = postId, Url = source };
+        db.PostSources.Add(row);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+        {
+            // The unique index on (PostId, Url): a concurrent import recorded the same address
+            // first, which leaves the post in exactly the state this call wanted. Detaching
+            // matters because an import reuses one context across every file it downloaded.
+            db.Entry(row).State = EntityState.Detached;
+            logger.LogDebug(ex, "Source {Url} was already recorded on post {PostId}", source, postId);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Null means "nothing to record" — the only distinction the sources list cares about,
+    /// since an empty URL is what a direct upload passes.
+    /// </summary>
+    private static string? NormalizeSource(string? url)
+    {
+        var trimmed = url?.Trim();
+        return string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
 
     /// <summary>
@@ -282,6 +351,7 @@ public sealed class PostService(
     public Task<Post?> GetAsync(int id, CancellationToken ct) =>
         db.Posts
             .Include(p => p.PostTags).ThenInclude(pt => pt.Tag)
+            .Include(p => p.Sources.OrderBy(s => s.Id))
             .Include(p => p.UploadedBy)
             .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.Id == id, ct);

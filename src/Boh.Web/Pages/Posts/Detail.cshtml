@@ -55,11 +55,19 @@
                 <dd><time datetime="@post.UploadedAt.ToString("o")">@post.UploadedAt.ToString("yyyy-MM-dd HH:mm") UTC</time></dd>
             </div>
 
-            @if (!string.IsNullOrEmpty(post.SourceUrl))
+            @if (post.Sources.Count > 0)
             {
                 <div class="fact-wide">
-                    <dt>Source</dt>
-                    <dd><a href="@post.SourceUrl" rel="noreferrer noopener nofollow">@post.SourceUrl</a></dd>
+                    <dt>@(post.Sources.Count == 1 ? "Source" : "Sources")</dt>
+                    <dd>
+                        @* Recorded order, so the address the post arrived with stays first. *@
+                        <ul class="source-list">
+                            @foreach (var source in post.Sources)
+                            {
+                                <li><a href="@source.Url" rel="noreferrer noopener nofollow">@source.Url</a></li>
+                            }
+                        </ul>
+                    </dd>
                 </div>
             }
 

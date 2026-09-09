@@ -14,7 +14,8 @@ Think danbooru, minus everything needed to serve thousands of strangers. It shou
 - Tag **aliases** — `scenery` can redirect to `landscape` everywhere
 - Tag **implications** — `meme:pondering_my_orb` can automatically apply `format:reaction_image`
 - Import from third-party sites via bundled [gallery-dl](https://github.com/mikf/gallery-dl), mapping site metadata onto tags
-- Duplicate detection: the same file cannot be posted twice
+- Duplicate detection: the same file cannot be posted twice — importing it again from somewhere else adds that address to the post's sources instead
+- Several source URLs per post, for a file that is reposted across sites
 - Thumbnails rebuildable from originals, so they can live on disposable storage
 - Light/dark/auto toggle in the header, with the colour scheme for each side chosen per user on the account page — nine packaged (Nord, Dracula, Monokai, Gruvbox, Catppuccin, Solarized); mobile-first layout
 - Optional public browsing with private writes
