@@ -167,4 +167,57 @@ public class SearchQueryTests
         Assert.IsType<QueryTerm.TagMatch>(terms[2]);
         Assert.IsType<QueryTerm.SourceMissing>(terms[3]);
     }
+
+    // ---- similar terms ---------------------------------------------------
+
+    [Fact]
+    public void A_similar_prefix_searches_by_appearance()
+    {
+        var term = Assert.IsType<QueryTerm.SimilarTo>(Assert.Single(AllTermsOf("similar:42")));
+
+        Assert.Equal(42, term.PostId);
+        Assert.False(term.Exclude);
+    }
+
+    [Fact]
+    public void A_similar_term_can_be_negated()
+    {
+        var term = Assert.IsType<QueryTerm.SimilarTo>(Assert.Single(AllTermsOf("-similar:42")));
+
+        Assert.True(term.Exclude);
+        Assert.Equal(42, term.PostId);
+    }
+
+    [Fact]
+    public void A_similar_term_is_case_folded_like_everything_else()
+    {
+        Assert.IsType<QueryTerm.SimilarTo>(Assert.Single(AllTermsOf("SIMILAR:7")));
+    }
+
+    /// <summary>
+    /// Anything that is not a post id states no condition. Dropped rather than read as a tag:
+    /// <c>similar:cat</c> is a mistyped predicate, and matching the tag <c>similar:cat</c>
+    /// instead would quietly answer a different question.
+    /// </summary>
+    [Theory]
+    [InlineData("similar:")]
+    [InlineData("similar:cat")]
+    [InlineData("similar:0")]
+    [InlineData("similar:-3")]
+    [InlineData("similar:12.5")]
+    public void A_similar_term_without_a_post_id_is_dropped(string raw)
+    {
+        Assert.True(SearchQuery.Parse(raw).IsEmpty);
+    }
+
+    [Fact]
+    public void Similar_mixes_with_tag_and_url_terms()
+    {
+        var terms = AllTermsOf("landscape similar:9 -url:none");
+
+        Assert.Equal(3, terms.Length);
+        Assert.IsType<QueryTerm.TagMatch>(terms[0]);
+        Assert.IsType<QueryTerm.SimilarTo>(terms[1]);
+        Assert.IsType<QueryTerm.SourceMissing>(terms[2]);
+    }
 }

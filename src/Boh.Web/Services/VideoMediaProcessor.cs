@@ -99,6 +99,16 @@ public sealed class VideoMediaProcessor(
         }
     }
 
+    /// <summary>
+    /// Video is not hashed. A single frame would hash the instant the extraction happened to
+    /// land on rather than the clip, so two encodes of the same video only agree when their
+    /// frame timing does — and every clip that opens on black would collide with every other.
+    /// Doing this properly means hashing a sequence of frames and comparing sequences, which
+    /// is a different structure from the one column this stores.
+    /// </summary>
+    public Task<long?> TryComputePerceptualHashAsync(string sourcePath, CancellationToken ct) =>
+        Task.FromResult<long?>(null);
+
     private Task<ProcessResult> TryExtractFrameAsync(
         string sourcePath, string destinationPath, int maxEdge, int? seekSeconds, CancellationToken ct)
     {

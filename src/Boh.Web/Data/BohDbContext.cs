@@ -37,6 +37,11 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.Property(p => p.UploadedAt).HasConversion(UtcMilliseconds);
             e.HasIndex(p => p.UploadedAt).IsDescending();
 
+            // Not for lookups — a perceptual hash is never matched exactly. Near-duplicate
+            // search reads every hash in the table, and Id is the SQLite rowid, so this index
+            // holds both columns that read needs and satisfies it without touching the rows.
+            e.HasIndex(p => p.PerceptualHash);
+
             e.Property(p => p.FileExtension).HasMaxLength(16).IsRequired();
             e.Property(p => p.MimeType).HasMaxLength(128).IsRequired();
             e.Property(p => p.Description).HasMaxLength(8192);

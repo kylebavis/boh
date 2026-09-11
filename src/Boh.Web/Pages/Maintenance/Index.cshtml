@@ -47,6 +47,120 @@
 </section>
 
 <section>
+    <h2>Perceptual hashes</h2>
+    <p>
+        <small class="muted">
+            Computes the visual fingerprint that lets a resized or re-encoded repost be recognized,
+            for posts stored before hashing existed or whose hashing failed. Originals are re-read,
+            so a run stops after 60 seconds or 500 posts and reports what is left. Video is not
+            hashed. New uploads are hashed as they arrive, so this is a one-off after upgrading —
+            or after restoring a database from before the feature existed.
+        </small>
+    </p>
+
+    @if (Model.HashResult is { } hashes)
+    {
+        @if (hashes.Pending == 0)
+        {
+            <div class="notice" role="status">Every post that can be hashed already is. Nothing to do.</div>
+        }
+        else
+        {
+            <div class="notice @(hashes.Failed > 0 ? "notice-error" : "")" role="status">
+                @hashes.Pending post(s) without a hash — computed @hashes.Hashed@(hashes.Failed > 0 ? $", {hashes.Failed} failed" : "").
+                @if (hashes.Featureless > 0)
+                {
+                    <text>
+                        @hashes.Featureless had no detail to hash — a flat colour or a blank
+                        scan has no structure to compare, and will not be retried.
+                    </text>
+                }
+                @if (!hashes.Complete)
+                {
+                    <text>@hashes.Remaining still to do; run it again to continue.</text>
+                }
+                @if (hashes.Failed > 0)
+                {
+                    <text>
+                        Failures are in the server log, usually a missing or unreadable original.
+                        They stay pending, so a run once the original is back will pick them up.
+                    </text>
+                }
+            </div>
+        }
+    }
+
+    <form method="post" asp-page-handler="ComputeHashes" class="action-form">
+        <button type="submit" class="secondary">Compute missing perceptual hashes</button>
+    </form>
+</section>
+
+<section>
+    <h2>Possible duplicates</h2>
+    <p>
+        <small class="muted">
+            Groups posts whose perceptual hashes are within @Model.MaxDistance bits of one another —
+            the same picture stored twice at different sizes or qualities. Nothing is deleted: which
+            copy to keep is a judgement about crops, watermarks and resolution that only you can
+            make. Comparing every pair is quadratic, so a run stops after 15 seconds and says how
+            far it reached.
+        </small>
+    </p>
+
+    @if (Model.DuplicateResult is { } scan)
+    {
+        <div class="notice" role="status">
+            @if (scan.Hashed == 0)
+            {
+                <text>No post has a perceptual hash yet — compute them above first.</text>
+            }
+            else if (scan.Clusters.Count == 0)
+            {
+                <text>Compared @scan.Hashed hashed post(s); nothing looks like anything else.</text>
+            }
+            else
+            {
+                <text>@scan.Clusters.Count group(s) of look-alikes among @scan.Hashed hashed post(s).</text>
+                @if (scan.OmittedClusters > 0)
+                {
+                    <text>@scan.OmittedClusters more are not shown.</text>
+                }
+            }
+
+            @if (!scan.Complete)
+            {
+                <text>
+                    The scan stopped at its time limit after comparing @scan.Compared of
+                    @scan.Hashed posts, so there may be more.
+                </text>
+            }
+        </div>
+
+        @foreach (var cluster in scan.Clusters)
+        {
+            <article class="dup-cluster">
+                <small class="muted">
+                    @cluster.Size posts, closest @cluster.ClosestDistance bit@(cluster.ClosestDistance == 1 ? "" : "s") apart
+                    — oldest first@(cluster.Size > cluster.Posts.Count ? $", showing {cluster.Posts.Count}" : "")
+                </small>
+                <div class="dup-posts">
+                    @foreach (var post in cluster.Posts)
+                    {
+                        <a href="/Posts/Detail/@post.Id" title="Post @post.Id — @post.Width×@post.Height, @PostUrls.HumanSize(post.FileSizeBytes)">
+                            <img src="@PostUrls.Thumb(post)" alt="Post @post.Id" loading="lazy" />
+                        </a>
+                    }
+                </div>
+            </article>
+        }
+    }
+
+    <form method="post" asp-page-handler="ScanDuplicates" class="action-form">
+        <button type="submit" class="secondary">Scan for possible duplicates</button>
+    </form>
+</section>
+
+<section>
     <h2>Unused tags</h2>
     <p>
         <small class="muted">

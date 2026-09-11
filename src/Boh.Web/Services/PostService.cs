@@ -9,7 +9,13 @@ public abstract record PostCreateResult
 {
     private PostCreateResult() { }
 
-    public sealed record Created(Post Post) : PostCreateResult;
+    /// <summary>
+    /// The file was stored. <paramref name="Similar"/> holds posts that look like it — empty
+    /// in the ordinary case. A perceptual match is a suspicion rather than a fact, so it is
+    /// reported alongside a post that was created regardless; see
+    /// <see cref="DuplicateService.MaxDistance"/> for why nothing refuses an upload over one.
+    /// </summary>
+    public sealed record Created(Post Post, IReadOnlyList<SimilarPost> Similar) : PostCreateResult;
 
     /// <summary>
     /// The identical file is already stored; <paramref name="ExistingPostId"/> holds it.
@@ -38,6 +44,7 @@ public sealed class PostService(
     BohDbContext db,
     IFileStore store,
     MediaProcessorRegistry processors,
+    DuplicateService duplicates,
     BohOptions options,
     ILogger<PostService> logger)
 {
@@ -54,6 +61,12 @@ public sealed class PostService(
     /// </summary>
     private static readonly TimeSpan RepairTimeBudget = TimeSpan.FromSeconds(60);
     private const int RepairMaxPerRun = 500;
+
+    /// <summary>
+    /// How many look-alikes a newly stored post reports. Enough to show the upload was
+    /// probably a repost; the post's own page lists the rest.
+    /// </summary>
+    private const int SimilarOnCreate = 4;
 
     /// <summary>
     /// Stores a file as a new post, or reports the post that already holds those bytes.
@@ -102,6 +115,13 @@ public sealed class PostService(
 
             await GenerateThumbnailAsync(processor, staged.Sha256, info.Extension, ct);
 
+            // Video is not hashed. Recorded as never attempted rather than attempted-and-empty,
+            // so a release that learns how would find these posts waiting for the backfill —
+            // see DuplicateService.ComputeMissingHashesAsync.
+            var perceptualHash = info.IsVideo
+                ? null
+                : await ComputePerceptualHashAsync(processor, staged.Sha256, info.Extension, ct);
+
             var post = new Post
             {
                 Sha256 = staged.Sha256,
@@ -112,6 +132,8 @@ public sealed class PostService(
                 Height = info.Height,
                 DurationSec = info.DurationSec,
                 IsVideo = info.IsVideo,
+                PerceptualHash = perceptualHash,
+                PerceptualHashTried = !info.IsVideo,
                 UploadedAt = DateTimeOffset.UtcNow,
                 UploadedById = uploadedById
             };
@@ -140,7 +162,13 @@ public sealed class PostService(
                     racedId.Value, await AddSourceAsync(racedId.Value, source, ct));
             }
 
-            return new PostCreateResult.Created(post);
+            // After the insert rather than before it, so the post can be excluded from its own
+            // results by id instead of the search having to know it is about to exist.
+            var similar = perceptualHash is null
+                ? []
+                : await duplicates.FindSimilarAsync(perceptualHash.Value, post.Id, SimilarOnCreate, ct);
+
+            return new PostCreateResult.Created(post, similar);
         }
         finally
         {
@@ -303,6 +331,26 @@ public sealed class PostService(
         }
     }
 
+    /// <summary>
+    /// Hashes the committed original. Treated like thumbnail generation: a post without a hash
+    /// is only a post that near-duplicate detection cannot see, which is no reason to fail an
+    /// upload, and <see cref="DuplicateService.ComputeMissingHashesAsync"/> can fill it in later.
+    /// </summary>
+    private async Task<long?> ComputePerceptualHashAsync(
+        IMediaProcessor processor, string sha256, string extension, CancellationToken ct)
+    {
+        try
+        {
+            return await processor.TryComputePerceptualHashAsync(
+                store.OriginalPath(sha256, extension), ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Perceptual hashing failed for {Sha256}", sha256);
+            return null;
+        }
+    }
+
     private Task<int?> FindBySha(string sha256, CancellationToken ct) =>
         db.Posts.AsNoTracking()
             .Where(p => p.Sha256 == sha256)
@@ -313,7 +361,13 @@ public sealed class PostService(
     /// Narrows a post query by a resolved search. Null means the search cannot match anything,
     /// which is distinct from matching nothing — the caller should not run a query at all.
     /// </summary>
-    private static IQueryable<Post>? ApplySearch(IQueryable<Post> query, ResolvedSearch? search)
+    /// <remarks>
+    /// Asynchronous because of <c>similar:</c>, which cannot be expressed in SQL: SQLite has
+    /// no bit-count function, so "within eight bits of that post's hash" has to be answered in
+    /// memory first and the resulting ids folded into the query.
+    /// </remarks>
+    private async Task<IQueryable<Post>?> ApplySearchAsync(
+        IQueryable<Post> query, ResolvedSearch? search, CancellationToken ct)
     {
         if (search is { Unsatisfiable: true }) return null;
         if (search is null) return query;
@@ -332,7 +386,7 @@ public sealed class PostService(
             query = query.Where(p => !p.PostTags.Any(pt => pt.TagId == id));
         }
 
-        foreach (var term in search.Sources)
+        foreach (var term in search.Predicates)
         {
             switch (term)
             {
@@ -352,6 +406,23 @@ public sealed class PostService(
                         ? query.Where(p => p.Sources.Any())
                         : query.Where(p => !p.Sources.Any());
                     break;
+
+                case QueryTerm.SimilarTo(var postId, var exclude):
+                    var alike = await duplicates.FindSimilarIdsAsync(postId, ct);
+
+                    // No hash on the reference post — or no such post — means the question has
+                    // no answer. Requiring an unanswerable term matches nothing, the same as
+                    // requiring a tag that does not exist; excluding it excludes nothing.
+                    if (alike.Count == 0)
+                    {
+                        if (!exclude) return null;
+                        break;
+                    }
+
+                    query = exclude
+                        ? query.Where(p => !alike.Contains(p.Id))
+                        : query.Where(p => alike.Contains(p.Id));
+                    break;
             }
         }
 
@@ -369,7 +440,7 @@ public sealed class PostService(
     /// </remarks>
     public async Task<int?> GetRandomIdAsync(ResolvedSearch? search, CancellationToken ct)
     {
-        var query = ApplySearch(db.Posts.AsNoTracking(), search);
+        var query = await ApplySearchAsync(db.Posts.AsNoTracking(), search, ct);
         if (query is null) return null;
 
         var total = await query.CountAsync(ct);
@@ -395,7 +466,7 @@ public sealed class PostService(
     public async Task<(IReadOnlyList<Post> Posts, int TotalCount)> ListAsync(
         ResolvedSearch? search, int page, int pageSize, CancellationToken ct)
     {
-        var query = ApplySearch(db.Posts.AsNoTracking(), search);
+        var query = await ApplySearchAsync(db.Posts.AsNoTracking(), search, ct);
 
         // A required tag that does not exist cannot be satisfied by any post, so there is
         // nothing to query for.

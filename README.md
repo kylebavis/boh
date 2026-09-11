@@ -15,6 +15,7 @@ Think danbooru, minus everything needed to serve thousands of strangers. It shou
 - Tag **implications** — `meme:pondering_my_orb` can automatically apply `format:reaction_image`
 - Import from third-party sites via bundled [gallery-dl](https://github.com/mikf/gallery-dl), mapping site metadata onto tags
 - Duplicate detection: the same file cannot be posted twice — importing it again from somewhere else adds that address to the post's sources instead
+- Near-duplicate detection by perceptual hash: a resized or re-encoded repost is stored, but flagged on the post and on the import summary, searchable with `similar:123`, and findable across the whole archive from Maintenance
 - Several source URLs per post, added and removed by hand on the post, and searchable with `url:twitter.com`. An import records the page each file came from where the site reports one, falling back to the URL you typed
 - Thumbnails rebuildable from originals, so they can live on disposable storage
 - Light/dark/auto toggle in the header, with the colour scheme for each side chosen per user on the account page — nine packaged (Nord, Dracula, Monokai, Gruvbox, Catppuccin, Solarized); mobile-first layout
@@ -144,7 +145,7 @@ boh checks every configured location is writable before it starts, and names the
 | Change own password | ✓ | ✓ |
 | Manage users | | ✓ |
 | Aliases, implications, namespace colours | | ✓ |
-| Maintenance (rebuild thumbnails, delete unused tags) | | ✓ |
+| Maintenance (rebuild thumbnails, hash for duplicates, delete unused tags) | | ✓ |
 
 The split is between *using* the collection and *reconfiguring it for everyone*. A tag alias or implication silently rewrites what every other user sees, so those sit with administrators alongside user management.
 
@@ -201,6 +202,20 @@ A post with several sources matches on any of them. Matching ignores case, and t
 
 The prefix is `url:` rather than the `source:` other boorus use because `source` is already a tag namespace here: an import stores the site it came from as a tag like `source:twitter`, and `source:` in a search still finds those tags. The one address you cannot search for is the literal word `none`.
 
+### Searching by appearance
+
+`similar:` takes a post id and finds posts that *look* like it, whatever their tags:
+
+```
+similar:123                           post 123 and anything that looks like it
+similar:123 -rating:explicit          combines with tags like any other term
+-similar:123                          everything that does not look like it
+```
+
+The reference post is included in its own results, so the search puts it beside its
+look-alikes for comparison. A post with no perceptual hash — a video, a flat colour, one not
+yet backfilled — has nothing to be similar to, so `similar:` on it matches nothing.
+
 ### Aliases and implications
 
 Managed at **Tags → Tag administration**.
@@ -218,6 +233,35 @@ A **move** renames the tag in place, keeping its posts, aliases and implications
 An **alias** leaves the old name in place as a permanent redirect, so it keeps resolving however often it is used.
 
 Move a tag to correct its own identity: a typo nobody should type again, or putting `foo` into a namespace. Alias it for a synonym or spelling that will keep being typed — including by an importer.
+
+## Duplicates and near-duplicates
+
+Two files with the same bytes are the same post: uploading one twice is refused, and an import
+that lands on stored content records where it found it as another source instead.
+
+Resizing or re-encoding an image changes every byte, so a repost gets past that. boh also
+stores a **perceptual hash** — a 64-bit fingerprint of what the image looks like, taken from
+the low frequencies of its greyscale DCT — which survives rescaling, re-encoding and mild
+colour shifts. Two posts within 8 differing bits are treated as the same picture.
+
+Near-duplicates are **flagged, never blocked**:
+
+- the post's own page grows a **Possible duplicates** section listing what it resembles
+- an import summary marks each file that looks like something already stored
+- **Maintenance → Scan for possible duplicates** groups look-alikes across the whole archive
+
+Nothing is deleted or refused, because a perceptual match is a suspicion rather than a fact,
+and which copy to keep depends on resolution, crops and watermarks that only you can judge. A
+blocked upload would also make a false positive unpostable, and would silently drop files out
+of a gallery import.
+
+What it does not catch: rotations, mirror images, heavy crops, and video — those hash as
+unrelated pictures. Images with no detail to hash, such as a flat colour or a blank scan, are
+left unhashed rather than made duplicates of one another.
+
+Posts uploaded before this existed have no hash until you run **Maintenance → Compute missing
+perceptual hashes**, which re-reads every original and so works in 60-second passes, reporting
+what is left after each one.
 
 ## Importing
 
@@ -239,7 +283,7 @@ docker run --rm -p 8080:8080 -v boh_dev:/data -e BOH_ADMIN_PASSWORD=dev boh:dev
 With a local .NET 10 SDK:
 
 ```sh
-dotnet test boh.slnx            # 311 tests
+dotnet test boh.slnx            # 456 tests
 dotnet run --project src/Boh.Web
 ```
 
@@ -257,7 +301,8 @@ Migrations are applied automatically at startup, so upgrading the image is enoug
 ```
 src/Boh.Web/
   Data/          EF Core entities, context, migrations
-  Services/      storage, media processing, tags, import
+  Services/      storage, media processing, tags, import, duplicates
+  Media/         the perceptual hash itself (no dependencies)
   Tags/          tag normalization and search parsing (no dependencies)
   Pages/         Razor Pages
   Endpoints/     blob serving

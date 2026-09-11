@@ -24,6 +24,13 @@ public abstract record QueryTerm
     /// "has at least one". This is the query that finds what still needs curating.
     /// </summary>
     public sealed record SourceMissing(bool Exclude) : QueryTerm;
+
+    /// <summary>
+    /// Requires (or forbids) the post to look like <paramref name="PostId"/>, matched on
+    /// perceptual hash rather than on anything the post is tagged with. The reference post
+    /// itself satisfies the term: putting it beside its look-alikes is the point of asking.
+    /// </summary>
+    public sealed record SimilarTo(int PostId, bool Exclude) : QueryTerm;
 }
 
 public sealed record SearchQuery(IReadOnlyList<QueryTerm> Terms)
@@ -48,6 +55,13 @@ public sealed record SearchQuery(IReadOnlyList<QueryTerm> Terms)
     /// spelling this the way every booru does.
     /// </summary>
     public const string NoSourceKeyword = "none";
+
+    /// <summary>
+    /// The prefix that searches by appearance rather than by tag. Takes a post id, because a
+    /// hash is not something anyone can type, and the only way to name a picture here is to
+    /// point at a post that holds it.
+    /// </summary>
+    public const string SimilarPrefix = "similar:";
 
     /// <summary>
     /// Parses whitespace-separated terms. A leading <c>-</c> negates. Terms that normalize
@@ -93,6 +107,15 @@ public sealed record SearchQuery(IReadOnlyList<QueryTerm> Terms)
             return value == NoSourceKeyword
                 ? new QueryTerm.SourceMissing(exclude)
                 : new QueryTerm.SourceMatch(value, exclude);
+        }
+
+        if (body.StartsWith(SimilarPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            // Anything that is not a post id states no condition. Dropped rather than treated
+            // as a tag: "similar:cat" is a mistyped predicate, not a request for that tag.
+            return int.TryParse(body[SimilarPrefix.Length..].Trim(), out var postId) && postId > 0
+                ? new QueryTerm.SimilarTo(postId, exclude)
+                : null;
         }
 
         return TagName.TryParse(body, out var tag) ? new QueryTerm.TagMatch(tag, exclude) : null;

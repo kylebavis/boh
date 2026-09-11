@@ -13,15 +13,16 @@ public sealed record TagSuggestion(string Display, int PostCount, string? AliasO
 /// caller should skip querying entirely.
 /// </summary>
 /// <remarks>
-/// <paramref name="Sources"/> arrives unchanged from the parser. Unlike a tag, a URL fragment
-/// has nothing to resolve against — no alias graph, no row that must already exist — so it is
-/// carried here only to keep one object describing a whole search.
+/// <paramref name="Predicates"/> arrives unchanged from the parser: every term that is about
+/// something other than a tag. A URL fragment has nothing to resolve against — no alias graph,
+/// no row that must already exist — and a <c>similar:</c> term needs the post table rather
+/// than the tag graph, so both are carried here to keep one object describing a whole search.
 /// </remarks>
 public sealed record ResolvedSearch(
     IReadOnlyList<int> Include,
     IReadOnlyList<int> Exclude,
     bool Unsatisfiable,
-    IReadOnlyList<QueryTerm> Sources)
+    IReadOnlyList<QueryTerm> Predicates)
 {
     public ResolvedSearch(IReadOnlyList<int> include, IReadOnlyList<int> exclude, bool unsatisfiable)
         : this(include, exclude, unsatisfiable, []) { }
@@ -122,14 +123,12 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     {
         if (query.IsEmpty) return new ResolvedSearch([], [], false);
 
-        // Source terms need no lookup, so a search made only of them must not pay for the
-        // alias graph or a round trip that asks about no tags at all.
-        var sources = query.Terms
-            .Where(t => t is QueryTerm.SourceMatch or QueryTerm.SourceMissing)
-            .ToList();
+        // Non-tag terms need nothing from the tag graph, so a search made only of them must
+        // not pay for the alias map or a round trip that asks about no tags at all.
+        var predicates = query.Terms.Where(t => t is not QueryTerm.TagMatch).ToList();
 
         var tagTerms = query.TagTerms.ToList();
-        if (tagTerms.Count == 0) return new ResolvedSearch([], [], false, sources);
+        if (tagTerms.Count == 0) return new ResolvedSearch([], [], false, predicates);
 
         var aliasMap = await LoadAliasMapAsync(ct);
         var found = await LookupManyAsync(tagTerms.Select(t => t.Tag).ToList(), ct);
@@ -150,7 +149,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
             (term.Exclude ? exclude : include).Add(canonical);
         }
 
-        return new ResolvedSearch(include.Distinct().ToList(), exclude.Distinct().ToList(), false, sources);
+        return new ResolvedSearch(include.Distinct().ToList(), exclude.Distinct().ToList(), false, predicates);
     }
 
     // ---- post tagging --------------------------------------------------

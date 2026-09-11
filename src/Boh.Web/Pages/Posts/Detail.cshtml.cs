@@ -7,11 +7,32 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Boh.Web.Pages.Posts;
 
-public class DetailModel(PostService posts, TagService tags, BohOptions options) : PageModel
+public class DetailModel(
+    PostService posts,
+    TagService tags,
+    DuplicateService duplicates,
+    BohOptions options) : PageModel
 {
+    /// <summary>
+    /// How many look-alikes the page will show. A handful is enough to judge whether the post
+    /// is a repost; <c>similar:</c> in the search box lists them all in the gallery.
+    /// </summary>
+    private const int MaxSimilarShown = 8;
+
     public Post Post { get; private set; } = null!;
     public PostTagView TagView { get; private set; } = null!;
     public PostSourceView SourceView { get; private set; } = null!;
+
+    /// <summary>
+    /// Posts that look like this one, closest first. Recomputed per view rather than stored:
+    /// what looks like this post changes as the collection grows, and a cached answer would
+    /// go quietly stale.
+    /// </summary>
+    public IReadOnlyList<SimilarPostCard> Similar { get; private set; } = [];
+
+    /// <summary>The gallery search that lists every look-alike rather than the first few.</summary>
+    public string SimilarSearchUrl =>
+        GalleryLinks.Gallery(1, $"{SearchQuery.SimilarPrefix}{Post.Id}");
 
     /// <summary>True when the current visitor may modify this post.</summary>
     public bool CanEdit => options.AuthDisabled || User.Identity?.IsAuthenticated == true;
@@ -36,6 +57,7 @@ public class DetailModel(PostService posts, TagService tags, BohOptions options)
         Post = post;
         TagView = BuildTagView(post, await tags.GetNamespaceColorsAsync(ct));
         SourceView = BuildSourceView(post);
+        Similar = await duplicates.GetSimilarToPostAsync(id, MaxSimilarShown, ct);
         return Page();
     }
 

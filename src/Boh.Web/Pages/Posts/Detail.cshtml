@@ -34,6 +34,35 @@
             <partial name="_SourceList" model="Model.SourceView" />
         </div>
 
+        @* Only rendered when there is something to say, so an ordinary post is unaffected by
+           the feature existing. Nothing here blocked the upload: a perceptual match is a
+           suspicion, and the two posts are equally likely to be the one worth keeping. *@
+        @if (Model.Similar.Count > 0)
+        {
+            <div class="similar-section">
+                <h2>Possible duplicates</h2>
+                <p>
+                    <small class="muted">
+                        The badge counts how many bits of the perceptual hash differ, so lower
+                        is more alike.
+                        <a href="@Model.SimilarSearchUrl">Browse them in the gallery</a>.
+                    </small>
+                </p>
+
+                <div class="gallery">
+                    @foreach (var card in Model.Similar)
+                    {
+                        <a class="gallery-item" href="/Posts/Detail/@card.Post.Id"
+                           title="Post @card.Post.Id — @card.Distance bit@(card.Distance == 1 ? "" : "s") different">
+                            <img src="@PostUrls.Thumb(card.Post)" alt="Post @card.Post.Id" loading="lazy"
+                                 width="@card.Post.Width" height="@card.Post.Height" />
+                            <span class="badge">@card.Distance</span>
+                        </a>
+                    }
+                </div>
+            </div>
+        }
+
         <dl class="post-facts">
             <div>
                 <dt>Dimensions</dt>
