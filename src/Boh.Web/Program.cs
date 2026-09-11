@@ -1,6 +1,7 @@
 using Boh.Web;
 using Boh.Web.Data;
 using Boh.Web.Endpoints;
+using Boh.Web.Jobs;
 using Boh.Web.Security;
 using Boh.Web.Services;
 using Boh.Web.Storage;
@@ -45,6 +46,10 @@ builder.Services.AddScoped<DuplicateService>();
 builder.Services.AddScoped<PostService>();
 builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<UserService>();
+
+// Maintenance passes and URL imports outlive a request, so pages queue them and this runs them.
+builder.Services.AddSingleton<JobQueue>();
+builder.Services.AddHostedService<JobWorker>();
 
 builder.Services.AddScoped<RevalidateUserEvents>();
 

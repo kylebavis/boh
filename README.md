@@ -145,7 +145,7 @@ boh checks every configured location is writable before it starts, and names the
 | Change own password | ✓ | ✓ |
 | Manage users | | ✓ |
 | Aliases, implications, namespace colours | | ✓ |
-| Maintenance (rebuild thumbnails, hash for duplicates, delete unused tags) | | ✓ |
+| Maintenance (rebuild thumbnails and implied tags, hash for duplicates, delete unused tags) | | ✓ |
 
 The split is between *using* the collection and *reconfiguring it for everyone*. A tag alias or implication silently rewrites what every other user sees, so those sit with administrators alongside user management.
 
@@ -260,16 +260,16 @@ unrelated pictures. Images with no detail to hash, such as a flat colour or a bl
 left unhashed rather than made duplicates of one another.
 
 Posts uploaded before this existed have no hash until you run **Maintenance → Compute missing
-perceptual hashes**, which re-reads every original and so works in 60-second passes, reporting
-what is left after each one.
+perceptual hashes**, which re-reads every original. Like every maintenance task it runs in the
+background with a progress bar, so it can be left to work through a large archive.
 
 ## Importing
 
-**Import** in the nav takes a URL and hands it to gallery-dl, which supports [a long list of sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md). Site metadata is mapped onto namespaced tags where the shape is recognizable — tags, artist, character, copyright and rating — and the origin URL is recorded on each post.
+**Import** in the nav is where posts come in, either as a file uploaded from your machine or as a URL. A URL is handed to gallery-dl, which supports [a long list of sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md). Site metadata is mapped onto namespaced tags where the shape is recognizable — tags, artist, character, copyright and rating — and the origin URL is recorded on each post.
 
 To import from sites needing credentials, drop a [gallery-dl configuration file](https://github.com/mikf/gallery-dl#configuration) at `/data/gallery-dl.conf`; boh passes it through when present.
 
-Imports are capped (`BOH_IMPORT_MAX`) and time-limited (`BOH_IMPORT_TIMEOUT_SEC`) because they run inside the HTTP request.
+Imports run in the background, one at a time, so you can queue several and leave the page; each shows its progress and then what it created, and stays listed until the server restarts. They are still capped (`BOH_IMPORT_MAX`) and time-limited (`BOH_IMPORT_TIMEOUT_SEC`), because they share one queue — an endless gallery or a hung download would otherwise hold up every import behind it.
 
 ## Development
 

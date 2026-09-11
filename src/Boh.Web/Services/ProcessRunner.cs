@@ -12,9 +12,9 @@ public sealed record ProcessResult(int ExitCode, string StandardOutput, string S
 /// Runs an external tool with output captured and a hard timeout.
 /// </summary>
 /// <remarks>
-/// Both callers (ffmpeg and gallery-dl) run inside a request, so a process that hangs would
-/// otherwise hold a connection open indefinitely. Killing the whole tree matters for
-/// gallery-dl, which spawns children of its own.
+/// ffmpeg runs inside an upload request and gallery-dl in the import queue, so a process that
+/// hangs would otherwise hold a connection open — or every import behind it — indefinitely.
+/// Killing the whole tree matters for gallery-dl, which spawns children of its own.
 /// </remarks>
 public sealed class ProcessRunner(ILogger<ProcessRunner> logger)
 {

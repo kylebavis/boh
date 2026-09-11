@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Boh.Web.Jobs;
 using Boh.Web.Tags;
 
 namespace Boh.Web.Services;
@@ -30,9 +31,10 @@ public sealed record ImportResult(
 /// </summary>
 /// <remarks>
 /// This fetches a URL chosen by the user from inside the container, so it is gated behind
-/// authentication regardless of BOH_PUBLIC_READ. The run is bounded on both axes —
-/// <c>--range</c> caps how many files a single gallery can produce, and the process is
-/// killed after a timeout — because the whole thing happens inside one HTTP request.
+/// authentication regardless of BOH_PUBLIC_READ. It runs as a background job, but imports
+/// share one lane of the queue, so the run is still bounded on both axes — <c>--range</c> caps
+/// how many files a single gallery can produce, and the process is killed after a timeout —
+/// or one endless gallery or hung download would hold up every import queued behind it.
 /// </remarks>
 public sealed class GalleryDlImporter(
     ProcessRunner runner,
@@ -41,12 +43,16 @@ public sealed class GalleryDlImporter(
     BohOptions options,
     ILogger<GalleryDlImporter> logger)
 {
+    /// <summary>The <see cref="JobSnapshot.Kind"/> an import is queued under.</summary>
+    public const string JobKind = "import";
+
     private static readonly HashSet<string> MetadataExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".json"
     };
 
-    public async Task<ImportResult> ImportAsync(string url, int? uploadedById, CancellationToken ct)
+    public async Task<ImportResult> ImportAsync(
+        string url, int? uploadedById, IProgress<JobProgress>? progress, CancellationToken ct)
     {
         // Canonical from here on: what gets fetched, logged and recorded is the rewritten form,
         // never the raw submission. Uri.TryCreate alone would let control characters through
@@ -62,6 +68,8 @@ public sealed class GalleryDlImporter(
 
         try
         {
+            progress?.Report(new JobProgress("Downloading with gallery-dl"));
+
             var result = await runner.RunAsync("gallery-dl", BuildArguments(galleryUrl, workingDirectory),
                 TimeSpan.FromSeconds(options.ImportTimeoutSec), ct);
 
@@ -87,7 +95,7 @@ public sealed class GalleryDlImporter(
                         : $"gallery-dl downloaded nothing from that URL: {detail}");
             }
 
-            return await IngestAsync(mediaFiles, galleryUrl, uploadedById, ct);
+            return await IngestAsync(mediaFiles, galleryUrl, uploadedById, progress, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -123,13 +131,22 @@ public sealed class GalleryDlImporter(
     }
 
     private async Task<ImportResult> IngestAsync(
-        List<string> mediaFiles, string galleryUrl, int? uploadedById, CancellationToken ct)
+        List<string> mediaFiles,
+        string galleryUrl,
+        int? uploadedById,
+        IProgress<JobProgress>? progress,
+        CancellationToken ct)
     {
         var created = new List<ImportedItem>();
         var skipped = new List<SkippedItem>();
 
-        foreach (var path in mediaFiles)
+        for (var i = 0; i < mediaFiles.Count; i++)
         {
+            // Between files, so cancelling keeps every post already stored whole.
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(new JobProgress("Storing files", i, mediaFiles.Count));
+
+            var path = mediaFiles[i];
             var fileName = Path.GetFileName(path);
             var metadata = ReadSidecar(path);
 

@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text.RegularExpressions;
 using ImageMagick;
 
 namespace Boh.Tests;
@@ -70,7 +68,7 @@ public class DuplicatePageTests
         await app.CreatePatternPostAsync(300);
 
         // Uploads are hashed as they arrive, so a fresh collection has no backlog.
-        var html = await SubmitAsync(app, "ComputeHashes");
+        var html = await SubmitAsync(app, "hashes");
 
         Assert.Contains("Every post that can be hashed already is", html);
     }
@@ -82,7 +80,7 @@ public class DuplicatePageTests
         var original = await app.CreatePatternPostAsync(400);
         var repost = await app.CreatePatternPostAsync(160, MagickFormat.Jpeg);
 
-        var html = await SubmitAsync(app, "ScanDuplicates");
+        var html = await SubmitAsync(app, "duplicates");
 
         Assert.Contains("1 group(s) of look-alikes", html);
         Assert.Contains($"/Posts/Detail/{original}", html);
@@ -96,33 +94,12 @@ public class DuplicatePageTests
         await app.CreatePatternPostAsync(300, seed: 1);
         await app.CreatePatternPostAsync(300, seed: 2);
 
-        var html = await SubmitAsync(app, "ScanDuplicates");
+        var html = await SubmitAsync(app, "duplicates");
 
         Assert.Contains("nothing looks like anything else", html);
     }
 
-    /// <summary>
-    /// Submits one of the maintenance forms the way the browser would, including the
-    /// antiforgery token — which is what makes the handler name in the markup part of the test
-    /// rather than something the test restates.
-    /// </summary>
-    private static async Task<string> SubmitAsync(TestApp app, string handler)
-    {
-        var client = app.CreateNonRedirectingClient();
-        var page = await app.GetHtmlAsync(client, "/Maintenance");
-
-        var form = Regex.Matches(page, "<form.*?</form>", RegexOptions.Singleline)
-            .Select(m => m.Value)
-            .Single(f => f.Contains($"handler={handler}", StringComparison.OrdinalIgnoreCase));
-
-        var response = await client.PostAsync(
-            TestApp.FormAction(form),
-            new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["__RequestVerificationToken"] = TestApp.FormValue(form, "__RequestVerificationToken"),
-            }));
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return await response.Content.ReadAsStringAsync();
-    }
+    /// <summary>Starts a maintenance task from its button and returns the page once it has finished.</summary>
+    private static Task<string> SubmitAsync(TestApp app, string task) =>
+        app.SubmitAndWaitAsync("/Maintenance", $"task={task}");
 }

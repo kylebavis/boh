@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Boh.Web.Jobs;
 using Boh.Web.Services;
 using ImageMagick;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -177,6 +178,60 @@ public sealed class TestApp : WebApplicationFactory<Program>
         var response = await client.GetAsync(url);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return await response.Content.ReadAsStringAsync();
+    }
+
+    /// <summary>
+    /// Submits the one form on <paramref name="pageUrl"/> whose markup contains
+    /// <paramref name="formMarker"/>, the way the browser would, antiforgery token included —
+    /// which is what makes the handler and route values in the markup part of the test rather
+    /// than something the test restates. For forms with nothing to fill in but the button.
+    /// </summary>
+    public async Task<HttpResponseMessage> SubmitFormAsync(HttpClient client, string pageUrl, string formMarker)
+    {
+        var page = await GetHtmlAsync(client, pageUrl);
+
+        var form = Regex.Matches(page, "<form.*?</form>", RegexOptions.Singleline)
+            .Select(m => m.Value)
+            .Single(f => f.Contains(formMarker, StringComparison.OrdinalIgnoreCase));
+
+        return await client.PostAsync(
+            FormAction(form),
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = FormValue(form, "__RequestVerificationToken"),
+            }));
+    }
+
+    /// <summary>
+    /// Starts a background job from its form, waits for every job to finish, and returns the
+    /// page as it then renders — which is where a job's result is shown.
+    /// </summary>
+    public async Task<string> SubmitAndWaitAsync(string pageUrl, string formMarker)
+    {
+        var client = CreateNonRedirectingClient();
+
+        var response = await SubmitFormAsync(client, pageUrl, formMarker);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        await WaitForJobsAsync();
+        return await GetHtmlAsync(client, pageUrl);
+    }
+
+    public JobQueue Jobs => Services.GetRequiredService<JobQueue>();
+
+    /// <summary>
+    /// Waits until nothing is queued or running. A job still going after the timeout fails the
+    /// test instead of hanging it.
+    /// </summary>
+    public async Task WaitForJobsAsync()
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+
+        while (Jobs.List(j => j.IsActive).Count > 0)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "background jobs were still running after 30 seconds");
+            await Task.Delay(20);
+        }
     }
 
     /// <summary>The password the admin account is seeded with when running with accounts on.</summary>
