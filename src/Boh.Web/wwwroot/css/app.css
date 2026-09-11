@@ -330,9 +330,20 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
 }
 
 .tag-section h2,
-.source-section h2 {
+.source-section h2,
+.similar-section h2 {
     font-size: 1rem;
     margin-bottom: 0.5rem;
+}
+
+.similar-section {
+    margin-top: 1.25rem;
+}
+
+/* The grid is the gallery's, so a look-alike is the same size as a search result and can be
+   compared against the post above it without either being scaled differently. */
+.similar-section .gallery {
+    margin-block: 0.5rem 0;
 }
 
 .source-section {
@@ -916,4 +927,45 @@ section + section {
 .danger-text {
     --pico-color: var(--pico-del-color);
     --pico-border-color: var(--pico-del-color);
+}
+
+/* A flag on an imported row: the file was stored, but something already here looks like it.
+   Highlighted rather than coloured red — nothing failed, and the import may be right to
+   have kept it. */
+.hint-duplicate {
+    align-self: flex-start;
+    background: var(--pico-mark-background-color);
+    color: var(--pico-mark-color);
+    padding: 0.1rem 0.35rem;
+    border-radius: var(--pico-border-radius);
+}
+
+/* One group of look-alikes in the duplicate report. Thumbnails scroll sideways inside the
+   card: a group can hold a dozen re-encodings, and wrapping them would push the next group
+   off the page. */
+.dup-cluster {
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    padding: 0.75rem;
+    margin-block: 0.75rem;
+}
+
+.dup-posts {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: 0.5rem;
+}
+
+.dup-posts a {
+    flex: 0 0 auto;
+    line-height: 0;
+}
+
+.dup-posts img {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: var(--pico-border-radius);
 }

@@ -41,6 +41,7 @@ builder.Services.AddSingleton<IMediaProcessor, VideoMediaProcessor>();
 builder.Services.AddSingleton<MediaProcessorRegistry>();
 
 builder.Services.AddScoped<GalleryDlImporter>();
+builder.Services.AddScoped<DuplicateService>();
 builder.Services.AddScoped<PostService>();
 builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<UserService>();

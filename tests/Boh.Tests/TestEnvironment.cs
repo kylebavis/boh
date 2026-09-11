@@ -2,6 +2,7 @@ using Boh.Web;
 using Boh.Web.Data;
 using Boh.Web.Services;
 using ImageMagick;
+using ImageMagick.Drawing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -18,6 +19,7 @@ public sealed class TestEnvironment : IDisposable
     public BohDbContext Db { get; }
     public ContentAddressedFileStore Store { get; }
     public PostService Posts { get; }
+    public DuplicateService Duplicates { get; }
     public TagService Tags { get; }
     public UserService Users { get; }
 
@@ -39,10 +41,16 @@ public sealed class TestEnvironment : IDisposable
         Store.EnsureDirectories();
 
         var processor = new MagickMediaProcessor(NullLogger<MagickMediaProcessor>.Instance);
+        var registry = new MediaProcessorRegistry([processor]);
+
+        Duplicates = new DuplicateService(
+            Db, Store, registry, NullLogger<DuplicateService>.Instance);
+
         Posts = new PostService(
             Db,
             Store,
-            new MediaProcessorRegistry([processor]),
+            registry,
+            Duplicates,
             Options,
             NullLogger<PostService>.Instance);
 
@@ -91,6 +99,44 @@ public sealed class TestEnvironment : IDisposable
     {
         using var image = new MagickImage(new MagickColor(color), width, height);
         image.Format = MagickFormat.Jpeg;
+        return image.ToByteArray();
+    }
+
+    /// <summary>
+    /// A picture with structure to it: a fixed scatter of grey blocks, laid out in fractions
+    /// of the canvas so the same <paramref name="seed"/> draws the same picture whatever size
+    /// or format is asked for. That is what makes it usable for perceptual hashing, where the
+    /// flat colours the other helpers produce have nothing to compare.
+    /// </summary>
+    public static byte[] MakePattern(
+        uint width, uint height, MagickFormat format = MagickFormat.Png, int seed = 1)
+    {
+        using var image = new MagickImage(MagickColors.White, width, height);
+
+        // Seeded, so a test can ask for "the same picture, bigger" or "the same picture as a
+        // JPEG" and get exactly that.
+        var random = new Random(seed);
+        var drawables = new Drawables();
+
+        for (var i = 0; i < 12; i++)
+        {
+            var x = random.NextDouble() * 0.75;
+            var y = random.NextDouble() * 0.75;
+            var w = 0.1 + random.NextDouble() * 0.25;
+            var h = 0.1 + random.NextDouble() * 0.25;
+            var shade = (byte)random.Next(0, 200);
+
+            drawables
+                .FillColor(new MagickColor(shade, shade, shade))
+                .Rectangle(x * width, y * height, Math.Min(x + w, 1.0) * width, Math.Min(y + h, 1.0) * height);
+        }
+
+        drawables.Draw(image);
+
+        image.Format = format;
+        // Lossy enough to move a few pixels around, which is the point of hashing at all.
+        if (format is MagickFormat.Jpeg) image.Quality = 70;
+
         return image.ToByteArray();
     }
 

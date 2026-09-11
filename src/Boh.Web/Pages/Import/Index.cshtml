@@ -48,6 +48,20 @@
                         <small class="muted">
                             @(item.Tags.Count == 0 ? "no tags found" : string.Join(" ", item.Tags))
                         </small>
+
+                        @* Reported rather than acted on: the file was stored either way, and
+                           which of the two posts to keep is not a decision an import can make. *@
+                        @if (item.Similar.Count > 0)
+                        {
+                            <small class="hint-duplicate">
+                                looks like
+                                @for (var i = 0; i < item.Similar.Count; i++)
+                                {
+                                    var similar = item.Similar[i];
+                                    <text>@(i > 0 ? ", " : "")</text><a href="/Posts/Detail/@similar.PostId">post @similar.PostId</a>
+                                }
+                            </small>
+                        }
                     </div>
                 </li>
             }

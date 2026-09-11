@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Boh.Web.Services;
+using ImageMagick;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -70,6 +71,24 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
         var result = await posts.CreateAsync(
             new MemoryStream(TestEnvironment.MakePng(size, size)), null, "", CancellationToken.None);
+
+        return Assert.IsType<PostCreateResult.Created>(result).Post.Id;
+    }
+
+    /// <summary>
+    /// Creates a post from a picture with structure to it, which is what gives it a perceptual
+    /// hash — <see cref="CreatePostAsync"/>'s flat colours deliberately have none. The same
+    /// <paramref name="seed"/> at another size is the same picture in different bytes.
+    /// </summary>
+    public async Task<int> CreatePatternPostAsync(
+        uint size, MagickFormat format = MagickFormat.Png, int seed = 1)
+    {
+        using var scope = Services.CreateScope();
+        var posts = scope.ServiceProvider.GetRequiredService<PostService>();
+
+        var result = await posts.CreateAsync(
+            new MemoryStream(TestEnvironment.MakePattern(size, size, format, seed)),
+            null, "", CancellationToken.None);
 
         return Assert.IsType<PostCreateResult.Created>(result).Post.Id;
     }

@@ -3,7 +3,18 @@ using Boh.Web.Tags;
 
 namespace Boh.Web.Services;
 
-public sealed record ImportedItem(int PostId, string Sha256, string FileName, IReadOnlyList<string> Tags);
+/// <summary>
+/// A file the import stored. <paramref name="Similar"/> names posts that already look like
+/// it, which is worth reporting where the import cannot act on it: the file was stored
+/// either way, and only a person can say whether the older post is the same picture.
+/// </summary>
+public sealed record ImportedItem(
+    int PostId,
+    string Sha256,
+    string FileName,
+    IReadOnlyList<string> Tags,
+    IReadOnlyList<SimilarPost> Similar);
+
 public sealed record SkippedItem(string FileName, string Reason);
 
 public sealed record ImportResult(
@@ -153,7 +164,8 @@ public sealed class GalleryDlImporter(
                         createdPost.Post.Id,
                         createdPost.Post.Sha256,
                         fileName,
-                        stored));
+                        stored,
+                        createdPost.Similar));
                     break;
 
                 // Skipped as a post, but not as information: the file being reachable from
