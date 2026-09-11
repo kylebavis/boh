@@ -1,166 +1,107 @@
 @page "/Maintenance"
 @model Boh.Web.Pages.Maintenance.IndexModel
+@using Boh.Web.Jobs
 @{
     ViewData["Title"] = "Maintenance";
 }
 
-<header class="page-head">
-    <h1>Maintenance</h1>
-    <a href="/Tags/Admin" role="button" class="secondary">Tag administration</a>
-</header>
+<h1>Maintenance</h1>
 
-<section>
+<p>
+    <small class="muted">
+        Each task runs in the background, one after another, so you can start one and leave this
+        page. The latest result of each stays here until the server restarts.
+    </small>
+</p>
+
+<section id="@MaintenanceTask.Thumbnails.Key">
     <h2>Thumbnails</h2>
     <p>
         <small class="muted">
             Rebuilds thumbnails for posts that have none — generation that failed at upload, or
-            thumbnails lost when moving storage. Originals are re-read, so this is slow on a large
-            archive; a run stops after 60 seconds and reports what is left, so run it again to continue.
+            thumbnails lost when moving storage. Missing ones are rebuilt from the originals, so
+            this can take a while on a large archive.
         </small>
     </p>
 
-    @if (Model.ThumbnailResult is { } result)
-    {
-        @if (result.Missing == 0)
-        {
-            <div class="notice" role="status">Every post already has a thumbnail. Nothing to do.</div>
-        }
-        else
-        {
-            <div class="notice @(result.Failed > 0 ? "notice-error" : "")" role="status">
-                @result.Missing thumbnail(s) missing — rebuilt @result.Regenerated@(result.Failed > 0 ? $", {result.Failed} failed" : "").
-                @if (!result.Complete)
-                {
-                    <text>@result.Remaining still to do; run it again to continue.</text>
-                }
-                @if (result.Failed > 0)
-                {
-                    <text>Failures are in the server log, usually a missing or unreadable original.</text>
-                }
-            </div>
-        }
-    }
+    <partial name="_JobStatus" model="Model.StatusOf(MaintenanceTask.Thumbnails)" />
 
-    <form method="post" asp-page-handler="RegenerateThumbnails" class="action-form">
-        <button type="submit" class="secondary">Regenerate missing thumbnails</button>
+    <form method="post" asp-page-handler="Start" asp-route-task="@MaintenanceTask.Thumbnails.Key" class="action-form">
+        <button type="submit" class="secondary">@MaintenanceTask.Thumbnails.Title</button>
     </form>
 </section>
 
-<section>
+<section id="@MaintenanceTask.Hashes.Key">
     <h2>Perceptual hashes</h2>
     <p>
         <small class="muted">
             Computes the visual fingerprint that lets a resized or re-encoded repost be recognized,
             for posts stored before hashing existed or whose hashing failed. Originals are re-read,
-            so a run stops after 60 seconds or 500 posts and reports what is left. Video is not
-            hashed. New uploads are hashed as they arrive, so this is a one-off after upgrading —
-            or after restoring a database from before the feature existed.
+            so this is slow on a large archive. Video is not hashed. New uploads are hashed as they
+            arrive, so this is a one-off after upgrading — or after restoring a database from
+            before the feature existed.
         </small>
     </p>
 
-    @if (Model.HashResult is { } hashes)
-    {
-        @if (hashes.Pending == 0)
-        {
-            <div class="notice" role="status">Every post that can be hashed already is. Nothing to do.</div>
-        }
-        else
-        {
-            <div class="notice @(hashes.Failed > 0 ? "notice-error" : "")" role="status">
-                @hashes.Pending post(s) without a hash — computed @hashes.Hashed@(hashes.Failed > 0 ? $", {hashes.Failed} failed" : "").
-                @if (hashes.Featureless > 0)
-                {
-                    <text>
-                        @hashes.Featureless had no detail to hash — a flat colour or a blank
-                        scan has no structure to compare, and will not be retried.
-                    </text>
-                }
-                @if (!hashes.Complete)
-                {
-                    <text>@hashes.Remaining still to do; run it again to continue.</text>
-                }
-                @if (hashes.Failed > 0)
-                {
-                    <text>
-                        Failures are in the server log, usually a missing or unreadable original.
-                        They stay pending, so a run once the original is back will pick them up.
-                    </text>
-                }
-            </div>
-        }
-    }
+    <partial name="_JobStatus" model="Model.StatusOf(MaintenanceTask.Hashes)" />
 
-    <form method="post" asp-page-handler="ComputeHashes" class="action-form">
-        <button type="submit" class="secondary">Compute missing perceptual hashes</button>
+    <form method="post" asp-page-handler="Start" asp-route-task="@MaintenanceTask.Hashes.Key" class="action-form">
+        <button type="submit" class="secondary">@MaintenanceTask.Hashes.Title</button>
     </form>
 </section>
 
-<section>
+<section id="@MaintenanceTask.Duplicates.Key">
     <h2>Possible duplicates</h2>
     <p>
         <small class="muted">
             Groups posts whose perceptual hashes are within @Model.MaxDistance bits of one another —
             the same picture stored twice at different sizes or qualities. Nothing is deleted: which
             copy to keep is a judgement about crops, watermarks and resolution that only you can
-            make. Comparing every pair is quadratic, so a run stops after 15 seconds and says how
-            far it reached.
+            make. Every pair of posts is compared, so on a large archive this takes a while.
         </small>
     </p>
 
-    @if (Model.DuplicateResult is { } scan)
-    {
-        <div class="notice" role="status">
-            @if (scan.Hashed == 0)
-            {
-                <text>No post has a perceptual hash yet — compute them above first.</text>
-            }
-            else if (scan.Clusters.Count == 0)
-            {
-                <text>Compared @scan.Hashed hashed post(s); nothing looks like anything else.</text>
-            }
-            else
-            {
-                <text>@scan.Clusters.Count group(s) of look-alikes among @scan.Hashed hashed post(s).</text>
-                @if (scan.OmittedClusters > 0)
-                {
-                    <text>@scan.OmittedClusters more are not shown.</text>
-                }
-            }
+    <partial name="_JobStatus" model="Model.StatusOf(MaintenanceTask.Duplicates)" />
 
-            @if (!scan.Complete)
-            {
-                <text>
-                    The scan stopped at its time limit after comparing @scan.Compared of
-                    @scan.Hashed posts, so there may be more.
-                </text>
-            }
-        </div>
-
-        @foreach (var cluster in scan.Clusters)
-        {
-            <article class="dup-cluster">
-                <small class="muted">
-                    @cluster.Size posts, closest @cluster.ClosestDistance bit@(cluster.ClosestDistance == 1 ? "" : "s") apart
-                    — oldest first@(cluster.Size > cluster.Posts.Count ? $", showing {cluster.Posts.Count}" : "")
-                </small>
-                <div class="dup-posts">
-                    @foreach (var post in cluster.Posts)
-                    {
-                        <a href="/Posts/Detail/@post.Id" title="Post @post.Id — @post.Width×@post.Height, @PostUrls.HumanSize(post.FileSizeBytes)">
-                            <img src="@PostUrls.Thumb(post)" alt="Post @post.Id" loading="lazy" />
-                        </a>
-                    }
-                </div>
-            </article>
-        }
-    }
-
-    <form method="post" asp-page-handler="ScanDuplicates" class="action-form">
-        <button type="submit" class="secondary">Scan for possible duplicates</button>
+    <form method="post" asp-page-handler="Start" asp-route-task="@MaintenanceTask.Duplicates.Key" class="action-form">
+        <button type="submit" class="secondary">@MaintenanceTask.Duplicates.Title</button>
     </form>
 </section>
 
-<section>
+<section id="@MaintenanceTask.ImpliedTags.Key">
+    <h2>Implied tags</h2>
+    <p>
+        <small class="muted">
+            Recomputes every post's implied tags from the current implications. Editing an
+            implication already updates the posts it affects, so this is a repair for drift; it
+            recounts tag totals on the way.
+        </small>
+    </p>
+
+    <partial name="_JobStatus" model="Model.StatusOf(MaintenanceTask.ImpliedTags)" />
+
+    <form method="post" asp-page-handler="Start" asp-route-task="@MaintenanceTask.ImpliedTags.Key" class="action-form">
+        <button type="submit" class="secondary">@MaintenanceTask.ImpliedTags.Title</button>
+    </form>
+</section>
+
+<section id="@MaintenanceTask.TagCounts.Key">
+    <h2>Tag totals</h2>
+    <p>
+        <small class="muted">
+            Recounts how many posts carry each tag, for when the totals beside tags have drifted
+            from what is actually tagged.
+        </small>
+    </p>
+
+    <partial name="_JobStatus" model="Model.StatusOf(MaintenanceTask.TagCounts)" />
+
+    <form method="post" asp-page-handler="Start" asp-route-task="@MaintenanceTask.TagCounts.Key" class="action-form">
+        <button type="submit" class="secondary">@MaintenanceTask.TagCounts.Title</button>
+    </form>
+</section>
+
+<section id="@MaintenanceTask.UnusedTags.Key">
     <h2>Unused tags</h2>
     <p>
         <small class="muted">
@@ -170,22 +111,10 @@
         </small>
     </p>
 
-    @if (Model.DeletedTagCount is { } deleted)
-    {
-        <div class="notice" role="status">
-            @if (deleted == 0)
-            {
-                <text>No unused tags to remove.</text>
-            }
-            else
-            {
-                <text>Deleted @deleted unused tag@(deleted == 1 ? "" : "s").</text>
-            }
-        </div>
-    }
+    <partial name="_JobStatus" model="Model.StatusOf(MaintenanceTask.UnusedTags)" />
 
-    <form method="post" asp-page-handler="DeleteUnusedTags" class="action-form"
+    <form method="post" asp-page-handler="Start" asp-route-task="@MaintenanceTask.UnusedTags.Key" class="action-form"
           onsubmit="return confirm('Delete every tag that no post uses? Aliases and implications are kept.');">
-        <button type="submit" class="danger">Delete unused tags</button>
+        <button type="submit" class="danger">@MaintenanceTask.UnusedTags.Title</button>
     </form>
 </section>

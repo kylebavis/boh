@@ -164,12 +164,11 @@ public class DuplicateDetectionTests
         var postId = await CreatePatternAsync(env, 300);
         await ForgetHashAsync(env, postId);
 
-        var result = await env.Duplicates.ComputeMissingHashesAsync(Ct);
+        var result = await env.Duplicates.ComputeMissingHashesAsync(null, Ct);
 
         Assert.Equal(1, result.Pending);
         Assert.Equal(1, result.Hashed);
         Assert.Equal(0, result.Failed);
-        Assert.True(result.Complete);
 
         env.Db.ChangeTracker.Clear();
         Assert.NotNull((await env.Posts.GetAsync(postId, Ct))!.PerceptualHash);
@@ -182,17 +181,16 @@ public class DuplicateDetectionTests
         var postId = await CreatePatternAsync(env, 300);
         await ForgetHashAsync(env, postId);
 
-        await env.Duplicates.ComputeMissingHashesAsync(Ct);
-        var second = await env.Duplicates.ComputeMissingHashesAsync(Ct);
+        await env.Duplicates.ComputeMissingHashesAsync(null, Ct);
+        var second = await env.Duplicates.ComputeMissingHashesAsync(null, Ct);
 
         Assert.Equal(0, second.Pending);
         Assert.Equal(0, second.Hashed);
-        Assert.True(second.Complete);
     }
 
     /// <summary>
-    /// An image with nothing to hash must be written off rather than retried, or a run's whole
-    /// budget would eventually go on re-decoding the same hopeless files.
+    /// An image with nothing to hash must be written off rather than retried, or every pass
+    /// would go on re-decoding the same hopeless files.
     /// </summary>
     [Fact]
     public async Task An_image_with_no_detail_is_not_offered_to_the_backfill_twice()
@@ -203,13 +201,12 @@ public class DuplicateDetectionTests
 
         await ForgetHashAsync(env, flat.Post.Id);
 
-        var first = await env.Duplicates.ComputeMissingHashesAsync(Ct);
+        var first = await env.Duplicates.ComputeMissingHashesAsync(null, Ct);
         Assert.Equal(1, first.Pending);
         Assert.Equal(0, first.Hashed);
         Assert.Equal(1, first.Featureless);
-        Assert.True(first.Complete);
 
-        Assert.Equal(0, (await env.Duplicates.ComputeMissingHashesAsync(Ct)).Pending);
+        Assert.Equal(0, (await env.Duplicates.ComputeMissingHashesAsync(null, Ct)).Pending);
     }
 
     /// <summary>
@@ -226,15 +223,36 @@ public class DuplicateDetectionTests
         await ForgetHashAsync(env, postId);
         File.Delete(env.Store.OriginalPath(post.Sha256, post.FileExtension));
 
-        var result = await env.Duplicates.ComputeMissingHashesAsync(Ct);
+        var result = await env.Duplicates.ComputeMissingHashesAsync(null, Ct);
 
         Assert.Equal(1, result.Failed);
         Assert.Equal(0, result.Hashed);
-        Assert.Equal(1, result.Remaining);
-        Assert.False(result.Complete);
 
         // Still on the list, so restoring the mount and running it again is all it takes.
-        Assert.Equal(1, (await env.Duplicates.ComputeMissingHashesAsync(Ct)).Pending);
+        Assert.Equal(1, (await env.Duplicates.ComputeMissingHashesAsync(null, Ct)).Pending);
+    }
+
+    /// <summary>
+    /// A failure stays pending, so the pass has to page past it. Asking again for "the next
+    /// pending posts" would return the same failure every time and never reach the ones after.
+    /// </summary>
+    [Fact]
+    public async Task A_failure_does_not_stop_the_backfill_reaching_later_posts()
+    {
+        using var env = new TestEnvironment();
+        var broken = await CreatePatternAsync(env, 300);
+        var later = await CreatePatternAsync(env, 400, seed: 2);
+        var brokenPost = (await env.Posts.GetAsync(broken, Ct))!;
+
+        await ForgetHashAsync(env, broken);
+        await ForgetHashAsync(env, later);
+        File.Delete(env.Store.OriginalPath(brokenPost.Sha256, brokenPost.FileExtension));
+
+        var result = await env.Duplicates.ComputeMissingHashesAsync(null, Ct);
+
+        Assert.Equal(2, result.Pending);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(1, result.Hashed);
     }
 
     [Fact]
@@ -242,10 +260,9 @@ public class DuplicateDetectionTests
     {
         using var env = new TestEnvironment();
 
-        var result = await env.Duplicates.ComputeMissingHashesAsync(Ct);
+        var result = await env.Duplicates.ComputeMissingHashesAsync(null, Ct);
 
         Assert.Equal(0, result.Pending);
-        Assert.True(result.Complete);
     }
 
     // ---- archive-wide scan ---------------------------------------------
@@ -259,9 +276,8 @@ public class DuplicateDetectionTests
         var third = await CreatePatternAsync(env, 160, MagickFormat.Jpeg);
         await CreatePatternAsync(env, 300, seed: 2);
 
-        var scan = await env.Duplicates.ScanForDuplicatesAsync(Ct);
+        var scan = await env.Duplicates.ScanForDuplicatesAsync(null, Ct);
 
-        Assert.True(scan.Complete);
         Assert.Equal(4, scan.Hashed);
 
         var cluster = Assert.Single(scan.Clusters);
@@ -289,7 +305,7 @@ public class DuplicateDetectionTests
             await CreatePatternAsync(env, size);
         }
 
-        var scan = await env.Duplicates.ScanForDuplicatesAsync(Ct);
+        var scan = await env.Duplicates.ScanForDuplicatesAsync(null, Ct);
 
         var cluster = Assert.Single(scan.Clusters);
         Assert.Equal(14, cluster.Size);
@@ -308,11 +324,10 @@ public class DuplicateDetectionTests
         await CreatePatternAsync(env, 300, seed: 2);
         await CreatePatternAsync(env, 300, seed: 3);
 
-        var scan = await env.Duplicates.ScanForDuplicatesAsync(Ct);
+        var scan = await env.Duplicates.ScanForDuplicatesAsync(null, Ct);
 
         Assert.Empty(scan.Clusters);
         Assert.Equal(3, scan.Hashed);
-        Assert.True(scan.Complete);
     }
 
     [Fact]
@@ -322,11 +337,10 @@ public class DuplicateDetectionTests
         await env.Posts.CreateAsync(new MemoryStream(TestEnvironment.MakePng(300, 300)), null, "", Ct);
         await env.Posts.CreateAsync(new MemoryStream(TestEnvironment.MakePng(200, 200)), null, "", Ct);
 
-        var scan = await env.Duplicates.ScanForDuplicatesAsync(Ct);
+        var scan = await env.Duplicates.ScanForDuplicatesAsync(null, Ct);
 
         Assert.Equal(0, scan.Hashed);
         Assert.Empty(scan.Clusters);
-        Assert.True(scan.Complete);
     }
 
     // ---- similar: search ------------------------------------------------

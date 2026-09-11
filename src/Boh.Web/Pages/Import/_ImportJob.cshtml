@@ -1,0 +1,101 @@
+@model Boh.Web.Jobs.JobSnapshot
+@using Boh.Web.Jobs
+@using Boh.Web.Services
+@{
+    var active = Model.IsActive;
+    var result = Model.Result as ImportResult;
+}
+@* Polls for its own replacement while the import is queued or running, and stops once the
+   block it receives is a finished one — the same arrangement as a maintenance task. *@
+<div id="import-@Model.Id" class="import-job"
+     hx-get="@(active ? $"/Import?handler=Job&id={Model.Id}" : null)"
+     hx-trigger="@(active ? "every 2s" : null)"
+     hx-swap="@(active ? "outerHTML" : null)">
+
+    <div class="import-job-head">
+        <a href="@Model.Title" rel="noreferrer noopener">@Model.Title</a>
+        @if (Model.FinishedAt is { } finished)
+        {
+            <small class="muted">@RelativeTime.Since(finished, DateTimeOffset.UtcNow)</small>
+        }
+    </div>
+
+    @if (active)
+    {
+        <partial name="_JobProgress" model="Model" />
+    }
+    else if (Model.State == JobState.Cancelled)
+    {
+        <div class="notice" role="status">
+            @(Model.Message ?? "Cancelled.") Anything stored before then was kept.
+        </div>
+    }
+    else if (result is null)
+    {
+        <div class="notice notice-error" role="alert">@Model.Message</div>
+    }
+    else
+    {
+        @if (result.Error is not null)
+        {
+            <div class="notice notice-error" role="alert">@result.Error</div>
+        }
+        else
+        {
+            <div class="notice" role="status">
+                Created @result.Created.Count post(s)@(result.Skipped.Count > 0 ? $", skipped {result.Skipped.Count}" : "").
+            </div>
+        }
+
+        @if (result.Created.Count > 0)
+        {
+            <h4>Imported</h4>
+            <ul class="import-list">
+                @foreach (var item in result.Created)
+                {
+                    <li>
+                        <a class="import-thumb" href="/Posts/Detail/@item.PostId">
+                            <img src="/files/t/@(item.Sha256).webp" alt="Post @item.PostId" loading="lazy" />
+                        </a>
+                        <div class="import-detail">
+                            <a href="/Posts/Detail/@item.PostId">@item.FileName</a>
+                            <small class="muted">
+                                @(item.Tags.Count == 0 ? "no tags found" : string.Join(" ", item.Tags))
+                            </small>
+
+                            @* Reported rather than acted on: the file was stored either way, and
+                               which of the two posts to keep is not a decision an import can make. *@
+                            @if (item.Similar.Count > 0)
+                            {
+                                <small class="hint-duplicate">
+                                    looks like
+                                    @for (var i = 0; i < item.Similar.Count; i++)
+                                    {
+                                        var similar = item.Similar[i];
+                                        <text>@(i > 0 ? ", " : "")</text><a href="/Posts/Detail/@similar.PostId">post @similar.PostId</a>
+                                    }
+                                </small>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+
+        @if (result.Skipped.Count > 0)
+        {
+            <h4>Skipped</h4>
+            <div class="scroll-x">
+                <table>
+                    <thead><tr><th scope="col">File</th><th scope="col">Reason</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in result.Skipped)
+                        {
+                            <tr><td>@item.FileName</td><td>@item.Reason</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>

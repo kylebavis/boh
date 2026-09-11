@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using Boh.Web.Data;
 using Boh.Web.Data.Entities;
+using Boh.Web.Jobs;
 using Boh.Web.Media;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,19 +12,15 @@ public sealed record SimilarPost(int PostId, int Distance);
 /// <summary>The same finding with the post loaded, for rendering a thumbnail.</summary>
 public sealed record SimilarPostCard(Post Post, int Distance);
 
-/// <summary>
-/// Outcome of a hashing pass. <paramref name="Remaining"/> counts the posts still without a
-/// hash afterwards, so a non-zero value means running it again continues — including the
-/// <paramref name="Failed"/> ones, which are deliberately left for a later run.
-/// </summary>
+/// <summary>Outcome of a hashing pass over every post that has no hash.</summary>
 /// <param name="Pending">Posts that had no hash when the pass started.</param>
 /// <param name="Hashed">Posts that now have one.</param>
 /// <param name="Featureless">Posts with nothing to hash, recorded so they are not retried.</param>
-/// <param name="Failed">Posts whose original could not be read at all.</param>
-public sealed record HashingResult(int Pending, int Hashed, int Featureless, int Failed, int Remaining)
-{
-    public bool Complete => Remaining == 0;
-}
+/// <param name="Failed">
+/// Posts whose original could not be read at all. They are deliberately left pending, so a
+/// later pass — once a missing mount is back, say — picks them up.
+/// </param>
+public sealed record HashingResult(int Pending, int Hashed, int Featureless, int Failed);
 
 /// <summary>
 /// A group of posts that all look alike, oldest first — which is usually the one to keep.
@@ -38,16 +34,12 @@ public sealed record HashingResult(int Pending, int Hashed, int Featureless, int
 /// </param>
 public sealed record DuplicateCluster(IReadOnlyList<Post> Posts, int Size, int ClosestDistance);
 
-/// <summary>
-/// Outcome of an archive-wide scan. <paramref name="Complete"/> is false when the scan hit
-/// its time budget, in which case pairs it never reached may hide further duplicates.
-/// </summary>
+/// <summary>Outcome of an archive-wide scan.</summary>
+/// <param name="OmittedClusters">Groups found beyond the ones the report shows.</param>
 public sealed record DuplicateScan(
     int Hashed,
-    int Compared,
     IReadOnlyList<DuplicateCluster> Clusters,
-    int OmittedClusters,
-    bool Complete);
+    int OmittedClusters);
 
 /// <summary>
 /// Near-duplicate detection over perceptual hashes: everything that asks "what else looks
@@ -63,7 +55,8 @@ public sealed record DuplicateScan(
 /// eight bytes each and served by a covering index, and a hundred thousand of them cost one
 /// small read and about a hundred thousand popcounts, which is well under a millisecond of
 /// CPU. The archive-wide scan is the one place that stops being true, because it compares
-/// every pair rather than one hash against every other, and it is budgeted accordingly.
+/// every pair rather than one hash against every other, which is why it runs as a background
+/// job.
 /// </remarks>
 public sealed class DuplicateService(
     BohDbContext db,
@@ -81,15 +74,12 @@ public sealed class DuplicateService(
     /// </summary>
     public const int MaxDistance = 8;
 
-    /// <summary>Bounds a single hashing pass, the same way thumbnail repair is bounded.</summary>
-    private static readonly TimeSpan HashingTimeBudget = TimeSpan.FromSeconds(60);
-    private const int HashingMaxPerRun = 500;
-
     /// <summary>
-    /// The archive-wide scan is quadratic in the number of hashed posts, so it gets a budget
-    /// and reports how far it got rather than a promise it cannot keep inside a request.
+    /// Posts a hashing pass loads and commits together. Small enough that the context never
+    /// tracks much at once and a cancelled pass loses little work; large enough that committing
+    /// is not the cost — decoding is.
     /// </summary>
-    private static readonly TimeSpan ScanTimeBudget = TimeSpan.FromSeconds(15);
+    private const int HashingBatchSize = 200;
 
     /// <summary>
     /// Clusters a single report will render. A collection with a large set of near-identical
@@ -109,6 +99,13 @@ public sealed class DuplicateService(
     /// practice; the cap is here so a pathological hash cannot build an unbounded query.
     /// </summary>
     private const int SearchMaxMatches = 500;
+
+    private enum HashOutcome
+    {
+        Hashed,
+        Featureless,
+        Failed
+    }
 
     /// <summary>
     /// Posts that look like <paramref name="hash"/>, closest first.
@@ -184,73 +181,98 @@ public sealed class DuplicateService(
     /// Video is left alone rather than marked as attempted: nothing has tried it, and a
     /// release that learns to hash video should find those posts still waiting here.
     /// </remarks>
-    public async Task<HashingResult> ComputeMissingHashesAsync(CancellationToken ct)
+    public async Task<HashingResult> ComputeMissingHashesAsync(
+        IProgress<JobProgress>? progress, CancellationToken ct)
     {
         var pending = db.Posts.Where(p => !p.PerceptualHashTried && !p.IsVideo);
 
         var total = await pending.CountAsync(ct);
-        var batch = await pending.OrderBy(p => p.Id).Take(HashingMaxPerRun).ToListAsync(ct);
+        int done = 0, hashed = 0, featureless = 0, failed = 0;
+        var after = 0;
 
-        var started = Stopwatch.StartNew();
-        int hashed = 0, featureless = 0, failed = 0;
-
-        foreach (var post in batch)
+        while (true)
         {
-            ct.ThrowIfCancellationRequested();
-            if (started.Elapsed >= HashingTimeBudget) break;
+            // Paged by id rather than by what is still pending: a failure stays pending, so
+            // asking again for "the next pending posts" would return it every time and never
+            // reach the posts after it.
+            var batch = await pending
+                .Where(p => p.Id > after)
+                .OrderBy(p => p.Id)
+                .Take(HashingBatchSize)
+                .ToListAsync(ct);
 
-            if (!store.OriginalExists(post.Sha256, post.FileExtension))
+            if (batch.Count == 0) break;
+
+            foreach (var post in batch)
             {
-                // Left un-tried on purpose: an original missing because a mount is offline
-                // comes back, and this pass should hash it then rather than write it off now.
-                logger.LogWarning("Post {PostId} has no original at {Sha256}; cannot hash it",
-                    post.Id, post.Sha256);
-                failed++;
-                continue;
-            }
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new JobProgress("Hashing posts", done, total));
 
-            var originalPath = store.OriginalPath(post.Sha256, post.FileExtension);
-
-            try
-            {
-                // Re-probed rather than trusting the stored MIME type, so the same processor
-                // handles it as at upload — and a post whose original has since become
-                // unreadable is reported instead of throwing.
-                var probed = await processors.ProbeAsync(originalPath, ct);
-                if (probed is null)
+                switch (await HashAsync(post, ct))
                 {
-                    logger.LogWarning("No processor recognizes the original for post {PostId}", post.Id);
-                    failed++;
-                    continue;
+                    case HashOutcome.Hashed: hashed++; break;
+                    case HashOutcome.Featureless: featureless++; break;
+                    default: failed++; break;
                 }
 
-                var hash = await probed.Value.Processor.TryComputePerceptualHashAsync(originalPath, ct);
-
-                post.PerceptualHash = hash;
-                post.PerceptualHashTried = true;
-
-                if (hash is null) featureless++;
-                else hashed++;
+                done++;
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogError(ex, "Failed to compute a perceptual hash for post {PostId}", post.Id);
-                failed++;
-            }
+
+            // One transaction per batch. Saving per post would fsync for every post in a pass
+            // whose real cost is decoding.
+            await db.SaveChangesAsync(ct);
+            db.ChangeTracker.Clear();
+
+            after = batch[^1].Id;
         }
 
-        // One transaction for the whole batch. Saving per post would fsync five hundred times
-        // for a pass whose real cost is decoding.
-        await db.SaveChangesAsync(ct);
-
-        var remaining = total - hashed - featureless;
+        progress?.Report(new JobProgress("Hashing posts", done, total));
 
         logger.LogInformation(
-            "Perceptual hashing: {Pending} pending, {Hashed} hashed, {Featureless} featureless, " +
-            "{Failed} failed, {Remaining} left",
-            total, hashed, featureless, failed, remaining);
+            "Perceptual hashing: {Pending} pending, {Hashed} hashed, {Featureless} featureless, {Failed} failed",
+            total, hashed, featureless, failed);
 
-        return new HashingResult(total, hashed, featureless, failed, remaining);
+        return new HashingResult(total, hashed, featureless, failed);
+    }
+
+    /// <summary>Hashes one post in place, leaving the caller to save it.</summary>
+    private async Task<HashOutcome> HashAsync(Post post, CancellationToken ct)
+    {
+        if (!store.OriginalExists(post.Sha256, post.FileExtension))
+        {
+            // Left un-tried on purpose: an original missing because a mount is offline
+            // comes back, and a later pass should hash it then rather than write it off now.
+            logger.LogWarning("Post {PostId} has no original at {Sha256}; cannot hash it",
+                post.Id, post.Sha256);
+            return HashOutcome.Failed;
+        }
+
+        var originalPath = store.OriginalPath(post.Sha256, post.FileExtension);
+
+        try
+        {
+            // Re-probed rather than trusting the stored MIME type, so the same processor
+            // handles it as at upload — and a post whose original has since become
+            // unreadable is reported instead of throwing.
+            var probed = await processors.ProbeAsync(originalPath, ct);
+            if (probed is null)
+            {
+                logger.LogWarning("No processor recognizes the original for post {PostId}", post.Id);
+                return HashOutcome.Failed;
+            }
+
+            var hash = await probed.Value.Processor.TryComputePerceptualHashAsync(originalPath, ct);
+
+            post.PerceptualHash = hash;
+            post.PerceptualHashTried = true;
+
+            return hash is null ? HashOutcome.Featureless : HashOutcome.Hashed;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Failed to compute a perceptual hash for post {PostId}", post.Id);
+            return HashOutcome.Failed;
+        }
     }
 
     /// <summary>
@@ -262,7 +284,8 @@ public sealed class DuplicateService(
     /// A and C are further apart than the threshold. That is the useful shape for a report —
     /// a chain of re-encodings is one duplicate to resolve, not several overlapping pairs.
     /// </remarks>
-    public async Task<DuplicateScan> ScanForDuplicatesAsync(CancellationToken ct)
+    public async Task<DuplicateScan> ScanForDuplicatesAsync(
+        IProgress<JobProgress>? progress, CancellationToken ct)
     {
         var (ids, hashes) = await LoadHashesAsync(ct);
         var count = ids.Length;
@@ -279,19 +302,12 @@ public sealed class DuplicateService(
             closest[i] = int.MaxValue;
         }
 
-        var started = Stopwatch.StartNew();
-        var complete = true;
-        var compared = 0;
-
         for (var i = 0; i < count; i++)
         {
+            // Once per row rather than per pair: a row is one sweep over the hashes, and the
+            // inner loop is the part worth keeping tight.
             ct.ThrowIfCancellationRequested();
-
-            if (started.Elapsed >= ScanTimeBudget)
-            {
-                complete = false;
-                break;
-            }
+            progress?.Report(new JobProgress("Comparing posts", i, count));
 
             var hash = hashes[i];
 
@@ -300,9 +316,9 @@ public sealed class DuplicateService(
                 var distance = PerceptualHash.Distance(hash, hashes[j]);
                 if (distance <= MaxDistance) Merge(i, j, distance);
             }
-
-            compared++;
         }
+
+        progress?.Report(new JobProgress("Comparing posts", count, count));
 
         var groups = new Dictionary<int, List<int>>();
         for (var i = 0; i < count; i++)
@@ -347,10 +363,9 @@ public sealed class DuplicateService(
             .ToList();
 
         logger.LogInformation(
-            "Duplicate scan: {Hashed} hashed posts, {Compared} compared, {Clusters} cluster(s), complete {Complete}",
-            count, compared, found.Count, complete);
+            "Duplicate scan: {Hashed} hashed posts, {Clusters} cluster(s)", count, found.Count);
 
-        return new DuplicateScan(count, compared, clusters, found.Count - clusters.Count, complete);
+        return new DuplicateScan(count, clusters, found.Count - clusters.Count);
 
         int Root(int x)
         {

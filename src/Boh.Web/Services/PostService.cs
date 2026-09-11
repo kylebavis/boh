@@ -1,5 +1,6 @@
 using Boh.Web.Data;
 using Boh.Web.Data.Entities;
+using Boh.Web.Jobs;
 using Boh.Web.Tags;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,18 +28,8 @@ public abstract record PostCreateResult
     public sealed record Rejected(string Reason) : PostCreateResult;
 }
 
-/// <summary>
-/// Outcome of a thumbnail repair pass. <paramref name="Remaining"/> is non-zero when the
-/// run hit its budget before finishing, in which case running it again continues.
-/// </summary>
-public sealed record ThumbnailRepairResult(
-    int Missing,
-    int Regenerated,
-    int Failed,
-    int Remaining)
-{
-    public bool Complete => Remaining == 0;
-}
+/// <summary>Outcome of a thumbnail repair pass over every post.</summary>
+public sealed record ThumbnailRepairResult(int Missing, int Regenerated, int Failed);
 
 public sealed class PostService(
     BohDbContext db,
@@ -53,14 +44,6 @@ public sealed class PostService(
     /// and decoding it would allocate pixels * 4 bytes before anything else could intervene.
     /// </summary>
     private const long MaxPixels = 400_000_000;
-
-    /// <summary>
-    /// Bounds on a single repair pass. Regeneration re-decodes every original, so an archive
-    /// of any size would outlive an HTTP request; the pass stops at whichever limit it meets
-    /// first and reports what is left so the operator can simply run it again.
-    /// </summary>
-    private static readonly TimeSpan RepairTimeBudget = TimeSpan.FromSeconds(60);
-    private const int RepairMaxPerRun = 500;
 
     /// <summary>
     /// How many look-alikes a newly stored post reports. Enough to show the upload was
@@ -249,29 +232,27 @@ public sealed class PostService(
     /// same processor selection runs as at upload and a post whose original has since become
     /// unreadable is reported instead of throwing.
     /// </remarks>
-    public async Task<ThumbnailRepairResult> RegenerateMissingThumbnailsAsync(CancellationToken ct)
+    public async Task<ThumbnailRepairResult> RegenerateMissingThumbnailsAsync(
+        IProgress<JobProgress>? progress, CancellationToken ct)
     {
         var posts = await db.Posts.AsNoTracking()
             .OrderBy(p => p.Id)
             .Select(p => new { p.Id, p.Sha256, p.FileExtension })
             .ToListAsync(ct);
 
-        var started = System.Diagnostics.Stopwatch.StartNew();
-        int missing = 0, regenerated = 0, failed = 0, remaining = 0;
+        int missing = 0, regenerated = 0, failed = 0;
 
-        foreach (var post in posts)
+        for (var i = 0; i < posts.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
 
+            // Counted in posts checked rather than thumbnails rebuilt: how many are missing is
+            // only known at the end, while how many there are to check is known now.
+            progress?.Report(new JobProgress("Checking posts", i, posts.Count));
+
+            var post = posts[i];
             if (store.ThumbExists(post.Sha256)) continue;
             missing++;
-
-            // Out of budget: count the rest so the caller can report honest progress.
-            if (started.Elapsed >= RepairTimeBudget || regenerated + failed >= RepairMaxPerRun)
-            {
-                remaining++;
-                continue;
-            }
 
             if (!store.OriginalExists(post.Sha256, post.FileExtension))
             {
@@ -306,11 +287,13 @@ public sealed class PostService(
             }
         }
 
-        logger.LogInformation(
-            "Thumbnail repair: {Missing} missing, {Regenerated} rebuilt, {Failed} failed, {Remaining} left",
-            missing, regenerated, failed, remaining);
+        progress?.Report(new JobProgress("Checking posts", posts.Count, posts.Count));
 
-        return new ThumbnailRepairResult(missing, regenerated, failed, remaining);
+        logger.LogInformation(
+            "Thumbnail repair: {Missing} missing, {Regenerated} rebuilt, {Failed} failed",
+            missing, regenerated, failed);
+
+        return new ThumbnailRepairResult(missing, regenerated, failed);
     }
 
     private async Task GenerateThumbnailAsync(

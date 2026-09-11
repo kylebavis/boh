@@ -613,16 +613,16 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     margin: 0;
 }
 
-.head-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
 /* The page heading is a flex row, so the following section's h2 would otherwise butt
    straight up against it. */
 .page-head {
     margin-bottom: 1.5rem;
+}
+
+/* The same gap for a page whose heading has no actions beside it, where a bare h1 would
+   otherwise sit directly on the first section's h2. */
+h1 + section {
+    margin-top: 1.5rem;
 }
 
 section + section {
@@ -687,21 +687,6 @@ section + section {
     width: auto;
     padding: 0.25rem 0.6rem;
     font-size: 0.8rem;
-}
-
-.maintenance-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-.maintenance-actions form {
-    margin: 0;
-}
-
-.maintenance-actions button {
-    margin: 0;
-    width: auto;
 }
 
 /* Nav search ----------------------------------------------------------- */
@@ -823,6 +808,63 @@ section + section {
 
 .import-detail a {
     overflow-wrap: break-word;
+}
+
+.import-job {
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    padding: 0.75rem;
+    margin-block: 0.75rem;
+}
+
+.import-job-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    flex-wrap: wrap;
+}
+
+/* A gallery URL has no natural break points, and would otherwise push the card wider than a
+   phone. */
+.import-job-head a {
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+.import-job .notice {
+    margin-block: 0.5rem;
+}
+
+.import-job h4 {
+    margin: 0.75rem 0 0.5rem;
+    font-size: 1rem;
+}
+
+/* Background jobs ------------------------------------------------------ */
+
+/* A queued or running job: what it is doing and a way to stop it, with the bar underneath. */
+.job-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    flex-wrap: wrap;
+}
+
+.job-line form {
+    margin: 0;
+}
+
+.job-line button {
+    margin: 0;
+    width: auto;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.8rem;
+}
+
+.job-running progress {
+    margin: 0.5rem 0 0;
 }
 
 /* Responsive ----------------------------------------------------------- */

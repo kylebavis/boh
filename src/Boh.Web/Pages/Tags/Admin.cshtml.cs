@@ -123,20 +123,6 @@ public class AdminModel(BohDbContext db, TagService tags) : PageModel
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostRebuildAsync(CancellationToken ct)
-    {
-        var changes = await tags.RebuildAllImpliedAsync(ct);
-        Message = $"Rebuilt implied tags — {changes} link(s) changed.";
-        return RedirectToPage();
-    }
-
-    public async Task<IActionResult> OnPostRecountAsync(CancellationToken ct)
-    {
-        await tags.RecountTagsAsync(ct);
-        Message = "Tag post counts recomputed.";
-        return RedirectToPage();
-    }
-
     private void Apply(TagLinkResult result, string successMessage)
     {
         if (result is TagLinkResult.Rejected rejected) Error = rejected.Reason;

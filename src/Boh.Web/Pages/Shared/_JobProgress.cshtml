@@ -1,0 +1,34 @@
+@model Boh.Web.Jobs.JobSnapshot
+@using Boh.Web.Jobs
+@{
+    var progress = Model.Progress;
+    var running = Model.State == JobState.Running;
+    var measured = running && progress is { Total: > 0 };
+
+    var text = !running
+        ? Model.Lane == JobLane.Import
+            ? "Waiting for the imports ahead of it…"
+            : "Waiting for another task to finish…"
+        : measured
+            ? $"{progress!.Stage} — {progress.Done:N0} of {progress.Total:N0}"
+            : progress?.Stage ?? "Starting…";
+}
+@* A queued or running job, from either page. The cancel form posts to whichever page
+   rendered this, which is the one that knows whose job it is allowed to stop. *@
+<div class="notice job-running">
+    <div class="job-line">
+        <span>@text</span>
+        <form method="post" asp-page-handler="Cancel" asp-route-id="@Model.Id">
+            <button type="submit" class="secondary outline">Cancel</button>
+        </form>
+    </div>
+
+    @if (measured)
+    {
+        <progress value="@progress!.Done" max="@progress.Total"></progress>
+    }
+    else if (running)
+    {
+        <progress></progress>
+    }
+</div>

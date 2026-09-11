@@ -7,10 +7,7 @@
 
 <header class="page-head">
     <h1>Tag administration</h1>
-    <span class="head-actions">
-        <a href="/Tags" role="button" class="secondary">All tags</a>
-        <a href="/Maintenance" role="button" class="secondary">Maintenance</a>
-    </span>
+    <a href="/Tags" role="button" class="secondary">All tags</a>
 </header>
 
 @if (Model.Message is not null)
@@ -237,17 +234,4 @@
             </table>
         </div>
     }
-</section>
-
-<section>
-    <h2>Maintenance</h2>
-    <div class="maintenance-actions">
-        <form method="post" asp-page-handler="Rebuild">
-            <button type="submit" class="secondary">Rebuild implied tags</button>
-        </form>
-        <form method="post" asp-page-handler="Recount">
-            <button type="submit" class="secondary">Recount tag totals</button>
-        </form>
-    </div>
-    <p><small class="muted">Rebuild recomputes every post's implied tags. Recount repairs post totals if they drift.</small></p>
 </section>
