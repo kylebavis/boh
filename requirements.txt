@@ -3,4 +3,4 @@
 # The pin lives here rather than inline in the Dockerfile because Dependabot's pip
 # ecosystem reads requirements files and cannot see a `pip install` in a RUN layer.
 # Keeping it in this file is what makes an upgrade arrive as a reviewable PR.
-gallery-dl==1.32.10
+gallery-dl==1.32.11
