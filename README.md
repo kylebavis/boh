@@ -157,7 +157,9 @@ A few behaviours worth knowing:
 
 Read these before exposing boh to anything.
 
-- **boh speaks plain HTTP.** Put it behind a reverse proxy that terminates TLS. It honors `X-Forwarded-For` and `X-Forwarded-Proto`, so the auth cookie picks up the `Secure` flag automatically once requests arrive over HTTPS.
+- **boh speaks plain HTTP.** Put it behind a reverse proxy that terminates TLS. It honors `X-Forwarded-For` and `X-Forwarded-Proto`, so the auth cookie picks up the `Secure` flag automatically once requests arrive over HTTPS. HSTS belongs on that proxy; boh does not send it, because doing so would break the plain-HTTP LAN case.
+- **Sign-in attempts are rate limited** to 10 per address every 5 minutes, and both successes and failures are logged with the address they came from. The address is whatever `X-Forwarded-For` says, so the limit is only as trustworthy as the proxy in front — something reaching the container directly can forge it.
+- **boh refuses to be framed.** It sends `frame-ancestors 'none'` and `X-Frame-Options: DENY`, so embedding it in a dashboard like Organizr or Heimdall will show an empty pane. Relax both in `SecurityHeaders.cs` if you want that.
 - **`BOH_AUTH_MODE=none` disables all authentication**, including delete and import. Only use it on a network where you trust everyone who can reach the port.
 - **The import feature makes the server fetch a URL you give it.** It always requires signing in, even with `BOH_PUBLIC_READ=true`, because it can reach hosts the container can reach — including things on your local network. Do not hand accounts to people you would not give that capability.
 - boh is built for a handful of trusted users. Anyone with an account can delete things.
