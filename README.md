@@ -1,6 +1,6 @@
 # boh
 
-A self-hosted imageboard for one person or a few friends. Tag-based, deliberately small, and designed to run as a single container with a single volumes.
+A self-hosted imageboard for one person or a few friends. Tag-based, deliberately small, and designed to run as a single container.
 
 Think danbooru, minus everything needed to serve thousands of strangers. It should be simple enough for selfhosters to deploy. Contributions are welcome. That said, I want to keep this application relatively lightweight.
 
@@ -14,11 +14,9 @@ Think danbooru, minus everything needed to serve thousands of strangers. It shou
 - Tag **aliases** — `scenery` can redirect to `landscape` everywhere
 - Tag **implications** — `meme:pondering_my_orb` can automatically apply `format:reaction_image`
 - Import from third-party sites via bundled [gallery-dl](https://github.com/mikf/gallery-dl), mapping site metadata onto tags
-- Duplicate detection: the same file cannot be posted twice — importing it again from somewhere else adds that address to the post's sources instead
-- Near-duplicate detection by perceptual hash: a resized or re-encoded repost is stored, but flagged on the post and on the import summary, searchable with `similar:123`, and findable across the whole archive from Maintenance
-- Several source URLs per post, added and removed by hand on the post, and searchable with `url:twitter.com`. An import records the page each file came from where the site reports one, falling back to the URL you typed
+- Duplicate detection: the same file cannot be posted twice. Fuzzy search for similar images based on perceptual hashing.
 - Thumbnails rebuildable from originals, so they can live on disposable storage
-- Light/dark/auto toggle in the header, with the colour scheme for each side chosen per user on the account page — nine packaged (Nord, Dracula, Monokai, Gruvbox, Catppuccin, Solarized); mobile-first layout
+- Light/Dark mode. There are a few alternative themes as well.
 - Optional public browsing with private writes
 - Multi-user: ordinary accounts plus administrators who manage them
 
@@ -47,7 +45,7 @@ docker compose up -d
 
 Open <http://localhost:8080> and sign in as **`admin`** with the password you set.
 
-Everything lives under `/data` — database, originals, thumbnails. Back up that one directory and you have backed up the whole instance.
+All of the app's data lives under `/data` — database, originals, thumbnails. The app uses SQLite for its database, so you can (probably) get away with a filesystem backup instead of a full-featured database backup tool.
 
 ## Configuration
 
@@ -73,7 +71,7 @@ All settings are environment variables.
 
 ### Storage layout
 
-By default everything lives under `/data` and one volume is all you need. The three kinds of state can also be split across different storage; this is useful if you have different classes of storage (e.g. local SSD for DB/thumbs vs remote spinning rust for raw media).
+The three kinds of state can be split across different storage; this is useful if you have different classes of storage (e.g. local SSD for DB/thumbs vs remote and/or slow storage for raw media).
 
 | What | Grows | Notes |
 |---|---|---|
@@ -81,12 +79,12 @@ By default everything lives under `/data` and one volume is all you need. The th
 | Originals | Fast | The reason to reach for a NAS. Written once, read occasionally. |
 | Thumbnails | With the archive | ~1–2% of originals. Fast storage helps, since a gallery page reads dozens at once. |
 
-> **Do not put the database on a network share.** SQLite depends on POSIX advisory locks
+> **Do not put the database on a network share.** SQLite depends on filesystem locks
 > behaving correctly, which SMB/CIFS and NFS do not reliably provide, and WAL mode needs
 > shared memory they cannot offer at all. See <https://sqlite.org/useovernet.html> for more information. Boh checks the filesystem backing the database at startup and logs a
 > warning if it looks network-backed, but it will not stop you.
 
-A split deployment — database on local disk, media on a NAS, thumbnails local for speed:
+A split deployment — database and thumbnails on local disk, media on a NAS:
 
 ```yaml
 services:
@@ -129,9 +127,9 @@ boh checks every configured location is writable before it starts, and names the
 **Notes on splitting**
 
 - Upload staging always lives inside `BOH_ORIGINALS_PATH`, so committing a file is a rename within one filesystem rather than a copy across two. It is not separately configurable for that reason.
-- Originals are content-addressed, so the tree can be moved between hosts or storage as-is — paths depend only on the file's SHA-256, never on the database.
+- Originals are content-addressed, so the tree can be moved between hosts or storage as-is — paths depend only on the file's SHA-256.
 - Thumbnails are derived data and can be rebuilt from the originals — **Maintenance → Regenerate missing thumbnails**. That makes the thumbnail directory the one location safe to drop or move without a backup, at the cost of re-reading every original to rebuild it.
-- Back up the database and originals. Losing the database loses all tags; the originals themselves are self-describing (their filename is their SHA-256). <https://github.com/nfrastack/container-db-backup> is useful for handling the DB backups.
+- Back up the database and originals. As noted above, you can probably get away with a simple filesystem snapshot every so often, but, if you want something more configurable for the database, <https://github.com/nfrastack/container-db-backup> is useful for handling those backups.
 
 ### Users and roles
 
@@ -147,24 +145,22 @@ boh checks every configured location is writable before it starts, and names the
 | Aliases, implications, namespace colours | | ✓ |
 | Maintenance (rebuild thumbnails and implied tags, hash for duplicates, delete unused tags) | | ✓ |
 
-The split is between *using* the collection and *reconfiguring it for everyone*. A tag alias or implication silently rewrites what every other user sees, so those sit with administrators alongside user management.
-
 A few behaviours worth knowing:
 
 - **Changes apply immediately.** Deleting someone signs them out on their next request rather than whenever their cookie expires, and promoting or demoting takes effect without asking them to sign in again.
 - **The last administrator cannot be deleted or demoted**, and you cannot delete the account you are currently signed in with — either would leave the instance unmanageable from inside.
 - **Deleting a user keeps their posts.** The uploader field is cleared; nothing in the collection is removed.
 - **The seeded `admin` account is reapplied on every start** while `BOH_ADMIN_PASSWORD` is set — including its administrator rights. That makes it the way back in if you lock yourself out, but it also means deleting or demoting it does not stick. Unset the variable once you have another administrator if you would rather manage accounts entirely from the UI.
-- `BOH_AUTH_MODE=none` removes accounts altogether, and with them the distinction — everyone reaching the port gets administrator capabilities.
+- `BOH_AUTH_MODE=none` removes accounts altogether; the app is anonymously-writable in this configuration.
 
 ### Security notes
 
 Read these before exposing boh to anything.
 
-- **boh speaks plain HTTP.** Put it behind a reverse proxy that terminates TLS. It honours `X-Forwarded-For` and `X-Forwarded-Proto`, so the auth cookie picks up the `Secure` flag automatically once requests arrive over HTTPS.
+- **boh speaks plain HTTP.** Put it behind a reverse proxy that terminates TLS. It honors `X-Forwarded-For` and `X-Forwarded-Proto`, so the auth cookie picks up the `Secure` flag automatically once requests arrive over HTTPS.
 - **`BOH_AUTH_MODE=none` disables all authentication**, including delete and import. Only use it on a network where you trust everyone who can reach the port.
 - **The import feature makes the server fetch a URL you give it.** It always requires signing in, even with `BOH_PUBLIC_READ=true`, because it can reach hosts the container can reach — including things on your local network. Do not hand accounts to people you would not give that capability.
-- boh is built for a handful of trusted users. Ordinary users can still upload, delete and import; the role split is about instance configuration, not containment. There is no rate limiting and no account self-registration — an administrator creates every account.
+- boh is built for a handful of trusted users. Anyone with an account can delete things.
 
 ## Tag syntax
 
