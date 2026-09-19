@@ -143,7 +143,7 @@ boh checks every configured location is writable before it starts, and names the
 | Change own password | ✓ | ✓ |
 | Manage users | | ✓ |
 | Aliases, implications, namespace colours | | ✓ |
-| Maintenance (rebuild thumbnails, delete unused tags) | | ✓ |
+| Maintenance (rebuild thumbnails and implied tags, hash for duplicates, delete unused tags) | | ✓ |
 
 A few behaviours worth knowing:
 
@@ -182,6 +182,36 @@ landscape -rating:explicit            landscape, excluding explicit
 
 Terms combine with AND. Names are normalized identically on write and on search, so `Artist:Foo` and `artist:foo` are the same tag.
 
+### Searching by source
+
+`url:` searches a post's source URLs instead of its tags, matching anywhere in the address:
+
+```
+url:twitter.com                       posts sourced from twitter
+url:flickr.com -url:twitter.com       on flickr but not twitter
+landscape url:twitter.com             combines with tags like any other term
+url:none                              posts with no source recorded
+-url:none                             posts that have one
+```
+
+A post with several sources matches on any of them. Matching ignores case, and the text is literal — `%` and `_` are ordinary characters, not wildcards.
+
+The prefix is `url:` rather than the `source:` other boorus use because `source` is already a tag namespace here: an import stores the site it came from as a tag like `source:twitter`, and `source:` in a search still finds those tags. The one address you cannot search for is the literal word `none`.
+
+### Searching by appearance
+
+`similar:` takes a post id and finds posts that *look* like it, whatever their tags:
+
+```
+similar:123                           post 123 and anything that looks like it
+similar:123 -rating:explicit          combines with tags like any other term
+-similar:123                          everything that does not look like it
+```
+
+The reference post is included in its own results, so the search puts it beside its
+look-alikes for comparison. A post with no perceptual hash — a video, a flat colour, one not
+yet backfilled — has nothing to be similar to, so `similar:` on it matches nothing.
+
 ### Aliases and implications
 
 Managed at **Tags → Tag administration**.
@@ -200,13 +230,42 @@ An **alias** leaves the old name in place as a permanent redirect, so it keeps r
 
 Move a tag to correct its own identity: a typo nobody should type again, or putting `foo` into a namespace. Alias it for a synonym or spelling that will keep being typed — including by an importer.
 
+## Duplicates and near-duplicates
+
+Two files with the same bytes are the same post: uploading one twice is refused, and an import
+that lands on stored content records where it found it as another source instead.
+
+Resizing or re-encoding an image changes every byte, so a repost gets past that. boh also
+stores a **perceptual hash** — a 64-bit fingerprint of what the image looks like, taken from
+the low frequencies of its greyscale DCT — which survives rescaling, re-encoding and mild
+colour shifts. Two posts within 8 differing bits are treated as the same picture.
+
+Near-duplicates are **flagged, never blocked**:
+
+- the post's own page grows a **Possible duplicates** section listing what it resembles
+- an import summary marks each file that looks like something already stored
+- **Maintenance → Scan for possible duplicates** groups look-alikes across the whole archive
+
+Nothing is deleted or refused, because a perceptual match is a suspicion rather than a fact,
+and which copy to keep depends on resolution, crops and watermarks that only you can judge. A
+blocked upload would also make a false positive unpostable, and would silently drop files out
+of a gallery import.
+
+What it does not catch: rotations, mirror images, heavy crops, and video — those hash as
+unrelated pictures. Images with no detail to hash, such as a flat colour or a blank scan, are
+left unhashed rather than made duplicates of one another.
+
+Posts uploaded before this existed have no hash until you run **Maintenance → Compute missing
+perceptual hashes**, which re-reads every original. Like every maintenance task it runs in the
+background with a progress bar, so it can be left to work through a large archive.
+
 ## Importing
 
-**Import** in the nav takes a URL and hands it to gallery-dl, which supports [a long list of sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md). Site metadata is mapped onto namespaced tags where the shape is recognizable — tags, artist, character, copyright and rating — and the origin URL is recorded on each post.
+**Import** in the nav is where posts come in, either as a file uploaded from your machine or as a URL. A URL is handed to gallery-dl, which supports [a long list of sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md). Site metadata is mapped onto namespaced tags where the shape is recognizable — tags, artist, character, copyright and rating — and the origin URL is recorded on each post.
 
 To import from sites needing credentials, drop a [gallery-dl configuration file](https://github.com/mikf/gallery-dl#configuration) at `/data/gallery-dl.conf`; boh passes it through when present.
 
-Imports are capped (`BOH_IMPORT_MAX`) and time-limited (`BOH_IMPORT_TIMEOUT_SEC`) because they run inside the HTTP request.
+Imports run in the background, one at a time, so you can queue several and leave the page; each shows its progress and then what it created, and stays listed until the server restarts. They are still capped (`BOH_IMPORT_MAX`) and time-limited (`BOH_IMPORT_TIMEOUT_SEC`), because they share one queue — an endless gallery or a hung download would otherwise hold up every import behind it.
 
 ## Development
 
@@ -220,7 +279,7 @@ docker run --rm -p 8080:8080 -v boh_dev:/data -e BOH_ADMIN_PASSWORD=dev boh:dev
 With a local .NET 10 SDK:
 
 ```sh
-dotnet test boh.slnx            # 311 tests
+dotnet test boh.slnx            # 456 tests
 dotnet run --project src/Boh.Web
 ```
 
@@ -238,7 +297,8 @@ Migrations are applied automatically at startup, so upgrading the image is enoug
 ```
 src/Boh.Web/
   Data/          EF Core entities, context, migrations
-  Services/      storage, media processing, tags, import
+  Services/      storage, media processing, tags, import, duplicates
+  Media/         the perceptual hash itself (no dependencies)
   Tags/          tag normalization and search parsing (no dependencies)
   Pages/         Razor Pages
   Endpoints/     blob serving

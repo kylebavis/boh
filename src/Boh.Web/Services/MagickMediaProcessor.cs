@@ -100,4 +100,52 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
 
         await image.WriteAsync(destinationPath, ct);
     }
+
+    /// <summary>
+    /// Hashes the original rather than the thumbnail, so the hash does not shift with
+    /// <c>BOH_THUMBNAIL_SIZE</c> and stays comparable across instances.
+    /// </summary>
+    /// <remarks>
+    /// Not ImageMagick's own <see cref="PerceptualHash"/>, which is why the type is spelled
+    /// out here. That one is a set of image moments per colour channel, compared by summed
+    /// squared distance: several hundred characters to store, a floating-point threshold with
+    /// no natural scale to pick it on, and no way to ask "within N of this" in a query. The
+    /// DCT hash in <see cref="Media.PerceptualHash"/> is eight bytes and a bit count.
+    /// </remarks>
+    public Task<long?> TryComputePerceptualHashAsync(string sourcePath, CancellationToken ct)
+    {
+        try
+        {
+            using var image = new MagickImage(sourcePath);
+
+            image.AutoOrient();     // hash what a viewer sees, not how the file happens to be stored
+
+            // Transparent pixels have no brightness of their own, and Magick leaves them
+            // arbitrary. Compositing onto a fixed background first means a PNG and the JPEG
+            // someone made of it — which had nowhere to put the alpha but white — agree.
+            image.BackgroundColor = MagickColors.White;
+            image.Alpha(AlphaOption.Remove);
+
+            image.Grayscale();
+
+            // IgnoreAspectRatio deliberately squashes the image into a square: the hash has to
+            // describe the picture, not its shape, or a crop of one edge would move every bit.
+            var edge = (uint)Media.PerceptualHash.GridEdge;
+            image.Resize(new MagickGeometry(edge, edge) { IgnoreAspectRatio = true });
+
+            // Q8 makes one channel one byte, and greyscale collapses the three into the same
+            // value, so the red channel alone is the luminance grid the hash wants.
+            using var pixels = image.GetPixels();
+            var greyscale = pixels.ToByteArray("R");
+
+            return Task.FromResult(greyscale is null ? null : Media.PerceptualHash.TryCompute(greyscale));
+        }
+        catch (MagickException ex)
+        {
+            // The file probed as an image but will not decode. A post without a hash is only
+            // missing near-duplicate detection, so this is a warning rather than a failure.
+            logger.LogWarning(ex, "Could not decode {Path} to hash it perceptually", sourcePath);
+            return Task.FromResult<long?>(null);
+        }
+    }
 }

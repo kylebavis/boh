@@ -22,6 +22,14 @@ public interface IMediaProcessor
     Task<MediaInfo?> TryProbeAsync(string sourcePath, CancellationToken ct);
 
     Task GenerateThumbnailAsync(string sourcePath, string destinationPath, int maxEdge, CancellationToken ct);
+
+    /// <summary>
+    /// A perceptual hash of what the file looks like — see <see cref="Media.PerceptualHash"/> —
+    /// or null when this processor has none to offer, because the format is not one it reduces
+    /// to a still image or the image carries no detail to hash. Null is an ordinary answer and
+    /// must not throw: a post is still a post without a hash.
+    /// </summary>
+    Task<long?> TryComputePerceptualHashAsync(string sourcePath, CancellationToken ct);
 }
 
 /// <summary>Picks the first registered processor that recognizes a file.</summary>

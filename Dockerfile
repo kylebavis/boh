@@ -33,8 +33,9 @@ RUN dotnet publish src/Boh.Web/Boh.Web.csproj \
 # Magick.NET native libraries, and glibc avoids a class of musl packaging problems.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
-# Pinned so an image rebuild cannot silently change importer behaviour.
-ARG GALLERY_DL_VERSION=1.32.7
+# Pinned so an image rebuild cannot silently change importer behaviour, and kept in a
+# requirements file so Dependabot can see the version and raise the upgrade as a PR.
+COPY requirements.txt /tmp/requirements.txt
 
 # libgomp1: OpenMP runtime the Magick.NET native library links against.
 # ffmpeg:   video probing (ffprobe) and thumbnail extraction.
@@ -51,8 +52,8 @@ RUN apt-get update \
     # environment externally managed (PEP 668), and --break-system-packages is exactly
     # the kind of override that later bites during a base image upgrade.
     && python3 -m venv /opt/gallery-dl \
-    && /opt/gallery-dl/bin/pip install --no-cache-dir "gallery-dl==${GALLERY_DL_VERSION}" \
-    && rm -rf /var/lib/apt/lists/* \
+    && /opt/gallery-dl/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
+    && rm -rf /var/lib/apt/lists/* /tmp/requirements.txt \
     # ffmpeg depends on libavdevice, which links the GL stack, which drags in Mesa's
     # software renderer and LLVM — about 180 MB of GPU driver in a container that only
     # ever decodes one frame to a file. The packages cannot be purged without taking

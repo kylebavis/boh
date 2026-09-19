@@ -329,9 +329,49 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     color: var(--pico-muted-color);
 }
 
-.tag-section h2 {
+.tag-section h2,
+.source-section h2,
+.similar-section h2 {
     font-size: 1rem;
     margin-bottom: 0.5rem;
+}
+
+.similar-section {
+    margin-top: 1.25rem;
+}
+
+/* The grid is the gallery's, so a look-alike is the same size as a search result and can be
+   compared against the post above it without either being scaled differently. */
+.similar-section .gallery {
+    margin-block: 0.5rem 0;
+}
+
+.source-section {
+    margin-top: 1.25rem;
+}
+
+/* Stacked full-width rows rather than the tags' wrapping pills: a URL is long, and several
+   of them side by side would be unreadable. */
+.source-list {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+}
+
+.source-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.source-list li + li {
+    margin-top: 0.25rem;
+}
+
+/* Long addresses wrap instead of widening the page; the remove button keeps its place. */
+.source-list a {
+    min-width: 0;
+    overflow-wrap: break-word;
 }
 
 /* Wrapping pills rather than one tag per line: a stacked list turned a dozen tags into a
@@ -420,7 +460,8 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     flex-shrink: 0;
 }
 
-.tag-remove {
+.tag-remove,
+.source-remove {
     all: unset;
     cursor: pointer;
     flex-shrink: 0;
@@ -435,16 +476,20 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
 }
 
 .tag-remove:hover,
-.tag-remove:focus-visible {
+.tag-remove:focus-visible,
+.source-remove:hover,
+.source-remove:focus-visible {
     color: var(--pico-del-color);
     background: var(--pico-secondary-background);
 }
 
-.tag-error {
+.tag-error,
+.source-error {
     color: var(--pico-del-color);
 }
 
-.tag-add {
+.tag-add,
+.source-add {
     display: flex;
     gap: 0.4rem;
     margin: 0;
@@ -452,11 +497,13 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     max-width: 28rem;
 }
 
-.tag-add input {
+.tag-add input,
+.source-add input {
     margin: 0;
 }
 
-.tag-add button {
+.tag-add button,
+.source-add button {
     margin: 0;
     width: auto;
     flex-shrink: 0;
@@ -528,8 +575,11 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     border-radius: var(--pico-border-radius);
 }
 
+/* The keyboard walk marks a row rather than focusing it: focus stays in the input so typing
+   can carry on, which is what aria-activedescendant is for. */
 .suggestion:hover,
-.suggestion:focus-visible {
+.suggestion:focus-visible,
+.suggestion.is-active {
     background: var(--pico-secondary-background);
 }
 
@@ -563,16 +613,16 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     margin: 0;
 }
 
-.head-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
 /* The page heading is a flex row, so the following section's h2 would otherwise butt
    straight up against it. */
 .page-head {
     margin-bottom: 1.5rem;
+}
+
+/* The same gap for a page whose heading has no actions beside it, where a bare h1 would
+   otherwise sit directly on the first section's h2. */
+h1 + section {
+    margin-top: 1.5rem;
 }
 
 section + section {
@@ -637,21 +687,6 @@ section + section {
     width: auto;
     padding: 0.25rem 0.6rem;
     font-size: 0.8rem;
-}
-
-.maintenance-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-.maintenance-actions form {
-    margin: 0;
-}
-
-.maintenance-actions button {
-    margin: 0;
-    width: auto;
 }
 
 /* Nav search ----------------------------------------------------------- */
@@ -775,6 +810,63 @@ section + section {
     overflow-wrap: break-word;
 }
 
+.import-job {
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    padding: 0.75rem;
+    margin-block: 0.75rem;
+}
+
+.import-job-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    flex-wrap: wrap;
+}
+
+/* A gallery URL has no natural break points, and would otherwise push the card wider than a
+   phone. */
+.import-job-head a {
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+.import-job .notice {
+    margin-block: 0.5rem;
+}
+
+.import-job h4 {
+    margin: 0.75rem 0 0.5rem;
+    font-size: 1rem;
+}
+
+/* Background jobs ------------------------------------------------------ */
+
+/* A queued or running job: what it is doing and a way to stop it, with the bar underneath. */
+.job-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    flex-wrap: wrap;
+}
+
+.job-line form {
+    margin: 0;
+}
+
+.job-line button {
+    margin: 0;
+    width: auto;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.8rem;
+}
+
+.job-running progress {
+    margin: 0.5rem 0 0;
+}
+
 /* Responsive ----------------------------------------------------------- */
 
 @media (max-width: 768px) {
@@ -877,4 +969,45 @@ section + section {
 .danger-text {
     --pico-color: var(--pico-del-color);
     --pico-border-color: var(--pico-del-color);
+}
+
+/* A flag on an imported row: the file was stored, but something already here looks like it.
+   Highlighted rather than coloured red — nothing failed, and the import may be right to
+   have kept it. */
+.hint-duplicate {
+    align-self: flex-start;
+    background: var(--pico-mark-background-color);
+    color: var(--pico-mark-color);
+    padding: 0.1rem 0.35rem;
+    border-radius: var(--pico-border-radius);
+}
+
+/* One group of look-alikes in the duplicate report. Thumbnails scroll sideways inside the
+   card: a group can hold a dozen re-encodings, and wrapping them would push the next group
+   off the page. */
+.dup-cluster {
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    padding: 0.75rem;
+    margin-block: 0.75rem;
+}
+
+.dup-posts {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: 0.5rem;
+}
+
+.dup-posts a {
+    flex: 0 0 auto;
+    line-height: 0;
+}
+
+.dup-posts img {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: var(--pico-border-radius);
 }

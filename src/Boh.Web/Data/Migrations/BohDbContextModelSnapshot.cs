@@ -14,7 +14,7 @@ namespace Boh.Web.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
 
             modelBuilder.Entity("Boh.Web.Data.Entities.Post", b =>
                 {
@@ -49,14 +49,15 @@ namespace Boh.Web.Data.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("PerceptualHash")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("PerceptualHashTried")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SourceUrl")
-                        .IsRequired()
-                        .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
                     b.Property<long>("UploadedAt")
@@ -70,6 +71,8 @@ namespace Boh.Web.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PerceptualHash");
+
                     b.HasIndex("Sha256")
                         .IsUnique();
 
@@ -79,6 +82,28 @@ namespace Boh.Web.Data.Migrations
                     b.HasIndex("UploadedById");
 
                     b.ToTable("Posts");
+                });
+
+            modelBuilder.Entity("Boh.Web.Data.Entities.PostSource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PostId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PostId", "Url")
+                        .IsUnique();
+
+                    b.ToTable("PostSources");
                 });
 
             modelBuilder.Entity("Boh.Web.Data.Entities.PostTag", b =>
@@ -183,6 +208,24 @@ namespace Boh.Web.Data.Migrations
                     b.ToTable("TagNamespaces");
                 });
 
+            modelBuilder.Entity("Boh.Web.Data.Entities.TagNamespaceAlias", b =>
+                {
+                    b.Property<string>("Alias")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Alias");
+
+                    b.HasIndex("Canonical");
+
+                    b.ToTable("TagNamespaceAliases");
+                });
+
             modelBuilder.Entity("Boh.Web.Data.Entities.User", b =>
                 {
                     b.Property<int>("Id")
@@ -229,6 +272,17 @@ namespace Boh.Web.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("UploadedBy");
+                });
+
+            modelBuilder.Entity("Boh.Web.Data.Entities.PostSource", b =>
+                {
+                    b.HasOne("Boh.Web.Data.Entities.Post", "Post")
+                        .WithMany("Sources")
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Post");
                 });
 
             modelBuilder.Entity("Boh.Web.Data.Entities.PostTag", b =>
@@ -291,6 +345,8 @@ namespace Boh.Web.Data.Migrations
             modelBuilder.Entity("Boh.Web.Data.Entities.Post", b =>
                 {
                     b.Navigation("PostTags");
+
+                    b.Navigation("Sources");
                 });
 
             modelBuilder.Entity("Boh.Web.Data.Entities.Tag", b =>

@@ -8,10 +8,7 @@
     <h1>Tags</h1>
     @if (Boh.Web.Security.UserPrincipal.IsAdmin(User) || Model.AuthDisabled)
     {
-        <span class="head-actions">
-            <a href="/Tags/Admin" role="button" class="secondary">Tag administration</a>
-            <a href="/Maintenance" role="button" class="secondary">Maintenance</a>
-        </span>
+        <a href="/Tags/Admin" role="button" class="secondary">Tag administration</a>
     }
 </header>
 

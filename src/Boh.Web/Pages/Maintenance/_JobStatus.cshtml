@@ -1,0 +1,149 @@
+@model Boh.Web.Pages.Maintenance.MaintenanceJobView
+@using Boh.Web.Jobs
+@using Boh.Web.Services
+@{
+    var job = Model.Job;
+    var key = Model.Task.Key;
+    var active = job?.IsActive == true;
+
+    var ended = job?.State switch
+    {
+        JobState.Cancelled => "cancelled",
+        JobState.Failed => "failed",
+        _ => "finished",
+    };
+}
+@if (job is not null)
+{
+    @* While the task is queued or running, this block polls for its own replacement. The
+       finished block it eventually receives carries no trigger, so polling stops by itself. *@
+    <div id="job-@key" class="job-status"
+         hx-get="@(active ? $"/Maintenance?handler=Status&task={key}" : null)"
+         hx-trigger="@(active ? "every 2s" : null)"
+         hx-swap="@(active ? "outerHTML" : null)">
+
+        @if (active)
+        {
+            <partial name="_JobProgress" model="job" />
+        }
+        else
+        {
+            <small class="muted">Last run @ended @RelativeTime.Since(job.FinishedAt!.Value, DateTimeOffset.UtcNow)</small>
+        }
+
+        @if (job.State == JobState.Cancelled)
+        {
+            <div class="notice" role="status">@(job.Message ?? "Cancelled before it finished.")</div>
+        }
+        else if (job.State == JobState.Failed)
+        {
+            <div class="notice notice-error" role="alert">@job.Message</div>
+        }
+        else if (job.State == JobState.Succeeded)
+        {
+            switch (job.Result)
+            {
+                case ThumbnailRepairResult repair when repair.Missing == 0:
+                    <div class="notice" role="status">Every post already has a thumbnail. Nothing to do.</div>
+                    break;
+
+                case ThumbnailRepairResult repair:
+                    <div class="notice @(repair.Failed > 0 ? "notice-error" : "")" role="status">
+                        @repair.Missing thumbnail(s) missing — rebuilt @repair.Regenerated@(repair.Failed > 0 ? $", {repair.Failed} failed" : "").
+                        @if (repair.Failed > 0)
+                        {
+                            <text>Failures are in the server log, usually a missing or unreadable original.</text>
+                        }
+                    </div>
+                    break;
+
+                case HashingResult hashes when hashes.Pending == 0:
+                    <div class="notice" role="status">Every post that can be hashed already is. Nothing to do.</div>
+                    break;
+
+                case HashingResult hashes:
+                    <div class="notice @(hashes.Failed > 0 ? "notice-error" : "")" role="status">
+                        @hashes.Pending post(s) without a hash — computed @hashes.Hashed@(hashes.Failed > 0 ? $", {hashes.Failed} failed" : "").
+                        @if (hashes.Featureless > 0)
+                        {
+                            <text>
+                                @hashes.Featureless had no detail to hash — a flat colour or a blank
+                                scan has no structure to compare, and will not be retried.
+                            </text>
+                        }
+                        @if (hashes.Failed > 0)
+                        {
+                            <text>
+                                Failures are in the server log, usually a missing or unreadable original.
+                                They stay pending, so a run once the original is back will pick them up.
+                            </text>
+                        }
+                    </div>
+                    break;
+
+                case DuplicateScan scan:
+                    <div class="notice" role="status">
+                        @if (scan.Hashed == 0)
+                        {
+                            <text>No post has a perceptual hash yet — compute them above first.</text>
+                        }
+                        else if (scan.Clusters.Count == 0)
+                        {
+                            <text>Compared @scan.Hashed hashed post(s); nothing looks like anything else.</text>
+                        }
+                        else
+                        {
+                            <text>@scan.Clusters.Count group(s) of look-alikes among @scan.Hashed hashed post(s).</text>
+                            @if (scan.OmittedClusters > 0)
+                            {
+                                <text>@scan.OmittedClusters more are not shown.</text>
+                            }
+                        }
+                    </div>
+
+                    foreach (var cluster in scan.Clusters)
+                    {
+                        <article class="dup-cluster">
+                            <small class="muted">
+                                @cluster.Size posts, closest @cluster.ClosestDistance bit@(cluster.ClosestDistance == 1 ? "" : "s") apart
+                                — oldest first@(cluster.Size > cluster.Posts.Count ? $", showing {cluster.Posts.Count}" : "")
+                            </small>
+                            <div class="dup-posts">
+                                @foreach (var post in cluster.Posts)
+                                {
+                                    <a href="/Posts/Detail/@post.Id" title="Post @post.Id — @post.Width×@post.Height, @PostUrls.HumanSize(post.FileSizeBytes)">
+                                        <img src="@PostUrls.Thumb(post)" alt="Post @post.Id" loading="lazy" />
+                                    </a>
+                                }
+                            </div>
+                        </article>
+                    }
+                    break;
+
+                case ImpliedTagsRebuilt { LinksChanged: 0 }:
+                    <div class="notice" role="status">Every post's implied tags were already correct.</div>
+                    break;
+
+                case ImpliedTagsRebuilt rebuilt:
+                    <div class="notice" role="status">
+                        Rebuilt implied tags — @rebuilt.LinksChanged link@(rebuilt.LinksChanged == 1 ? "" : "s") changed.
+                    </div>
+                    break;
+
+                case TagsRecounted:
+                    <div class="notice" role="status">Tag post counts recomputed.</div>
+                    break;
+
+                case UnusedTagsDeleted { Count: 0 }:
+                    <div class="notice" role="status">No unused tags to remove.</div>
+                    break;
+
+                case UnusedTagsDeleted deleted:
+                    <div class="notice" role="status">
+                        Deleted @deleted.Count unused tag@(deleted.Count == 1 ? "" : "s").
+                    </div>
+                    break;
+            }
+        }
+    </div>
+}

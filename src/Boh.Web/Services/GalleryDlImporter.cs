@@ -1,9 +1,21 @@
 using System.Text.Json;
+using Boh.Web.Jobs;
 using Boh.Web.Tags;
 
 namespace Boh.Web.Services;
 
-public sealed record ImportedItem(int PostId, string Sha256, string FileName, IReadOnlyList<string> Tags);
+/// <summary>
+/// A file the import stored. <paramref name="Similar"/> names posts that already look like
+/// it, which is worth reporting where the import cannot act on it: the file was stored
+/// either way, and only a person can say whether the older post is the same picture.
+/// </summary>
+public sealed record ImportedItem(
+    int PostId,
+    string Sha256,
+    string FileName,
+    IReadOnlyList<string> Tags,
+    IReadOnlyList<SimilarPost> Similar);
+
 public sealed record SkippedItem(string FileName, string Reason);
 
 public sealed record ImportResult(
@@ -19,9 +31,10 @@ public sealed record ImportResult(
 /// </summary>
 /// <remarks>
 /// This fetches a URL chosen by the user from inside the container, so it is gated behind
-/// authentication regardless of BOH_PUBLIC_READ. The run is bounded on both axes —
-/// <c>--range</c> caps how many files a single gallery can produce, and the process is
-/// killed after a timeout — because the whole thing happens inside one HTTP request.
+/// authentication regardless of BOH_PUBLIC_READ. It runs as a background job, but imports
+/// share one lane of the queue, so the run is still bounded on both axes — <c>--range</c> caps
+/// how many files a single gallery can produce, and the process is killed after a timeout —
+/// or one endless gallery or hung download would hold up every import queued behind it.
 /// </remarks>
 public sealed class GalleryDlImporter(
     ProcessRunner runner,
@@ -30,16 +43,23 @@ public sealed class GalleryDlImporter(
     BohOptions options,
     ILogger<GalleryDlImporter> logger)
 {
+    /// <summary>The <see cref="JobSnapshot.Kind"/> an import is queued under.</summary>
+    public const string JobKind = "import";
+
     private static readonly HashSet<string> MetadataExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".json"
     };
 
-    public async Task<ImportResult> ImportAsync(string url, int? uploadedById, CancellationToken ct)
+    public async Task<ImportResult> ImportAsync(
+        string url, int? uploadedById, IProgress<JobProgress>? progress, CancellationToken ct)
     {
-        if (!IsAcceptableUrl(url))
+        // Canonical from here on: what gets fetched, logged and recorded is the rewritten form,
+        // never the raw submission. Uri.TryCreate alone would let control characters through
+        // into the log — see SourceUrls.TryCanonicalize.
+        if (!SourceUrls.TryCanonicalize(url, out var galleryUrl))
         {
-            return new ImportResult([], [], "Enter an absolute http:// or https:// URL.");
+            return new ImportResult([], [], SourceUrls.Requirement);
         }
 
         Directory.CreateDirectory(options.ImportTempDir);
@@ -48,7 +68,9 @@ public sealed class GalleryDlImporter(
 
         try
         {
-            var result = await runner.RunAsync("gallery-dl", BuildArguments(url, workingDirectory),
+            progress?.Report(new JobProgress("Downloading with gallery-dl"));
+
+            var result = await runner.RunAsync("gallery-dl", BuildArguments(galleryUrl, workingDirectory),
                 TimeSpan.FromSeconds(options.ImportTimeoutSec), ct);
 
             if (result.TimedOut)
@@ -73,11 +95,11 @@ public sealed class GalleryDlImporter(
                         : $"gallery-dl downloaded nothing from that URL: {detail}");
             }
 
-            return await IngestAsync(mediaFiles, url, uploadedById, ct);
+            return await IngestAsync(mediaFiles, galleryUrl, uploadedById, progress, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Import of {Url} failed", url);
+            logger.LogError(ex, "Import of {Url} failed", galleryUrl);
             return new ImportResult([], [], "The import failed. The server log has the details.");
         }
         finally
@@ -109,18 +131,32 @@ public sealed class GalleryDlImporter(
     }
 
     private async Task<ImportResult> IngestAsync(
-        List<string> mediaFiles, string sourceUrl, int? uploadedById, CancellationToken ct)
+        List<string> mediaFiles,
+        string galleryUrl,
+        int? uploadedById,
+        IProgress<JobProgress>? progress,
+        CancellationToken ct)
     {
         var created = new List<ImportedItem>();
         var skipped = new List<SkippedItem>();
 
-        foreach (var path in mediaFiles)
+        for (var i = 0; i < mediaFiles.Count; i++)
         {
+            // Between files, so cancelling keeps every post already stored whole.
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(new JobProgress("Storing files", i, mediaFiles.Count));
+
+            var path = mediaFiles[i];
             var fileName = Path.GetFileName(path);
             var metadata = ReadSidecar(path);
 
+            // The page this particular file lives on, when the extractor reports one. The
+            // typed URL is only a fallback: importing an artist's gallery would otherwise
+            // stamp all forty posts with the same address, which points at none of them.
+            var source = GalleryDlSourceMapper.PageUrl(metadata) ?? galleryUrl;
+
             await using var stream = File.OpenRead(path);
-            var result = await posts.CreateAsync(stream, uploadedById, sourceUrl, ct);
+            var result = await posts.CreateAsync(stream, uploadedById, source, ct);
 
             switch (result)
             {
@@ -145,11 +181,16 @@ public sealed class GalleryDlImporter(
                         createdPost.Post.Id,
                         createdPost.Post.Sha256,
                         fileName,
-                        stored));
+                        stored,
+                        createdPost.Similar));
                     break;
 
+                // Skipped as a post, but not as information: the file being reachable from
+                // this URL too is recorded on the post that already holds it.
                 case PostCreateResult.Duplicate duplicate:
-                    skipped.Add(new SkippedItem(fileName, $"already stored as post {duplicate.ExistingPostId}"));
+                    skipped.Add(new SkippedItem(fileName, duplicate.SourceAdded
+                        ? $"already stored as post {duplicate.ExistingPostId}; added this URL as another source"
+                        : $"already stored as post {duplicate.ExistingPostId}"));
                     break;
 
                 case PostCreateResult.Rejected rejected:
@@ -159,7 +200,7 @@ public sealed class GalleryDlImporter(
         }
 
         logger.LogInformation("Imported {Created} file(s) from {Url}, skipped {Skipped}",
-            created.Count, sourceUrl, skipped.Count);
+            created.Count, galleryUrl, skipped.Count);
 
         return new ImportResult(created, skipped, null);
     }
@@ -184,10 +225,6 @@ public sealed class GalleryDlImporter(
             return null;
         }
     }
-
-    private static bool IsAcceptableUrl(string? url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var parsed)
-        && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps);
 
     private static string? FirstMeaningfulLine(string output)
     {

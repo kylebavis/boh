@@ -1,6 +1,9 @@
 using System.Net;
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using Boh.Web.Jobs;
 using Boh.Web.Services;
+using ImageMagick;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +23,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
     private readonly int _pageSize;
     private readonly string _authMode;
+    private readonly bool _publicRead;
 
     /// <param name="pageSize">Small by default so a handful of posts spans several pages.</param>
     /// <param name="authMode">
@@ -27,10 +31,15 @@ public sealed class TestApp : WebApplicationFactory<Program>
     /// to drive. Pass "password" to render the pages an instance with accounts would serve —
     /// signed out, since the client carries no cookie.
     /// </param>
-    public TestApp(int pageSize = 2, string authMode = "none")
+    /// <param name="publicRead">
+    /// Only meaningful alongside <c>authMode: "password"</c>: it is the configuration where a
+    /// signed-out visitor can see a page but not its editing controls.
+    /// </param>
+    public TestApp(int pageSize = 2, string authMode = "none", bool publicRead = false)
     {
         _pageSize = pageSize;
         _authMode = authMode;
+        _publicRead = publicRead;
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
@@ -44,6 +53,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
             ["BOH_DATA_PATH"] = _root,
             ["BOH_PAGE_SIZE"] = _pageSize.ToString(),
             ["BOH_AUTH_MODE"] = _authMode,
+            ["BOH_PUBLIC_READ"] = _publicRead.ToString(),
             ["BOH_ADMIN_PASSWORD"] = AdminPassword,
         }));
 
@@ -66,6 +76,24 @@ public sealed class TestApp : WebApplicationFactory<Program>
         return Assert.IsType<PostCreateResult.Created>(result).Post.Id;
     }
 
+    /// <summary>
+    /// Creates a post from a picture with structure to it, which is what gives it a perceptual
+    /// hash — <see cref="CreatePostAsync"/>'s flat colours deliberately have none. The same
+    /// <paramref name="seed"/> at another size is the same picture in different bytes.
+    /// </summary>
+    public async Task<int> CreatePatternPostAsync(
+        uint size, MagickFormat format = MagickFormat.Png, int seed = 1)
+    {
+        using var scope = Services.CreateScope();
+        var posts = scope.ServiceProvider.GetRequiredService<PostService>();
+
+        var result = await posts.CreateAsync(
+            new MemoryStream(TestEnvironment.MakePattern(size, size, format, seed)),
+            null, "", CancellationToken.None);
+
+        return Assert.IsType<PostCreateResult.Created>(result).Post.Id;
+    }
+
     /// <summary>Applies tags the way the application does, so implications and counts stay correct.</summary>
     public async Task TagAsync(int postId, params string[] tags)
     {
@@ -74,6 +102,28 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
         await service.SetPostTagsAsync(
             postId, Boh.Web.Tags.TagName.ParseMany(string.Join(' ', tags)), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Applies already-parsed tags, for shapes the text parser cannot reach. An importer
+    /// stores a name through <see cref="Boh.Web.Tags.TagName.TryParseInNamespace"/>, which
+    /// leaves a colon inside the name alone; <c>ParseMany</c> would split on it instead.
+    /// </summary>
+    public async Task TagAsync(int postId, IReadOnlyCollection<Boh.Web.Tags.TagName> tags)
+    {
+        using var scope = Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<TagService>();
+
+        await service.SetPostTagsAsync(postId, tags, CancellationToken.None);
+    }
+
+    /// <summary>The explicit tags a post carries, read back as stored.</summary>
+    public async Task<List<Boh.Web.Tags.TagName>> ExplicitTagsAsync(int postId)
+    {
+        using var scope = Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<TagService>();
+
+        return await service.GetExplicitTagNamesAsync(postId, CancellationToken.None);
     }
 
     public async Task AddAliasAsync(string alias, string canonical)
@@ -96,11 +146,92 @@ public sealed class TestApp : WebApplicationFactory<Program>
         Assert.IsType<TagLinkResult.Ok>(await service.AddImplicationAsync(ch, pa, CancellationToken.None));
     }
 
+    /// <summary>
+    /// Issues the request an <c>hx-post</c> control would, carrying the antiforgery token the
+    /// layout hands htmx in <c>hx-headers</c>. Reading the token off the page rather than
+    /// disabling antiforgery keeps these tests on the same path the browser takes.
+    /// </summary>
+    /// <param name="fields">
+    /// Form values to send, for handlers that read one. Omit for a control that carries
+    /// everything it needs in its query string, which is what a remove button does.
+    /// </param>
+    public static async Task<HttpResponseMessage> PostHxAsync(
+        HttpClient client, string url, string pageHtml, Dictionary<string, string>? fields = null)
+    {
+        var token = Regex.Match(pageHtml, "hx-headers='([^']*)'");
+        Assert.True(token.Success, "the layout rendered no hx-headers");
+
+        using var headers = JsonDocument.Parse(WebUtility.HtmlDecode(token.Groups[1].Value));
+
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Add(
+            "RequestVerificationToken",
+            headers.RootElement.GetProperty("RequestVerificationToken").GetString());
+
+        if (fields is not null) request.Content = new FormUrlEncodedContent(fields);
+
+        return await client.SendAsync(request);
+    }
+
     public async Task<string> GetHtmlAsync(HttpClient client, string url)
     {
         var response = await client.GetAsync(url);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return await response.Content.ReadAsStringAsync();
+    }
+
+    /// <summary>
+    /// Submits the one form on <paramref name="pageUrl"/> whose markup contains
+    /// <paramref name="formMarker"/>, the way the browser would, antiforgery token included —
+    /// which is what makes the handler and route values in the markup part of the test rather
+    /// than something the test restates. For forms with nothing to fill in but the button.
+    /// </summary>
+    public async Task<HttpResponseMessage> SubmitFormAsync(HttpClient client, string pageUrl, string formMarker)
+    {
+        var page = await GetHtmlAsync(client, pageUrl);
+
+        var form = Regex.Matches(page, "<form.*?</form>", RegexOptions.Singleline)
+            .Select(m => m.Value)
+            .Single(f => f.Contains(formMarker, StringComparison.OrdinalIgnoreCase));
+
+        return await client.PostAsync(
+            FormAction(form),
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = FormValue(form, "__RequestVerificationToken"),
+            }));
+    }
+
+    /// <summary>
+    /// Starts a background job from its form, waits for every job to finish, and returns the
+    /// page as it then renders — which is where a job's result is shown.
+    /// </summary>
+    public async Task<string> SubmitAndWaitAsync(string pageUrl, string formMarker)
+    {
+        var client = CreateNonRedirectingClient();
+
+        var response = await SubmitFormAsync(client, pageUrl, formMarker);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        await WaitForJobsAsync();
+        return await GetHtmlAsync(client, pageUrl);
+    }
+
+    public JobQueue Jobs => Services.GetRequiredService<JobQueue>();
+
+    /// <summary>
+    /// Waits until nothing is queued or running. A job still going after the timeout fails the
+    /// test instead of hanging it.
+    /// </summary>
+    public async Task WaitForJobsAsync()
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+
+        while (Jobs.List(j => j.IsActive).Count > 0)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "background jobs were still running after 30 seconds");
+            await Task.Delay(20);
+        }
     }
 
     /// <summary>The password the admin account is seeded with when running with accounts on.</summary>

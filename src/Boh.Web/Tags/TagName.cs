@@ -92,6 +92,17 @@ public readonly record struct TagName(string Namespace, string Name)
     /// </remarks>
     private static string CaseFold(string raw) => raw.Trim().ToLowerInvariant();
 
+    /// <summary>
+    /// Normalizes a namespace on its own, for callers that manipulate namespaces rather than
+    /// whole tags. Unlike <see cref="TryParseInNamespace"/>, which quietly degrades an unusable
+    /// namespace to no namespace at all, this reports the failure so the caller can complain.
+    /// </summary>
+    public static bool TryParseNamespace(string? raw, out string ns)
+    {
+        ns = NormalizeNamespace(raw);
+        return ns.Length > 0;
+    }
+
     private static string NormalizeNamespace(string? ns)
     {
         if (string.IsNullOrWhiteSpace(ns)) return "";

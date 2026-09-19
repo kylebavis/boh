@@ -18,10 +18,12 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
         v => DateTimeOffset.FromUnixTimeMilliseconds(v));
 
     public DbSet<Post> Posts => Set<Post>();
+    public DbSet<PostSource> PostSources => Set<PostSource>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<PostTag> PostTags => Set<PostTag>();
     public DbSet<TagAlias> TagAliases => Set<TagAlias>();
     public DbSet<TagNamespace> TagNamespaces => Set<TagNamespace>();
+    public DbSet<TagNamespaceAlias> TagNamespaceAliases => Set<TagNamespaceAlias>();
     public DbSet<TagImplication> TagImplications => Set<TagImplication>();
     public DbSet<User> Users => Set<User>();
 
@@ -35,15 +37,33 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.Property(p => p.UploadedAt).HasConversion(UtcMilliseconds);
             e.HasIndex(p => p.UploadedAt).IsDescending();
 
+            // Not for lookups — a perceptual hash is never matched exactly. Near-duplicate
+            // search reads every hash in the table, and Id is the SQLite rowid, so this index
+            // holds both columns that read needs and satisfies it without touching the rows.
+            e.HasIndex(p => p.PerceptualHash);
+
             e.Property(p => p.FileExtension).HasMaxLength(16).IsRequired();
             e.Property(p => p.MimeType).HasMaxLength(128).IsRequired();
-            e.Property(p => p.SourceUrl).HasMaxLength(2048);
             e.Property(p => p.Description).HasMaxLength(8192);
 
             e.HasOne(p => p.UploadedBy)
                 .WithMany()
                 .HasForeignKey(p => p.UploadedById)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<PostSource>(e =>
+        {
+            e.Property(s => s.Url).HasMaxLength(2048).IsRequired();
+
+            // A post cannot list the same address twice. That is what lets an import record
+            // its URL on an already-stored file without checking whether it did so before.
+            e.HasIndex(s => new { s.PostId, s.Url }).IsUnique();
+
+            e.HasOne(s => s.Post)
+                .WithMany(p => p.Sources)
+                .HasForeignKey(s => s.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<Tag>(e =>
@@ -83,6 +103,16 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.HasIndex(n => n.Name).IsUnique();
             e.Property(n => n.Name).HasMaxLength(TagName.MaxNamespaceLength);
             e.Property(n => n.Color).HasMaxLength(16);
+        });
+
+        // Keyed by the alias namespace itself rather than a surrogate id: a namespace has no
+        // row of its own to reference, and one namespace can only redirect one way.
+        b.Entity<TagNamespaceAlias>(e =>
+        {
+            e.HasKey(a => a.Alias);
+            e.Property(a => a.Alias).HasMaxLength(TagName.MaxNamespaceLength);
+            e.Property(a => a.Canonical).HasMaxLength(TagName.MaxNamespaceLength).IsRequired();
+            e.HasIndex(a => a.Canonical);
         });
 
         b.Entity<TagAlias>(e =>

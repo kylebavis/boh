@@ -6,8 +6,9 @@ obj/
 .vscode/
 .idea/
 
-# Local runtime data (SQLite DB, blobs, thumbnails)
-data/
+# Local runtime data (SQLite DB, blobs, thumbnails). Anchored to the repository root:
+# unanchored, it also matches src/Boh.Web/Data/ and silently ignores new source files there.
+/data/
 *.db
 *.db-wal
 *.db-shm

@@ -1,4 +1,5 @@
 using Boh.Web.Services;
+using Boh.Web.Tags;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -18,9 +19,20 @@ public class AutocompleteModel(TagService tags) : PageModel
     public async Task<IActionResult> OnGetAsync(string? q, CancellationToken ct)
     {
         // The control being completed may be named `q` (search) or `tags` (post editor).
-        var raw = !string.IsNullOrWhiteSpace(q) ? q : Request.Query["tags"].ToString();
+        var searching = !string.IsNullOrWhiteSpace(q);
+        var raw = searching ? q : Request.Query["tags"].ToString();
 
-        Suggestions = await tags.AutocompleteAsync(LastToken(raw), SuggestionLimit, ct);
+        var token = LastToken(raw);
+
+        // In a search, `url:` introduces a source predicate rather than a namespace, so there
+        // are no tags to offer. Only in a search: in the tag editor the same text would be an
+        // ordinary namespace, and someone who has such tags should still get them completed.
+        if (searching && token.StartsWith(SearchQuery.SourcePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return Partial("_TagAutocomplete", Suggestions);
+        }
+
+        Suggestions = await tags.AutocompleteAsync(token, SuggestionLimit, ct);
         return Partial("_TagAutocomplete", Suggestions);
     }
 
