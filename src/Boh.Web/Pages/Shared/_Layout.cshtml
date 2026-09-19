@@ -35,8 +35,11 @@
        It also owns applying a theme, rather than leaving that to app.js: resolving
        "auto" against the OS is the part that has to happen pre-paint, and having one
        copy of that logic is worth the inline script being a few lines longer. app.js
-       only wires the button and the media-query listener to it. *@
-    <script>
+       only wires the button and the media-query listener to it.
+
+       The nonce is what lets this one script through the content security policy; nothing
+       else in the app may run inline. *@
+    <script nonce="@Boh.Web.Security.SecurityHeaders.CspNonce(Context)">
         (function () {
             var MODE_KEY = '@Boh.Web.Themes.ModeStorageKey';
             var PALETTE_KEY = '@Boh.Web.Themes.PaletteStorageKey';

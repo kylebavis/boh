@@ -27,6 +27,19 @@ jobs:
       - name: Restore
         run: dotnet restore boh.slnx
 
+      # Dependabot raises upgrades, but only on its own schedule and only for direct
+      # references. This fails the pull request that introduces a known advisory instead,
+      # transitive packages included — which is how the SQLitePCLRaw pin in Boh.Web.csproj
+      # came to exist. `dotnet list` reports and exits zero, so the output is what decides.
+      - name: Audit dependencies
+        run: |
+          report=$(dotnet list boh.slnx package --vulnerable --include-transitive)
+          echo "$report"
+          if echo "$report" | grep -q 'has the following vulnerable packages'; then
+            echo "::error::Vulnerable NuGet packages found — see the report above."
+            exit 1
+          fi
+
       - name: Build
         run: dotnet build boh.slnx -c Release --no-restore
 

@@ -36,13 +36,14 @@
 
     @if (Model.CanEdit)
     {
-        @* Unlike the tag form there is no autocomplete firing from this input, so clearing on
-           success needs no event.target guard — nothing else in here issues a request. *@
+        @* data-reset-on-success rather than hx-on: htmx evaluates hx-on handlers with
+           new Function, which the content security policy does not permit. app.js carries
+           the equivalent listener. *@
         <form class="source-add"
               hx-post="/Posts/Detail/@Model.PostId?handler=AddSource"
               hx-target="#source-list"
               hx-swap="outerHTML"
-              hx-on::after-request="if (event.detail.successful) this.reset()"
+              data-reset-on-success
               autocomplete="off">
             @* type="url" so a phone offers the right keyboard and a malformed address is
                caught before a round trip — htmx honours HTML5 validation and will not send an

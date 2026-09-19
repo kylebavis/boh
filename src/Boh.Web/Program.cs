@@ -1,7 +1,9 @@
+using System.Threading.RateLimiting;
 using Boh.Web;
 using Boh.Web.Data;
 using Boh.Web.Endpoints;
 using Boh.Web.Jobs;
+using Boh.Web.Pages.Account;
 using Boh.Web.Security;
 using Boh.Web.Services;
 using Boh.Web.Storage;
@@ -17,8 +19,15 @@ var builder = WebApplication.CreateBuilder(args);
 var options = BohOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(options);
 
-// The framework default of ~28.6 MB would reject most video before it reached our code.
-builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = options.MaxUploadBytes);
+builder.WebHost.ConfigureKestrel(k =>
+{
+    // The framework default of ~28.6 MB would reject most video before it reached our code.
+    k.Limits.MaxRequestBodySize = options.MaxUploadBytes;
+
+    // Nothing needs to know which server this is, and naming it only helps someone
+    // deciding which exploits are worth trying.
+    k.AddServerHeader = false;
+});
 builder.Services.Configure<FormOptions>(f =>
 {
     f.MultipartBodyLengthLimit = options.MaxUploadBytes;
@@ -99,6 +108,42 @@ builder.Services.AddAuthorization(o =>
 builder.Services.AddRazorPages(o => o.Conventions.ConfigureFilter(
     new RequireAuthForWritesFilter(options)));
 
+// Nothing else bounds online password guessing: there is no lockout, and a self-hosted
+// instance is usually reachable from wherever its owner is. Attempts only, so somebody
+// reloading the form is never turned away.
+builder.Services.AddRateLimiter(r =>
+{
+    r.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    r.OnRejected = (context, _) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter =
+            LoginModel.RateLimitWindow.TotalSeconds.ToString("F0");
+        return ValueTask.CompletedTask;
+    };
+
+    r.AddPolicy(LoginModel.RateLimitPolicy, context =>
+    {
+        if (!HttpMethods.IsPost(context.Request.Method))
+            return RateLimitPartition.GetNoLimiter("read");
+
+        // The forwarded headers have already been applied, so behind a proxy that appends
+        // X-Forwarded-For this is the client the proxy saw. A caller reaching the container
+        // directly can forge that header and partition itself away from its own limit —
+        // the same trust the forwarded-headers configuration already extends.
+        var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        // Sliding rather than fixed: a fixed window lets twice the limit through in the
+        // moments either side of a boundary.
+        return RateLimitPartition.GetSlidingWindowLimiter(client, _ => new SlidingWindowRateLimiterOptions
+        {
+            PermitLimit = LoginModel.RateLimitAttempts,
+            Window = LoginModel.RateLimitWindow,
+            SegmentsPerWindow = 5,
+            QueueLimit = 0
+        });
+    });
+});
+
 // HTMX cannot post a hidden form field on every request, so the token travels in a header
 // that the layout attaches once via hx-headers.
 builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
@@ -126,9 +171,17 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error");
 }
 
+// Below the exception handler on purpose: handling one clears the response headers and
+// re-runs the pipeline from here, so anything registered above it would have its headers
+// thrown away and never get the chance to set them again.
+app.UseBohSecurityHeaders();
+
 // No HTTPS redirection: the container speaks plain HTTP and TLS terminates at the proxy.
 app.UseStaticFiles();
 app.UseRouting();
+
+// After routing, so the login policy can be found on the endpoint it is declared on.
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

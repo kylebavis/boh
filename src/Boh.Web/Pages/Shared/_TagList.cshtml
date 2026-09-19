@@ -43,16 +43,18 @@
 
     @if (Model.CanEdit)
     {
-        @* The event.target guard is essential, not defensive noise. htmx events bubble, and
-           the input inside this form fires its own request on every keystroke for
-           autocomplete. Without the check, each suggestion fetch completing would reset the
-           form and wipe what the user was typing — leaving them unable to enter more than a
-           single character. Only clear when this form's own submission succeeded. *@
+        @* The listener behind data-reset-on-success only fires when the form itself made the
+           request, which is essential rather than defensive: htmx events bubble, and the
+           input inside this form issues its own request on every keystroke for autocomplete.
+           Without that check, each suggestion fetch completing would reset the form and wipe
+           what the user was typing, leaving them unable to enter more than one character.
+           It lives in app.js because htmx evaluates hx-on handlers with new Function, which
+           the content security policy does not permit. *@
         <form class="tag-add"
               hx-post="/Posts/Detail/@Model.PostId?handler=AddTags"
               hx-target="#tag-list"
               hx-swap="outerHTML"
-              hx-on::after-request="if (event.target === this &amp;&amp; event.detail.successful) this.reset()"
+              data-reset-on-success
               autocomplete="off">
             <input type="text" name="tags" placeholder="add tags…"
                    aria-label="Add tags"

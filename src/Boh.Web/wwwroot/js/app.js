@@ -390,3 +390,26 @@
         init();
     }
 })();
+
+// Clears a form once its own submission succeeds.
+//
+// This replaces an hx-on::after-request attribute on each such form. htmx evaluates those
+// with new Function, which the content security policy does not allow, so the behaviour
+// moves here — delegated from the document, since the forms live inside markup htmx swaps
+// out and a listener bound to one would not survive.
+(function () {
+    'use strict';
+
+    document.addEventListener('htmx:afterRequest', function (event) {
+        var form = event.target;
+
+        // event.target is whatever issued the request, and htmx events bubble. The tag form
+        // contains an input that fetches autocomplete suggestions on every keystroke, so
+        // matching anything but the form itself would reset it mid-typing.
+        if (!(form instanceof HTMLFormElement)) return;
+        if (!form.hasAttribute('data-reset-on-success')) return;
+        if (!event.detail || !event.detail.successful) return;
+
+        form.reset();
+    });
+})();
