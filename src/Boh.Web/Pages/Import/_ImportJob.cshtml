@@ -91,7 +91,16 @@
                     <tbody>
                         @foreach (var item in result.Skipped)
                         {
-                            <tr><td>@item.FileName</td><td>@item.Reason</td></tr>
+                            <tr>
+                                <td>@item.FileName</td>
+                                <td>
+                                    @item.Reason
+                                    @if (item.DuplicateOfPostId is { } duplicateId)
+                                    {
+                                        <a href="/Posts/Detail/@duplicateId">post @duplicateId</a>
+                                    }
+                                </td>
+                            </tr>
                         }
                     </tbody>
                 </table>

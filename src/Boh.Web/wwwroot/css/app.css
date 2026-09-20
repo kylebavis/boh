@@ -750,6 +750,19 @@ section + section {
     text-decoration: underline;
 }
 
+/* Passkeys ------------------------------------------------------------- */
+
+/* Set apart from the password form above it rather than reading as one more field of it:
+   it is the other way in, not another thing to fill in. */
+.passkey-signin {
+    margin-top: 1.5rem;
+}
+
+.passkey-signin button {
+    width: 100%;
+    margin: 0;
+}
+
 /* Import --------------------------------------------------------------- */
 
 .import-form {

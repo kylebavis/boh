@@ -48,6 +48,31 @@ public sealed class BohOptions
     /// </summary>
     public string UploadStagingDir => Path.Combine(OriginalsDir, ".staging");
 
+    /// <summary>
+    /// The WebAuthn relying party id — the domain a passkey is bound to, and the one thing
+    /// about a registration that cannot be changed afterwards without invalidating it.
+    /// </summary>
+    /// <remarks>
+    /// Unset, each request answers for itself from its own Host header, which is right for
+    /// the deployments boh expects: one hostname, reached directly or through a proxy that
+    /// forwards it. Setting it matters when the instance answers on several names and the
+    /// passkeys have to work on all of them — the id is then the registrable suffix they
+    /// share (<c>example.com</c> for <c>boh.example.com</c>), and every name it is reached
+    /// by has to be listed in <see cref="PasskeyOrigins"/>.
+    /// </remarks>
+    public string? PasskeyRpIdOverride { get; init; }
+
+    /// <summary>
+    /// Origins a passkey assertion may come from, comma separated and including the scheme
+    /// and any non-default port. Unset, only the origin of the request itself is accepted.
+    /// </summary>
+    public string? PasskeyOriginsOverride { get; init; }
+
+    /// <summary>Parsed form of <see cref="PasskeyOriginsOverride"/>; empty when unset.</summary>
+    public IReadOnlyList<string> PasskeyOrigins =>
+        (PasskeyOriginsOverride ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     public string GalleryDlConfigPath => Path.Combine(DataPath, "gallery-dl.conf");
 
     public long MaxUploadBytes => MaxUploadMb * 1024L * 1024L;
@@ -74,6 +99,8 @@ public sealed class BohOptions
             KeysPathOverride = Optional(c, "BOH_KEYS_PATH"),
             ImportTempPathOverride = Optional(c, "BOH_TEMP_PATH"),
             AuthMode = Str(c, "BOH_AUTH_MODE", defaults.AuthMode),
+            PasskeyRpIdOverride = Optional(c, "BOH_PASSKEY_RP_ID"),
+            PasskeyOriginsOverride = Optional(c, "BOH_PASSKEY_ORIGINS"),
             AdminPassword = c["BOH_ADMIN_PASSWORD"],
             PublicRead = Bool(c, "BOH_PUBLIC_READ", defaults.PublicRead),
             MaxUploadMb = Int(c, "BOH_MAX_UPLOAD_MB", defaults.MaxUploadMb),

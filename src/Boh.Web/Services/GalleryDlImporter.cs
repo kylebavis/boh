@@ -16,7 +16,12 @@ public sealed record ImportedItem(
     IReadOnlyList<string> Tags,
     IReadOnlyList<SimilarPost> Similar);
 
-public sealed record SkippedItem(string FileName, string Reason);
+/// <summary>
+/// A file the import did not store, and why. <paramref name="DuplicateOfPostId"/> is set when
+/// the reason is that the bytes are already a post, so the report can link to it; the reason
+/// then reads as the lead-in to that link.
+/// </summary>
+public sealed record SkippedItem(string FileName, string Reason, int? DuplicateOfPostId = null);
 
 public sealed record ImportResult(
     IReadOnlyList<ImportedItem> Created,
@@ -188,9 +193,12 @@ public sealed class GalleryDlImporter(
                 // Skipped as a post, but not as information: the file being reachable from
                 // this URL too is recorded on the post that already holds it.
                 case PostCreateResult.Duplicate duplicate:
-                    skipped.Add(new SkippedItem(fileName, duplicate.SourceAdded
-                        ? $"already stored as post {duplicate.ExistingPostId}; added this URL as another source"
-                        : $"already stored as post {duplicate.ExistingPostId}"));
+                    skipped.Add(new SkippedItem(
+                        fileName,
+                        duplicate.SourceAdded
+                            ? "added this URL as another source; already stored as"
+                            : "already stored as",
+                        duplicate.ExistingPostId));
                     break;
 
                 case PostCreateResult.Rejected rejected:

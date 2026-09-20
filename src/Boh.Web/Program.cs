@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using Boh.Web;
 using Boh.Web.Data;
+using Boh.Web.Data.Entities;
 using Boh.Web.Endpoints;
 using Boh.Web.Jobs;
 using Boh.Web.Pages.Account;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -55,6 +57,18 @@ builder.Services.AddScoped<DuplicateService>();
 builder.Services.AddScoped<PostService>();
 builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<UserService>();
+
+// Passkeys. The WebAuthn work is ASP.NET Core's, and it is reached through a UserManager —
+// so IdentityCore is registered purely to supply one over boh's existing Users table, with
+// BohUserStore as the adapter. Nothing else about Identity is adopted: passwords stay with
+// UserService and BCrypt, and sign-in stays the cookie written in Pages/Account. The
+// passkey handler is registered directly because AddSignInManager, which normally does it,
+// would bring a parallel sign-in path boh has no use for.
+builder.Services.AddIdentityCore<User>().AddUserStore<BohUserStore>();
+builder.Services.AddScoped<IPasskeyHandler<User>, PasskeyHandler<User>>();
+builder.Services.Configure<IdentityPasskeyOptions>(p => PasskeyRelyingParty.Configure(p, options));
+builder.Services.AddScoped<PasskeyService>();
+builder.Services.AddSingleton<PasskeyChallenge>();
 
 // Maintenance passes and URL imports outlive a request, so pages queue them and this runs them.
 builder.Services.AddSingleton<JobQueue>();
