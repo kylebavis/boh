@@ -37,7 +37,8 @@
            carries no method or action: the script owns the submit. *@
         <form id="passkey-signin" class="passkey-signin"
               data-passkey-options="/Account/Login?handler=PasskeyOptions"
-              data-passkey-assert="/Account/Login?handler=Passkey&amp;returnUrl=@Uri.EscapeDataString((ViewData["ReturnUrl"] as string) ?? "/")"
+              data-passkey-assert="/Account/Login?handler=Passkey"
+              data-passkey-return="@((ViewData["ReturnUrl"] as string) ?? "/")"
               hidden>
             <button type="submit" class="secondary">Sign in with a passkey</button>
         </form>

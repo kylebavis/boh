@@ -285,8 +285,13 @@
 
             if (!credential) throw new Error('No passkey was offered.');
 
-            const response = await post(
-                signingIn.dataset.passkeyAssert, JSON.stringify(serialize(credential)));
+            // Where to go next travels in the body, not the query string — a returnUrl there
+            // makes cookie authentication answer the sign-in with a redirect instead of the
+            // JSON this is waiting for.
+            const response = await post(signingIn.dataset.passkeyAssert, JSON.stringify({
+                returnUrl: signingIn.dataset.passkeyReturn || '/',
+                credential: serialize(credential)
+            }));
             const result = await readJson(response);
 
             window.location.assign(result.redirect || '/');

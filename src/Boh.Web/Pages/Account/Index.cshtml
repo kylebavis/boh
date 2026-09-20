@@ -75,8 +75,9 @@ else
         @if (!Model.PasskeysUsable)
         {
             <div class="notice" role="status">
-                Browsers only offer passkeys over HTTPS, or on <code>localhost</code>. This page arrived
-                over plain HTTP, so adding one will not work until there is TLS in front of boh.
+                Passkeys need HTTPS. This page arrived over plain HTTP, so adding one will not work
+                until there is TLS in front of boh — or, for local development, until
+                <code>BOH_PASSKEY_ORIGINS</code> names this address.
             </div>
         }
 

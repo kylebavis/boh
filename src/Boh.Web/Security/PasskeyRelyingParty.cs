@@ -48,12 +48,16 @@ public static class PasskeyRelyingParty
     }
 
     /// <summary>
-    /// Whether a browser will let this page use WebAuthn at all. It refuses outside a secure
-    /// context, and localhost is the one exception — so a plain-HTTP instance on a LAN can
-    /// offer passkeys and have every attempt fail, which is worth saying on the page instead.
+    /// Whether a passkey can succeed here at all, which is worth saying on the page rather
+    /// than leaving to fail at the click.
     /// </summary>
-    public static bool IsSecureContext(HttpRequest request) =>
-        request.IsHttps
-        || request.Host.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-        || request.Host.Host is "127.0.0.1" or "[::1]" or "::1";
+    /// <remarks>
+    /// Two gates, and the stricter one is the server's. Browsers refuse WebAuthn outside a
+    /// secure context but make an exception for localhost; ASP.NET Core's origin check makes
+    /// no such exception and turns away a plain-HTTP origin outright. So HTTPS is the honest
+    /// answer — unless the operator has named the origins themselves, which replaces that
+    /// check with their list and is how a developer on localhost gets it working.
+    /// </remarks>
+    public static bool IsUsable(HttpRequest request, BohOptions options) =>
+        request.IsHttps || options.PasskeyOrigins.Count > 0;
 }
