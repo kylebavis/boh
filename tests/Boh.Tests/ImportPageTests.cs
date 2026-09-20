@@ -120,6 +120,52 @@ public class ImportPageTests
         Assert.Contains("notice notice-error", html);
     }
 
+    /// <summary>
+    /// The skipped row names the post that already holds those bytes, and does it as a link.
+    /// Printing the id on its own left the reader to go and find it by hand, which is the
+    /// one thing they want to do next.
+    /// </summary>
+    [Fact]
+    public async Task A_file_the_collection_already_holds_links_to_the_post_that_holds_it()
+    {
+        using var app = new TestApp();
+        var client = app.CreateNonRedirectingClient();
+
+        var postId = await app.CreatePostAsync(24);
+
+        app.Jobs.Enqueue(JobLane.Import, GalleryDlImporter.JobKind, "https://example.com/gallery", null,
+            _ => Task.FromResult<object?>(new ImportResult(
+                [],
+                [new SkippedItem("cat.jpg", "already stored as", postId)],
+                null)));
+
+        await app.WaitForJobsAsync();
+        var html = await app.GetHtmlAsync(client, Url);
+
+        Assert.Contains("already stored as", html);
+        Assert.Contains($"<a href=\"/Posts/Detail/{postId}\">post {postId}</a>", html);
+    }
+
+    /// <summary>A skip that is not a duplicate has no post to point at, and gets no link.</summary>
+    [Fact]
+    public async Task A_file_skipped_for_any_other_reason_is_reported_as_plain_text()
+    {
+        using var app = new TestApp();
+        var client = app.CreateNonRedirectingClient();
+
+        app.Jobs.Enqueue(JobLane.Import, GalleryDlImporter.JobKind, "https://example.com/gallery", null,
+            _ => Task.FromResult<object?>(new ImportResult(
+                [],
+                [new SkippedItem("notes.txt", "that file type is not accepted")],
+                null)));
+
+        await app.WaitForJobsAsync();
+        var html = await app.GetHtmlAsync(client, Url);
+
+        Assert.Contains("that file type is not accepted", html);
+        Assert.DoesNotContain("/Posts/Detail/", html);
+    }
+
     [Fact]
     public async Task A_blank_address_is_refused_without_queueing_anything()
     {
