@@ -59,6 +59,92 @@ else
     </section>
 }
 
+@if (!Model.AuthDisabled)
+{
+    <section id="passkeys">
+        <h2>Passkeys</h2>
+
+        <p>
+            <small class="muted">
+                Sign in with whatever unlocks your device — fingerprint, face, screen lock — or with a
+                hardware key, instead of typing a password. A passkey is bound to the address boh is
+                reached at, so one registered here will not work through a different hostname.
+            </small>
+        </p>
+
+        @if (!Model.PasskeysUsable)
+        {
+            <div class="notice" role="status">
+                Browsers only offer passkeys over HTTPS, or on <code>localhost</code>. This page arrived
+                over plain HTTP, so adding one will not work until there is TLS in front of boh.
+            </div>
+        }
+
+        @if (Model.Passkeys.Count > 0)
+        {
+            var now = DateTimeOffset.UtcNow;
+
+            <div class="scroll-x">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Name</th>
+                            <th scope="col">Added</th>
+                            <th scope="col">Last used</th>
+                            <th scope="col"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var passkey in Model.Passkeys)
+                        {
+                            <tr>
+                                <td>
+                                    <form method="post" asp-page-handler="PasskeyRename" class="inline-form">
+                                        <input type="hidden" name="passkeyId" value="@passkey.Id" />
+                                        <input type="text" name="name" value="@passkey.Name"
+                                               maxlength="64" required aria-label="Name for this passkey" />
+                                        <button type="submit" class="link-button">Rename</button>
+                                    </form>
+                                    @* Worth saying plainly: one of these survives losing the device,
+                                       the other does not. *@
+                                    <small class="muted">
+                                        @(passkey.IsBackedUp ? "synced to your account" : "this device only")
+                                    </small>
+                                </td>
+                                <td>@RelativeTime.Since(passkey.CreatedAt, now)</td>
+                                <td>@(passkey.LastUsedAt is { } used ? RelativeTime.Since(used, now) : "never")</td>
+                                <td>
+                                    <form method="post" asp-page-handler="PasskeyDelete" class="inline-form">
+                                        <input type="hidden" name="passkeyId" value="@passkey.Id" />
+                                        <button type="submit" class="link-button">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p><small class="muted">This account has no passkeys yet.</small></p>
+        }
+
+        @* No method or action: passkeys.js owns the submit, because registering one is a
+           conversation with the authenticator rather than a single post. The button stays
+           hidden until that script has confirmed the browser can do it at all. *@
+        <form class="import-form" id="passkey-form"
+              data-passkey-options="/Account?handler=PasskeyOptions"
+              data-passkey-register="/Account?handler=Passkey">
+            <input type="text" name="name" maxlength="64" placeholder="Name this passkey…"
+                   aria-label="Name for the new passkey" />
+            <button type="submit" hidden>Add a passkey</button>
+        </form>
+
+        <div class="notice notice-error" role="alert" id="passkey-error" hidden></div>
+    </section>
+}
+
 <section>
     <h2>Theme</h2>
 
@@ -98,3 +184,7 @@ else
         <button type="submit">Save theme</button>
     </form>
 </section>
+
+@section Scripts {
+    <script src="~/js/passkeys.js" asp-append-version="true" defer></script>
+}

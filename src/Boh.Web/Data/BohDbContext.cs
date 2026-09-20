@@ -26,6 +26,7 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
     public DbSet<TagNamespaceAlias> TagNamespaceAliases => Set<TagNamespaceAlias>();
     public DbSet<TagImplication> TagImplications => Set<TagImplication>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<Passkey> Passkeys => Set<Passkey>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -157,6 +158,26 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.Property(u => u.CreatedAt).HasConversion(UtcMilliseconds);
             e.Property(u => u.LightTheme).HasMaxLength(32);
             e.Property(u => u.DarkTheme).HasMaxLength(32);
+        });
+
+        b.Entity<Passkey>(e =>
+        {
+            e.Property(p => p.CredentialId).IsRequired();
+            e.Property(p => p.PublicKey).IsRequired();
+            e.Property(p => p.Name).HasMaxLength(64).IsRequired();
+            e.Property(p => p.Transports).HasMaxLength(128).IsRequired();
+            e.Property(p => p.CreatedAt).HasConversion(UtcMilliseconds);
+            e.Property(p => p.LastUsedAt).HasConversion(UtcMilliseconds);
+
+            // A credential id is unique across the world, so this is not merely a per-user
+            // constraint: a sign-in looks the credential up by id alone and must land on one
+            // account, and re-registering the same authenticator must not quietly fork it.
+            e.HasIndex(p => p.CredentialId).IsUnique();
+
+            e.HasOne(p => p.User)
+                .WithMany(u => u.Passkeys)
+                .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

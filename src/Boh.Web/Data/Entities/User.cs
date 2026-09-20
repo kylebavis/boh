@@ -17,4 +17,6 @@ public class User
     public string? LightTheme { get; set; }
 
     public string? DarkTheme { get; set; }
+
+    public List<Passkey> Passkeys { get; set; } = [];
 }

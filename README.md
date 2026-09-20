@@ -19,6 +19,7 @@ Think danbooru, minus everything needed to serve thousands of strangers. It shou
 - Light/Dark mode. There are a few alternative themes as well.
 - Optional public browsing with private writes
 - Multi-user: ordinary accounts plus administrators who manage them
+- **Passkeys** — sign in with a fingerprint, face unlock or a hardware key instead of a password
 
 ## Quick start
 
@@ -55,6 +56,8 @@ All settings are environment variables.
 |---|---|---|
 | `BOH_ADMIN_PASSWORD` | — | Password for the seeded `admin` account. Reapplied on every start, along with its administrator rights. |
 | `BOH_AUTH_MODE` | `single` | `single` for password auth, `none` to disable auth entirely. |
+| `BOH_PASSKEY_RP_ID` | the request's host | The domain passkeys are bound to. Only needed when the instance answers on several hostnames — see [Passkeys](#passkeys). |
+| `BOH_PASSKEY_ORIGINS` | the request's origin | Comma-separated origins a passkey may be used from, scheme and port included. Set it alongside `BOH_PASSKEY_RP_ID`. |
 | `BOH_PUBLIC_READ` | `false` | When `true`, anyone can browse and view; uploading, tagging, deleting and importing still require signing in. |
 | `BOH_DATA_PATH` | `/data` | Base directory. Everything below defaults to a subdirectory of this. |
 | `BOH_DB_PATH` | `{DATA}/boh.db` | SQLite database file. **Must be local storage** — see below. |
@@ -133,14 +136,14 @@ boh checks every configured location is writable before it starts, and names the
 
 ### Users and roles
 
-`BOH_ADMIN_PASSWORD` seeds an account called **`admin`**, which is always an administrator. From **Users** in the nav, an administrator can add accounts, reset passwords, promote and demote, and remove people. Anyone signed in can change their own password from **Account**.
+`BOH_ADMIN_PASSWORD` seeds an account called **`admin`**, which is always an administrator. From **Users** in the nav, an administrator can add accounts, reset passwords, promote and demote, and remove people. Anyone signed in can change their own password, and register or remove passkeys, from **Account**.
 
 | | User | Administrator |
 |---|---|---|
 | Browse and search | ✓ | ✓ |
 | Upload, tag, delete posts | ✓ | ✓ |
 | Import from a URL | ✓ | ✓ |
-| Change own password | ✓ | ✓ |
+| Change own password, manage own passkeys | ✓ | ✓ |
 | Manage users | | ✓ |
 | Aliases, implications, namespace colours | | ✓ |
 | Maintenance (rebuild thumbnails and implied tags, hash for duplicates, delete unused tags) | | ✓ |
@@ -149,16 +152,37 @@ A few behaviours worth knowing:
 
 - **Changes apply immediately.** Deleting someone signs them out on their next request rather than whenever their cookie expires, and promoting or demoting takes effect without asking them to sign in again.
 - **The last administrator cannot be deleted or demoted**, and you cannot delete the account you are currently signed in with — either would leave the instance unmanageable from inside.
-- **Deleting a user keeps their posts.** The uploader field is cleared; nothing in the collection is removed.
+- **Deleting a user keeps their posts.** The uploader field is cleared; nothing in the collection is removed. Their passkeys go with them.
 - **The seeded `admin` account is reapplied on every start** while `BOH_ADMIN_PASSWORD` is set — including its administrator rights. That makes it the way back in if you lock yourself out, but it also means deleting or demoting it does not stick. Unset the variable once you have another administrator if you would rather manage accounts entirely from the UI.
 - `BOH_AUTH_MODE=none` removes accounts altogether; the app is anonymously-writable in this configuration.
+
+### Passkeys
+
+A passkey signs you in with whatever unlocks your device — fingerprint, face, screen lock — or with a hardware key, instead of a password. Add one from **Account** while signed in, name it so you can tell your devices apart, and the login page grows a **Sign in with a passkey** button. Passwords keep working; a passkey is an addition to an account, not a replacement for it, and the same account can hold several.
+
+Two things are worth knowing before you rely on it.
+
+**It needs HTTPS.** Browsers refuse passkeys outside a secure context, with `localhost` the only exception. On a plain-HTTP LAN instance the account page says so rather than offering a button that cannot work — put the reverse proxy in front first.
+
+**A passkey is bound to the hostname it was registered at.** That is the property that makes it unphishable, and it means one registered at `boh.example.com` will not work through `192.168.1.5:8080` or through a Tailscale name. Left alone, boh takes the domain from each request, which is right when there is one way in. If you reach the same instance by several names and want one passkey to cover them all, set both:
+
+```yaml
+environment:
+  BOH_PASSKEY_RP_ID: example.com
+  BOH_PASSKEY_ORIGINS: https://boh.example.com,https://boh.internal.example.com
+```
+
+`BOH_PASSKEY_RP_ID` has to be a domain the hostnames share — the registrable suffix, so `example.com` for `boh.example.com`. Do not point it at a domain you also serve untrusted content from: anything under it can then ask for these credentials. Changing it later invalidates every passkey already registered, and everyone re-registers.
+
+The implementation is ASP.NET Core's own WebAuthn support; boh adds the storage and the pages around it.
 
 ### Security notes
 
 Read these before exposing boh to anything.
 
 - **boh speaks plain HTTP.** Put it behind a reverse proxy that terminates TLS. It honors `X-Forwarded-For` and `X-Forwarded-Proto`, so the auth cookie picks up the `Secure` flag automatically once requests arrive over HTTPS. HSTS belongs on that proxy; boh does not send it, because doing so would break the plain-HTTP LAN case.
-- **Sign-in attempts are rate limited** to 10 per address every 5 minutes, and both successes and failures are logged with the address they came from. The address is whatever `X-Forwarded-For` says, so the limit is only as trustworthy as the proxy in front — something reaching the container directly can forge it.
+- **Sign-in attempts are rate limited** to 10 per address every 5 minutes, and both successes and failures are logged with the address they came from. The address is whatever `X-Forwarded-For` says, so the limit is only as trustworthy as the proxy in front — something reaching the container directly can forge it. Passkey sign-ins go through the same limiter.
+- **Passkeys take the domain they are bound to from the `Host` header** unless `BOH_PASSKEY_RP_ID` says otherwise. Behind a proxy that is the proxy's business, and boh trusts its forwarded host and scheme; reached directly, a caller can send whatever host it likes. Set `BOH_PASSKEY_RP_ID` if you want that settled by configuration instead.
 - **boh refuses to be framed.** It sends `frame-ancestors 'none'` and `X-Frame-Options: DENY`, so embedding it in a dashboard like Organizr or Heimdall will show an empty pane. Relax both in `SecurityHeaders.cs` if you want that.
 - **`BOH_AUTH_MODE=none` disables all authentication**, including delete and import. Only use it on a network where you trust everyone who can reach the port.
 - **The import feature makes the server fetch a URL you give it.** It always requires signing in, even with `BOH_PUBLIC_READ=true`, because it can reach hosts the container can reach — including things on your local network. Do not hand accounts to people you would not give that capability.
@@ -299,7 +323,8 @@ Migrations are applied automatically at startup, so upgrading the image is enoug
 ```
 src/Boh.Web/
   Data/          EF Core entities, context, migrations
-  Services/      storage, media processing, tags, import, duplicates
+  Services/      storage, media processing, tags, import, duplicates, accounts
+  Security/      cookie identity, security headers, passkey configuration
   Media/         the perceptual hash itself (no dependencies)
   Tags/          tag normalization and search parsing (no dependencies)
   Pages/         Razor Pages
