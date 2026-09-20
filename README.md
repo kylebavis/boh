@@ -57,7 +57,7 @@ All settings are environment variables.
 | `BOH_ADMIN_PASSWORD` | — | Password for the seeded `admin` account. Reapplied on every start, along with its administrator rights. |
 | `BOH_AUTH_MODE` | `single` | `single` for password auth, `none` to disable auth entirely. |
 | `BOH_PASSKEY_RP_ID` | the request's host | The domain passkeys are bound to. Only needed when the instance answers on several hostnames — see [Passkeys](#passkeys). |
-| `BOH_PASSKEY_ORIGINS` | the request's origin | Comma-separated origins a passkey may be used from, scheme and port included. Set it alongside `BOH_PASSKEY_RP_ID`. |
+| `BOH_PASSKEY_ORIGINS` | HTTPS origins of the request's domain | Comma-separated origins a passkey may be used from, scheme and port included. Set it alongside `BOH_PASSKEY_RP_ID`, or to allow a plain-HTTP origin for local development. |
 | `BOH_PUBLIC_READ` | `false` | When `true`, anyone can browse and view; uploading, tagging, deleting and importing still require signing in. |
 | `BOH_DATA_PATH` | `/data` | Base directory. Everything below defaults to a subdirectory of this. |
 | `BOH_DB_PATH` | `{DATA}/boh.db` | SQLite database file. **Must be local storage** — see below. |
@@ -162,7 +162,7 @@ A passkey signs you in with whatever unlocks your device — fingerprint, face, 
 
 Two things are worth knowing before you rely on it.
 
-**It needs HTTPS.** Browsers refuse passkeys outside a secure context, with `localhost` the only exception. On a plain-HTTP LAN instance the account page says so rather than offering a button that cannot work — put the reverse proxy in front first.
+**It needs HTTPS.** Two things insist on it: browsers refuse passkeys outside a secure context, and the origin check refuses a plain-HTTP origin even on `localhost`. On a plain-HTTP instance the account page says so rather than offering a button that cannot work — put the reverse proxy in front first. To develop against a local instance over HTTP, name it in `BOH_PASSKEY_ORIGINS` (`http://localhost:8080`), which replaces that check with your list.
 
 **A passkey is bound to the hostname it was registered at.** That is the property that makes it unphishable, and it means one registered at `boh.example.com` will not work through `192.168.1.5:8080` or through a Tailscale name. Left alone, boh takes the domain from each request, which is right when there is one way in. If you reach the same instance by several names and want one passkey to cover them all, set both:
 

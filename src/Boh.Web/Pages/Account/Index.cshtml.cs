@@ -36,11 +36,10 @@ public class IndexModel(
     public IReadOnlyList<PasskeyRow> Passkeys { get; private set; } = [];
 
     /// <summary>
-    /// Whether the browser will let this page run a WebAuthn ceremony at all. False on a
-    /// plain-HTTP instance that is not localhost, where the form is shown with the reason
-    /// rather than left to fail at the click.
+    /// Whether a passkey can work here. False on a plain-HTTP instance, where the form is
+    /// shown with the reason rather than left to fail at the click.
     /// </summary>
-    public bool PasskeysUsable => PasskeyRelyingParty.IsSecureContext(Request);
+    public bool PasskeysUsable => PasskeyRelyingParty.IsUsable(Request, options);
 
     [TempData] public string? Message { get; set; }
     public string? Error { get; private set; }

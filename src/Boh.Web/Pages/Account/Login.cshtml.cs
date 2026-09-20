@@ -41,11 +41,10 @@ public class LoginModel(
     public string? Error { get; private set; }
 
     /// <summary>
-    /// Whether the browser will let this page use a passkey at all — see
-    /// <see cref="PasskeyRelyingParty.IsSecureContext"/>. The button is left out entirely
-    /// when it cannot, rather than offered and made to fail.
+    /// Whether a passkey can work here — see <see cref="PasskeyRelyingParty.IsUsable"/>. The
+    /// button is left out entirely when it cannot, rather than offered and made to fail.
     /// </summary>
-    public bool PasskeysUsable => PasskeyRelyingParty.IsSecureContext(Request);
+    public bool PasskeysUsable => PasskeyRelyingParty.IsUsable(Request, options);
 
     public IActionResult OnGet(string? returnUrl)
     {
@@ -107,27 +106,35 @@ public class LoginModel(
     /// Checks the signed challenge and, if it holds up, signs the owner in — the same ticket
     /// a password would have produced.
     /// </summary>
-    public async Task<IActionResult> OnPostPasskeyAsync(string? returnUrl, CancellationToken ct)
+    /// <remarks>
+    /// Where the visitor was headed travels in the body, and must not be put in the query
+    /// string. Cookie authentication treats a <c>ReturnUrl</c> query parameter as an
+    /// instruction to redirect after signing in — it is how the ordinary login form works —
+    /// and it matches the name without regard to case. A handler that answers with JSON would
+    /// have that answer turned into a 302, which fetch follows without a word, leaving the
+    /// script parsing a page as though it were the reply.
+    /// </remarks>
+    public async Task<IActionResult> OnPostPasskeyAsync(CancellationToken ct)
     {
         if (options.AuthDisabled) return PasskeyProblem("This instance has no accounts to sign in to.");
 
         var state = challenges.Take(HttpContext, PasskeyChallenge.AssertionPurpose);
         if (state is null) return PasskeyProblem("That took too long. Try again.");
 
-        JsonNode? credential;
+        SignInWithPasskey? posted;
         try
         {
-            credential = await JsonSerializer.DeserializeAsync<JsonNode>(Request.Body, cancellationToken: ct);
+            posted = await JsonSerializer.DeserializeAsync<SignInWithPasskey>(Request.Body, JsonOptions, ct);
         }
         catch (JsonException)
         {
             return PasskeyProblem("The browser sent something this server could not read.");
         }
 
-        if (credential is null) return PasskeyProblem("The browser sent no credential.");
+        if (posted?.Credential is null) return PasskeyProblem("The browser sent no credential.");
 
         var result = await passkeys.CompleteAssertionAsync(
-            credential.ToJsonString(), state, HttpContext, ct);
+            posted.Credential.ToJsonString(), state, HttpContext, ct);
 
         if (result is not PasskeySignIn.Ok(var user))
         {
@@ -147,8 +154,16 @@ public class LoginModel(
 
         // The browser is driving this with fetch, so it navigates itself rather than
         // following a redirect it would only have to unpick.
-        return new JsonResult(new { redirect = SafeReturnUrl(returnUrl) });
+        return new JsonResult(new { redirect = SafeReturnUrl(posted.ReturnUrl) });
     }
+
+    /// <summary>What the browser posts once the authenticator has signed the challenge.</summary>
+    private sealed record SignInWithPasskey(string? ReturnUrl, JsonNode? Credential);
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
 
     /// <summary>
     /// A failed ceremony, in the shape passkeys.js reads. Deliberately a 400 rather than a

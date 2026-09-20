@@ -24,6 +24,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
     private readonly int _pageSize;
     private readonly string _authMode;
     private readonly bool _publicRead;
+    private readonly string? _passkeyOrigins;
 
     /// <param name="pageSize">Small by default so a handful of posts spans several pages.</param>
     /// <param name="authMode">
@@ -35,11 +36,19 @@ public sealed class TestApp : WebApplicationFactory<Program>
     /// Only meaningful alongside <c>authMode: "password"</c>: it is the configuration where a
     /// signed-out visitor can see a page but not its editing controls.
     /// </param>
-    public TestApp(int pageSize = 2, string authMode = "none", bool publicRead = false)
+    /// <param name="passkeyOrigins">
+    /// Set to exercise a passkey ceremony through to verification. The tests are served over
+    /// plain HTTP, and the origin check ASP.NET Core applies by default refuses that — so a
+    /// test that wants a signature checked has to say which origin is expected, exactly as a
+    /// developer running boh on localhost would.
+    /// </param>
+    public TestApp(
+        int pageSize = 2, string authMode = "none", bool publicRead = false, string? passkeyOrigins = null)
     {
         _pageSize = pageSize;
         _authMode = authMode;
         _publicRead = publicRead;
+        _passkeyOrigins = passkeyOrigins;
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
@@ -55,6 +64,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
             ["BOH_AUTH_MODE"] = _authMode,
             ["BOH_PUBLIC_READ"] = _publicRead.ToString(),
             ["BOH_ADMIN_PASSWORD"] = AdminPassword,
+            ["BOH_PASSKEY_ORIGINS"] = _passkeyOrigins,
         }));
 
         return base.CreateHost(builder);

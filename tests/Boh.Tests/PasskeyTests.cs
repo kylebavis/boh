@@ -1,6 +1,9 @@
+using System.Buffers.Text;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Boh.Web.Data;
 using Boh.Web.Data.Entities;
@@ -26,6 +29,12 @@ public class PasskeyTests
     private const string AccountUrl = "/Account";
     private const string LoginUrl = "/Account/Login";
 
+    /// <summary>
+    /// What the tests are served over. Naming it as an allowed origin is what lets a passkey
+    /// ceremony finish here at all — see <see cref="TestApp"/>.
+    /// </summary>
+    private const string Origin = "http://localhost";
+
     // ---- what the pages offer ------------------------------------------
 
     [Fact]
@@ -48,7 +57,7 @@ public class PasskeyTests
     [Fact]
     public async Task The_login_page_offers_a_passkey_sign_in_pointing_at_both_handlers()
     {
-        using var app = new TestApp(authMode: "password");
+        using var app = new TestApp(authMode: "password", passkeyOrigins: Origin);
 
         var form = Regex.Match(
             await app.GetHtmlAsync(app.CreateNonRedirectingClient(), LoginUrl),
@@ -56,7 +65,33 @@ public class PasskeyTests
 
         Assert.True(form.Success, "no passkey sign-in on the login page");
         Assert.Contains("data-passkey-options=\"/Account/Login?handler=PasskeyOptions\"", form.Value);
-        Assert.Contains("handler=Passkey&amp;returnUrl=", form.Value);
+
+        // No returnUrl in the query string: cookie authentication reads one there as an
+        // instruction to redirect, which would replace the JSON the script is waiting for.
+        Assert.Contains("data-passkey-assert=\"/Account/Login?handler=Passkey\"", form.Value);
+        Assert.Contains("data-passkey-return=", form.Value);
+    }
+
+    /// <summary>
+    /// Over plain HTTP nothing will work — ASP.NET Core's origin check turns the request away
+    /// whatever the browser thinks — so the sign-in button is left out rather than offered.
+    /// </summary>
+    [Fact]
+    public async Task Over_plain_http_the_login_page_offers_no_passkey()
+    {
+        using var app = new TestApp(authMode: "password");
+        var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), LoginUrl);
+
+        Assert.DoesNotContain("id=\"passkey-signin\"", html);
+    }
+
+    [Fact]
+    public async Task Over_plain_http_the_account_page_says_why_a_passkey_will_not_work()
+    {
+        using var app = new TestApp(authMode: "password");
+        var client = await app.SignInAsync();
+
+        Assert.Contains("Passkeys need HTTPS", await app.GetHtmlAsync(client, AccountUrl));
     }
 
     /// <summary>
@@ -66,7 +101,7 @@ public class PasskeyTests
     [Fact]
     public async Task The_passkey_controls_start_hidden_for_the_script_to_reveal()
     {
-        using var app = new TestApp(authMode: "password");
+        using var app = new TestApp(authMode: "password", passkeyOrigins: Origin);
         var client = await app.SignInAsync();
 
         var signin = Regex.Match(
@@ -334,7 +369,132 @@ public class PasskeyTests
         Assert.Empty(await identityUsers.GetPasskeysAsync(admin));
     }
 
+    /// <summary>
+    /// The one path nothing else can reach: an assertion that actually verifies.
+    /// </summary>
+    /// <remarks>
+    /// Everything past the signature — recording the counter, writing the auth cookie,
+    /// answering with somewhere to go — is unreachable without a real one, so this test is
+    /// its own authenticator. It holds the private key, registers the matching public key,
+    /// and signs the challenge the server issued.
+    /// </remarks>
+    [Fact]
+    public async Task A_passkey_that_verifies_signs_its_owner_in()
+    {
+        using var app = new TestApp(authMode: "password", passkeyOrigins: Origin);
+        var client = app.CreateNonRedirectingClient();
+
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credentialId = Encoding.UTF8.GetBytes("a-registered-credential");
+
+        int userId;
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
+            userId = (await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername)).Id;
+
+            db.Passkeys.Add(new Passkey
+            {
+                UserId = userId,
+                CredentialId = credentialId,
+                PublicKey = CoseKey(key),
+                Name = "Test key",
+                Transports = "internal",
+                AttestationObject = [1],
+                ClientDataJson = [1],
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+
+            await db.SaveChangesAsync();
+        }
+
+        // The options call also leaves the sealed challenge on the client, as it does in a
+        // browser — the second half is only meaningful because the first half ran.
+        var optionsResponse = await TestApp.PostHxAsync(
+            client, $"{LoginUrl}?handler=PasskeyOptions", await app.GetHtmlAsync(client, LoginUrl));
+
+        Assert.Equal(HttpStatusCode.OK, optionsResponse.StatusCode);
+
+        using var options = JsonDocument.Parse(await optionsResponse.Content.ReadAsStringAsync());
+        var challenge = options.RootElement.GetProperty("challenge").GetString()!;
+
+        var clientData = Encoding.UTF8.GetBytes(
+            $$"""{"type":"webauthn.get","challenge":"{{challenge}}","origin":"http://localhost","crossOrigin":false}""");
+
+        // 32 bytes of relying party hash, one of flags, four of counter.
+        var authenticatorData = new byte[37];
+        SHA256.HashData("localhost"u8.ToArray()).CopyTo(authenticatorData, 0);
+        authenticatorData[32] = 0x05;   // user present, user verified
+        authenticatorData[36] = 1;      // one use, where the stored count is none
+
+        // What WebAuthn signs: the authenticator data, then the hash of the client data.
+        var signed = new byte[authenticatorData.Length + 32];
+        authenticatorData.CopyTo(signed, 0);
+        SHA256.HashData(clientData).CopyTo(signed, authenticatorData.Length);
+
+        var credential = JsonSerializer.Serialize(new
+        {
+            id = Base64Url.EncodeToString(credentialId),
+            rawId = Base64Url.EncodeToString(credentialId),
+            type = "public-key",
+            authenticatorAttachment = "platform",
+            clientExtensionResults = new { },
+            response = new
+            {
+                clientDataJSON = Base64Url.EncodeToString(clientData),
+                authenticatorData = Base64Url.EncodeToString(authenticatorData),
+                signature = Base64Url.EncodeToString(
+                    key.SignData(signed, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence)),
+                userHandle = Base64Url.EncodeToString(Encoding.UTF8.GetBytes(userId.ToString())),
+            },
+        });
+
+        var response = await PostJsonAsync(
+            app, client, LoginUrl, $"{LoginUrl}?handler=Passkey",
+            JsonSerializer.Serialize(new { returnUrl = "/", credential = JsonNode.Parse(credential) }));
+
+        // A non-redirecting client on purpose. Signing in used to answer with a 302 rather
+        // than this JSON, because cookie authentication turns a ReturnUrl in the query string
+        // into a redirect — and a client that follows redirects hides that by fetching the
+        // page it points at and returning a perfectly good 200.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null(response.Headers.Location);
+
+        using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("/", result.RootElement.GetProperty("redirect").GetString());
+
+        // The counter moved, which is what keeps the clone check meaningful, and the use
+        // was recorded for the account page.
+        using (var scope = app.Services.CreateScope())
+        {
+            var stored = await scope.ServiceProvider.GetRequiredService<BohDbContext>()
+                .Passkeys.SingleAsync();
+
+            Assert.Equal(1u, stored.SignCount);
+            Assert.NotNull(stored.LastUsedAt);
+        }
+
+        // And the ticket is the one a password would have produced.
+        Assert.Contains(UserService.AdminUsername, await app.GetHtmlAsync(client, AccountUrl));
+    }
+
     // ---- helpers -------------------------------------------------------
+
+    /// <summary>
+    /// An ES256 public key in the COSE form an authenticator hands over: a CBOR map of key
+    /// type, algorithm, curve and the two coordinates.
+    /// </summary>
+    private static byte[] CoseKey(ECDsa key)
+    {
+        var parameters = key.ExportParameters(false);
+
+        List<byte> cose = [0xA5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01, 0x21, 0x58, 0x20];
+        cose.AddRange(parameters.Q.X!);
+        cose.AddRange([0x22, 0x58, 0x20]);
+        cose.AddRange(parameters.Q.Y!);
+
+        return [.. cose];
+    }
 
     private const string OtherUsername = "someone-else";
 
