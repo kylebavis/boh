@@ -102,34 +102,81 @@
         });
     }
 
-    /// Serializing a credential normally means its own toJSON. Some password managers
-    /// implement that incorrectly and throw, so the fields are assembled by hand instead
-    /// of the registration failing for a reason the person cannot act on.
-    function credentialJson(credential) {
-        try {
-            return JSON.stringify(credential);
-        } catch (e) {
-            const response = credential.response;
+    /// What gets posted back, as a plain object.
+    ///
+    /// A credential's own toJSON is the right source when there is one, but it cannot be
+    /// taken on trust. A password manager that offers to store passkeys replaces
+    /// navigator.credentials wholesale and hands back an object of its own making, and those
+    /// are not all complete: 1Password's omits clientExtensionResults, which the server
+    /// requires, and others throw outright. Neither is something the person can act on, and
+    /// both look the same to them — a passkey that will not register. So the result is
+    /// inspected and completed rather than sent as it arrives.
+    function serialize(credential) {
+        let json = null;
 
-            return JSON.stringify({
-                id: credential.id,
-                rawId: toBase64Url(credential.rawId),
-                type: credential.type,
-                authenticatorAttachment: credential.authenticatorAttachment,
-                clientExtensionResults: credential.getClientExtensionResults(),
-                response: {
-                    clientDataJSON: toBase64Url(response.clientDataJSON),
-                    attestationObject: toBase64Url(response.attestationObject),
-                    authenticatorData: toBase64Url(
-                        response.authenticatorData || (response.getAuthenticatorData && response.getAuthenticatorData())),
-                    publicKey: toBase64Url(response.getPublicKey && response.getPublicKey()),
-                    publicKeyAlgorithm: response.getPublicKeyAlgorithm && response.getPublicKeyAlgorithm(),
-                    transports: response.getTransports ? response.getTransports() : undefined,
-                    signature: toBase64Url(response.signature),
-                    userHandle: toBase64Url(response.userHandle)
-                }
-            });
+        try {
+            json = JSON.parse(JSON.stringify(credential));
+        } catch (e) {
+            // A toJSON that throws, or output that is not JSON at all.
         }
+
+        if (!isCredentialJson(json)) json = assemble(credential);
+
+        // The field most often left out, and required: absent, the server rejects the whole
+        // ceremony over an empty object nobody had to think about.
+        if (!json.clientExtensionResults || typeof json.clientExtensionResults !== 'object') {
+            json.clientExtensionResults = extensionResults(credential);
+        }
+
+        return json;
+    }
+
+    /// Whether what came back is really the JSON form of a credential, rather than something
+    /// that merely survived JSON.stringify. Two ways it can fail to be: an object whose
+    /// accessors all live on its prototype — a real PublicKeyCredential — serializes to
+    /// nothing at all, and a plain stand-in for one serializes its buffers as {} instead of
+    /// base64url. Checking for the strings that must be there catches both, where checking
+    /// that the result is an object catches neither.
+    function isCredentialJson(json) {
+        return !!json
+            && typeof json.id === 'string'
+            && typeof json.rawId === 'string'
+            && !!json.response
+            && typeof json.response.clientDataJSON === 'string';
+    }
+
+    function extensionResults(credential) {
+        try {
+            return credential.getClientExtensionResults() || {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    /// Every field the server reads, taken off the credential by hand. Registration and
+    /// sign-in return different responses, so anything belonging to only one of them is
+    /// asked for defensively and left undefined — which drops out of the JSON — when this
+    /// is the other.
+    function assemble(credential) {
+        const response = credential.response;
+
+        return {
+            id: credential.id,
+            rawId: toBase64Url(credential.rawId),
+            type: credential.type,
+            authenticatorAttachment: credential.authenticatorAttachment,
+            response: {
+                clientDataJSON: toBase64Url(response.clientDataJSON),
+                attestationObject: toBase64Url(response.attestationObject),
+                authenticatorData: toBase64Url(
+                    response.authenticatorData || (response.getAuthenticatorData && response.getAuthenticatorData())),
+                publicKey: toBase64Url(response.getPublicKey && response.getPublicKey()),
+                publicKeyAlgorithm: response.getPublicKeyAlgorithm && response.getPublicKeyAlgorithm(),
+                transports: response.getTransports ? response.getTransports() : undefined,
+                signature: toBase64Url(response.signature),
+                userHandle: toBase64Url(response.userHandle)
+            }
+        };
     }
 
     // ---- shared plumbing for the two forms ---------------------------------
@@ -187,7 +234,7 @@
 
             await post(adding.dataset.passkeyRegister, JSON.stringify({
                 name: (adding.querySelector('[name="name"]') || {}).value || '',
-                credential: JSON.parse(credentialJson(credential))
+                credential: serialize(credential)
             }));
 
             // Reloaded rather than patched in: the new row, and the message the server left
@@ -210,7 +257,8 @@
 
             if (!credential) throw new Error('No passkey was offered.');
 
-            const response = await post(signingIn.dataset.passkeyAssert, credentialJson(credential));
+            const response = await post(
+                signingIn.dataset.passkeyAssert, JSON.stringify(serialize(credential)));
             const result = await response.json();
 
             window.location.assign(result.redirect || '/');
