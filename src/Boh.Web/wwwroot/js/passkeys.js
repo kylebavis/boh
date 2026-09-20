@@ -47,6 +47,34 @@
         throw new Error(reason);
     }
 
+    /// Reads a JSON reply, and says something useful when it is not one.
+    ///
+    /// These handlers only ever answer with JSON, so a reply that will not parse means the
+    /// request did not reach the one that was asked for — and the likeliest way that happens
+    /// is a redirect to the sign-in page after a session ended mid-ceremony, which fetch
+    /// follows silently and hands back looking like success. Letting the parser's own
+    /// complaint reach the page says nothing anybody can act on, so the detail goes to the
+    /// console and the person gets the situation.
+    async function readJson(response) {
+        const body = await response.text();
+
+        try {
+            return JSON.parse(body);
+        } catch (e) {
+            if (window.console) {
+                console.error('boh: expected JSON from ' + response.url + ', got '
+                    + response.status + ' ' + (response.headers.get('content-type') || 'no content type')
+                    + (response.redirected ? ' (redirected)' : ''), body.slice(0, 500));
+            }
+
+            if (response.redirected || /^\s*</.test(body)) {
+                throw new Error('That request ended up somewhere else — your session may have expired. Reload the page and try again.');
+            }
+
+            throw new Error('The server sent a reply this page could not read. See the browser console for what arrived.');
+        }
+    }
+
     // ---- converting between the wire format and the API's buffers ----------
     //
     // WebAuthn options travel as JSON with base64url in place of the byte arrays, and
@@ -224,7 +252,7 @@
 
     if (adding) {
         wire(adding, async function () {
-            const options = await (await post(adding.dataset.passkeyOptions)).json();
+            const options = await readJson(await post(adding.dataset.passkeyOptions));
 
             const credential = await navigator.credentials.create({
                 publicKey: creationOptions(options)
@@ -249,7 +277,7 @@
 
     if (signingIn) {
         wire(signingIn, async function () {
-            const options = await (await post(signingIn.dataset.passkeyOptions)).json();
+            const options = await readJson(await post(signingIn.dataset.passkeyOptions));
 
             const credential = await navigator.credentials.get({
                 publicKey: requestOptions(options)
@@ -259,7 +287,7 @@
 
             const response = await post(
                 signingIn.dataset.passkeyAssert, JSON.stringify(serialize(credential)));
-            const result = await response.json();
+            const result = await readJson(response);
 
             window.location.assign(result.redirect || '/');
         });
