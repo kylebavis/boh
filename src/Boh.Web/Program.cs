@@ -191,7 +191,6 @@ if (!app.Environment.IsDevelopment())
 app.UseBohSecurityHeaders();
 
 // No HTTPS redirection: the container speaks plain HTTP and TLS terminates at the proxy.
-app.UseStaticFiles();
 app.UseRouting();
 
 // After routing, so the login policy can be found on the endpoint it is declared on.
@@ -200,7 +199,9 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapRazorPages();
+// Fingerprinted, precompressed and cached as immutable. Anonymous so the sign-in page is styled.
+app.MapStaticAssets().AllowAnonymous();
+app.MapRazorPages().WithStaticAssets();
 app.MapFileEndpoints();
 
 // Must stay reachable without credentials or the container healthcheck fails.
