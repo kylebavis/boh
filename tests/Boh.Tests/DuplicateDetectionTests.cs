@@ -139,6 +139,47 @@ public class DuplicateDetectionTests
         Assert.Empty(await env.Duplicates.GetSimilarToPostAsync(9999, 8, Ct));
     }
 
+    // ---- cached hashes ---------------------------------------------------
+
+    [Fact]
+    public async Task A_post_stored_after_the_hashes_are_cached_is_found()
+    {
+        using var env = new TestEnvironment();
+        var original = await CreatePatternAsync(env, 400);
+        Assert.Equal([original], await env.Duplicates.FindSimilarIdsAsync(original, Ct));
+
+        var resized = await CreatePatternAsync(env, 160);
+
+        Assert.Equal([original, resized], await env.Duplicates.FindSimilarIdsAsync(original, Ct));
+    }
+
+    [Fact]
+    public async Task A_deleted_post_leaves_the_cached_hashes()
+    {
+        using var env = new TestEnvironment();
+        var original = await CreatePatternAsync(env, 400);
+        var resized = await CreatePatternAsync(env, 160);
+        Assert.Equal([original, resized], await env.Duplicates.FindSimilarIdsAsync(original, Ct));
+
+        Assert.True(await env.Posts.DeleteAsync(resized, Ct));
+
+        Assert.Equal([original], await env.Duplicates.FindSimilarIdsAsync(original, Ct));
+    }
+
+    [Fact]
+    public async Task A_backfilled_hash_reaches_the_cached_hashes()
+    {
+        using var env = new TestEnvironment();
+        var original = await CreatePatternAsync(env, 400);
+        var resized = await CreatePatternAsync(env, 160);
+        await ForgetHashAsync(env, resized);
+        Assert.Equal([original], await env.Duplicates.FindSimilarIdsAsync(original, Ct));
+
+        await env.Duplicates.ComputeMissingHashesAsync(null, Ct);
+
+        Assert.Equal([original, resized], await env.Duplicates.FindSimilarIdsAsync(original, Ct));
+    }
+
     // ---- backfill ------------------------------------------------------
 
     /// <summary>
@@ -155,6 +196,7 @@ public class DuplicateDetectionTests
 
         // ExecuteUpdate goes straight to the database; the context still holds the old values.
         env.Db.ChangeTracker.Clear();
+        env.HashIndex.Invalidate();
     }
 
     [Fact]
