@@ -52,14 +52,14 @@ public sealed record DuplicateScan(
 /// "which rows are within eight bits of it" — so the alternatives are a linear scan or a
 /// purpose-built structure (a BK-tree, or multi-index hashing) maintained alongside the
 /// table. At the scale this project targets the scan is not worth avoiding: the hashes are
-/// eight bytes each and served by a covering index, and a hundred thousand of them cost one
-/// small read and about a hundred thousand popcounts, which is well under a millisecond of
-/// CPU. The archive-wide scan is the one place that stops being true, because it compares
+/// eight bytes each and held in memory by <see cref="PerceptualHashIndex"/>, and a hundred
+/// thousand popcounts is well under a millisecond of CPU. The archive-wide scan is the one place that stops being true, because it compares
 /// every pair rather than one hash against every other, which is why it runs as a background
 /// job.
 /// </remarks>
 public sealed class DuplicateService(
     BohDbContext db,
+    PerceptualHashIndex hashIndex,
     IFileStore store,
     MediaProcessorRegistry processors,
     ILogger<DuplicateService> logger)
@@ -114,7 +114,7 @@ public sealed class DuplicateService(
     public async Task<IReadOnlyList<SimilarPost>> FindSimilarAsync(
         long hash, int? excludePostId, int limit, CancellationToken ct)
     {
-        var (ids, hashes) = await LoadHashesAsync(ct);
+        var (ids, hashes) = await hashIndex.GetAsync(db, ct);
         var found = new List<SimilarPost>();
 
         for (var i = 0; i < ids.Length; i++)
@@ -287,7 +287,7 @@ public sealed class DuplicateService(
     public async Task<DuplicateScan> ScanForDuplicatesAsync(
         IProgress<JobProgress>? progress, CancellationToken ct)
     {
-        var (ids, hashes) = await LoadHashesAsync(ct);
+        var (ids, hashes) = await hashIndex.GetAsync(db, ct);
         var count = ids.Length;
 
         // Union-find over the hash array. Groups form as pairs are discovered, so the pass
@@ -336,7 +336,7 @@ public sealed class DuplicateService(
             .ThenByDescending(g => g.Value.Count)
             .ToList();
 
-        // Post ids per group, oldest first — ids ascend with age because LoadHashesAsync reads
+        // Post ids per group, oldest first — ids ascend with age because the snapshot holds
         // them in order — and trimmed to what the report will actually show.
         var shown = found
             .Take(ScanMaxClusters)
@@ -394,33 +394,6 @@ public sealed class DuplicateService(
         }
     }
 
-    private Task<long?> HashOfAsync(int postId, CancellationToken ct) =>
-        db.Posts.AsNoTracking()
-            .Where(p => p.Id == postId)
-            .Select(p => p.PerceptualHash)
-            .FirstOrDefaultAsync(ct);
-
-    /// <summary>
-    /// Every hash in the collection, as parallel arrays so the comparison loops stay a tight
-    /// walk over two contiguous blocks of memory.
-    /// </summary>
-    private async Task<(int[] Ids, long[] Hashes)> LoadHashesAsync(CancellationToken ct)
-    {
-        var rows = await db.Posts.AsNoTracking()
-            .Where(p => p.PerceptualHash != null)
-            .OrderBy(p => p.Id)
-            .Select(p => new { p.Id, Hash = p.PerceptualHash!.Value })
-            .ToListAsync(ct);
-
-        var ids = new int[rows.Count];
-        var hashes = new long[rows.Count];
-
-        for (var i = 0; i < rows.Count; i++)
-        {
-            ids[i] = rows[i].Id;
-            hashes[i] = rows[i].Hash;
-        }
-
-        return (ids, hashes);
-    }
+    private async Task<long?> HashOfAsync(int postId, CancellationToken ct) =>
+        (await hashIndex.GetAsync(db, ct)).HashOf(postId);
 }

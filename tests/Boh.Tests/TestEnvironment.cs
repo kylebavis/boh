@@ -20,6 +20,7 @@ public sealed class TestEnvironment : IDisposable
     public ContentAddressedFileStore Store { get; }
     public PostService Posts { get; }
     public DuplicateService Duplicates { get; }
+    public PerceptualHashIndex HashIndex { get; } = new();
     public TagService Tags { get; }
     public UserService Users { get; }
 
@@ -34,6 +35,7 @@ public sealed class TestEnvironment : IDisposable
 
         Db = new BohDbContext(new DbContextOptionsBuilder<BohDbContext>()
             .UseSqlite(Options.ConnectionString)
+            .AddInterceptors(HashIndex.Interceptors)
             .Options);
         Db.Database.Migrate();
 
@@ -44,7 +46,7 @@ public sealed class TestEnvironment : IDisposable
         var registry = new MediaProcessorRegistry([processor]);
 
         Duplicates = new DuplicateService(
-            Db, Store, registry, NullLogger<DuplicateService>.Instance);
+            Db, HashIndex, Store, registry, NullLogger<DuplicateService>.Instance);
 
         Posts = new PostService(
             Db,

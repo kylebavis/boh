@@ -36,9 +36,13 @@ builder.Services.Configure<FormOptions>(f =>
     f.ValueLengthLimit = int.MaxValue;
 });
 
+var hashIndex = new PerceptualHashIndex();
+builder.Services.AddSingleton(hashIndex);
+
 builder.Services.AddDbContext<BohDbContext>(o => o
     .UseSqlite(options.ConnectionString)
-    .AddInterceptors(new SqlitePragmaInterceptor()));
+    .AddInterceptors(new SqlitePragmaInterceptor())
+    .AddInterceptors(hashIndex.Interceptors));
 
 // Process-wide caps on what any single ImageMagick decode may consume.
 MagickMediaProcessor.ApplyResourceLimits();
