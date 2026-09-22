@@ -65,6 +65,16 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         .Select(t => new TagName(t.Namespace, t.Name))
         .ToList();
 
+    /// <summary>
+    /// Tags containing the typed text, in tiers: names starting with it, then names with a
+    /// word starting with it (<c>orb</c> finds <c>pondering_my_orb</c>), then any other name
+    /// containing it. Most-used first within a tier, so a popular tag that merely contains
+    /// the text cannot push out the ones that start with it.
+    /// </summary>
+    /// <remarks>
+    /// Matching inside a name reads every tag, which no index can avoid (about 1 ms at 16k tags,
+    /// 6 ms at 70k), so it only runs when fewer than <paramref name="limit"/> names start with the text.
+    /// </remarks>
     public async Task<List<TagSuggestion>> AutocompleteAsync(string? prefix, int limit, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(prefix)) return [];
@@ -72,34 +82,57 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         var raw = prefix.Trim().ToLowerInvariant();
         var colon = raw.IndexOf(':');
 
-        IQueryable<Tag> query = db.Tags.AsNoTracking();
+        IQueryable<Tag> scope = db.Tags.AsNoTracking();
+        string term;
+        var bare = colon <= 0;
 
-        if (colon > 0)
+        if (bare)
+        {
+            term = raw;
+        }
+        else
         {
             // Typing an aliased namespace completes against the one it redirects to, so a
             // habit like "copyright:" keeps working instead of returning nothing.
             var ns = ResolveNamespace(await LoadNamespaceAliasesAsync(ct), raw[..colon]);
-            var namePrefix = raw[(colon + 1)..];
-            var nameEnd = PrefixEnd(namePrefix);
-            query = query.Where(t => t.Namespace == ns
-                && string.Compare(t.Name, namePrefix) >= 0 && string.Compare(t.Name, nameEnd) < 0);
-        }
-        else
-        {
-            // Bare input can be completing either half, so offer both.
-            var end = PrefixEnd(raw);
-            query = query.Where(t =>
-                (string.Compare(t.Name, raw) >= 0 && string.Compare(t.Name, end) < 0)
-                || (string.Compare(t.Namespace, raw) >= 0 && string.Compare(t.Namespace, end) < 0));
+            scope = scope.Where(t => t.Namespace == ns);
+            term = raw[(colon + 1)..];
         }
 
-        var matches = await query
-            .OrderByDescending(t => t.PostCount)
-            .ThenBy(t => t.Namespace)
-            .ThenBy(t => t.Name)
-            .Take(limit)
-            .Select(t => new { t.Id, t.Namespace, t.Name, t.PostCount })
-            .ToListAsync(ct);
+        var end = PrefixEnd(term);
+
+        // Bare input can be completing either half, so a namespace prefix counts too.
+        var startsWith = bare
+            ? scope.Where(t =>
+                (string.Compare(t.Name, term) >= 0 && string.Compare(t.Name, end) < 0)
+                || (string.Compare(t.Namespace, term) >= 0 && string.Compare(t.Namespace, end) < 0))
+            : scope.Where(t => string.Compare(t.Name, term) >= 0 && string.Compare(t.Name, end) < 0);
+
+        var matches = await Ranked(startsWith, limit, ct);
+
+        // The prefix query is indexed; this one reads every tag, so it only runs when the
+        // first tier leaves room — which also means every prefix match is already in hand.
+        if (matches.Count < limit && term.Length > 0)
+        {
+            var found = matches.Select(m => m.Id).ToList();
+            var afterUnderscore = "_" + term;
+            var afterParen = "(" + term;
+            var afterHyphen = "-" + term;
+
+            var inside = await scope
+                .Where(t => t.Name.Contains(term) && !found.Contains(t.Id))
+                .OrderByDescending(t => t.Name.Contains(afterUnderscore)
+                    || t.Name.Contains(afterParen)
+                    || t.Name.Contains(afterHyphen))
+                .ThenByDescending(t => t.PostCount)
+                .ThenBy(t => t.Namespace)
+                .ThenBy(t => t.Name)
+                .Take(limit - matches.Count)
+                .Select(t => new TagHit(t.Id, t.Namespace, t.Name, t.PostCount))
+                .ToListAsync(ct);
+
+            matches.AddRange(inside);
+        }
 
         if (matches.Count == 0) return [];
 
@@ -787,6 +820,17 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     /// folds case and the indexes do not.
     /// </summary>
     private static string PrefixEnd(string prefix) => prefix + "\U0010FFFF";
+
+    private sealed record TagHit(int Id, string Namespace, string Name, int PostCount);
+
+    private static Task<List<TagHit>> Ranked(IQueryable<Tag> query, int limit, CancellationToken ct) =>
+        query
+            .OrderByDescending(t => t.PostCount)
+            .ThenBy(t => t.Namespace)
+            .ThenBy(t => t.Name)
+            .Take(limit)
+            .Select(t => new TagHit(t.Id, t.Namespace, t.Name, t.PostCount))
+            .ToListAsync(ct);
 
     private async Task<Dictionary<int, int>> LoadAliasMapAsync(CancellationToken ct) =>
         await db.TagAliases.AsNoTracking()
