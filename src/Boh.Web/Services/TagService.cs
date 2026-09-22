@@ -168,8 +168,8 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         var tagTerms = query.TagTerms.ToList();
         if (tagTerms.Count == 0) return new ResolvedSearch([], [], false, predicates);
 
-        var aliasMap = await LoadAliasMapAsync(ct);
         var found = await LookupManyAsync(tagTerms.Select(t => t.Tag).ToList(), ct);
+        var aliasMap = await LoadAliasChainsAsync(found.Values.Select(t => t.Id), ct);
 
         var include = new List<int>();
         var exclude = new List<int>();
@@ -835,6 +835,31 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     private async Task<Dictionary<int, int>> LoadAliasMapAsync(CancellationToken ct) =>
         await db.TagAliases.AsNoTracking()
             .ToDictionaryAsync(a => a.AliasTagId, a => a.CanonicalTagId, ct);
+
+    /// <summary>
+    /// The part of the alias map reachable from <paramref name="tagIds"/>: enough for
+    /// <see cref="ResolveAlias"/> on those ids, without reading every alias.
+    /// </summary>
+    private async Task<Dictionary<int, int>> LoadAliasChainsAsync(IEnumerable<int> tagIds, CancellationToken ct)
+    {
+        var map = new Dictionary<int, int>();
+        var frontier = tagIds.Distinct().ToList();
+
+        for (var depth = 0; depth < MaxAliasDepth && frontier.Count > 0; depth++)
+        {
+            var ids = frontier;
+            var rows = await db.TagAliases.AsNoTracking()
+                .Where(a => ids.Contains(a.AliasTagId))
+                .Select(a => new { a.AliasTagId, a.CanonicalTagId })
+                .ToListAsync(ct);
+
+            foreach (var row in rows) map[row.AliasTagId] = row.CanonicalTagId;
+
+            frontier = rows.Select(r => r.CanonicalTagId).Where(id => !map.ContainsKey(id)).Distinct().ToList();
+        }
+
+        return map;
+    }
 
     private async Task<ILookup<int, int>> LoadImplicationsAsync(CancellationToken ct)
     {

@@ -5,7 +5,7 @@
 
 <a class="gallery-item" href="@GalleryLinks.Detail(post.Id, Model.FromPage, Model.Query)"
    title="Post @post.Id">
-    <img src="@PostUrls.Thumb(post)" alt="Post @post.Id" loading="lazy"
+    <img src="@PostUrls.Thumb(post.Sha256)" alt="Post @post.Id" loading="lazy"
          width="@post.Width" height="@post.Height" />
     @if (post.IsVideo)
     {
