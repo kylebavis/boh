@@ -482,6 +482,25 @@ public class TagServiceTests
         Assert.Equal("artist:alice", suggestions[0].Display);
     }
 
+    /// <summary>The match is a range comparison, so its edges and non-ASCII text need checking.</summary>
+    [Fact]
+    public async Task Autocomplete_matches_exactly_the_tags_that_start_with_the_prefix()
+    {
+        using var env = new TestEnvironment();
+        var post = await env.CreatePostAsync();
+        await env.Tags.SetPostTagsAsync(post,
+            Names("caf", "café", "café𠀀", "cafe", "cag", "ca", "artist:cafeteria", "cafx:other"), Ct);
+
+        var suggestions = await env.Tags.AutocompleteAsync("CAF", 10, Ct);
+
+        Assert.Equal(
+            ["artist:cafeteria", "caf", "cafe", "cafx:other", "café", "café𠀀"],
+            suggestions.Select(s => s.Display).Order(StringComparer.Ordinal));
+
+        var accented = await env.Tags.AutocompleteAsync("café", 10, Ct);
+        Assert.Equal(["café", "café𠀀"], accented.Select(s => s.Display).Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public async Task Autocomplete_reports_where_an_alias_leads()
     {

@@ -80,12 +80,17 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
             // habit like "copyright:" keeps working instead of returning nothing.
             var ns = ResolveNamespace(await LoadNamespaceAliasesAsync(ct), raw[..colon]);
             var namePrefix = raw[(colon + 1)..];
-            query = query.Where(t => t.Namespace == ns && t.Name.StartsWith(namePrefix));
+            var nameEnd = PrefixEnd(namePrefix);
+            query = query.Where(t => t.Namespace == ns
+                && string.Compare(t.Name, namePrefix) >= 0 && string.Compare(t.Name, nameEnd) < 0);
         }
         else
         {
             // Bare input can be completing either half, so offer both.
-            query = query.Where(t => t.Name.StartsWith(raw) || t.Namespace.StartsWith(raw));
+            var end = PrefixEnd(raw);
+            query = query.Where(t =>
+                (string.Compare(t.Name, raw) >= 0 && string.Compare(t.Name, end) < 0)
+                || (string.Compare(t.Namespace, raw) >= 0 && string.Compare(t.Namespace, end) < 0));
         }
 
         var matches = await query
@@ -774,6 +779,14 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         await db.SaveChangesAsync(ct);
         return result;
     }
+
+    /// <summary>
+    /// Upper bound for a prefix match written as a range. SQLite compares text bytewise, so
+    /// every string starting with <paramref name="prefix"/> sorts below it with the highest
+    /// code point appended. A range can use an index where <c>LIKE</c> cannot: <c>LIKE</c>
+    /// folds case and the indexes do not.
+    /// </summary>
+    private static string PrefixEnd(string prefix) => prefix + "\U0010FFFF";
 
     private async Task<Dictionary<int, int>> LoadAliasMapAsync(CancellationToken ct) =>
         await db.TagAliases.AsNoTracking()

@@ -74,6 +74,9 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.HasIndex(t => new { t.Namespace, t.Name }).IsUnique();
             e.HasIndex(t => t.PostCount).IsDescending();
 
+            // Autocomplete's bare-prefix lookup, which the (Namespace, Name) index cannot serve.
+            e.HasIndex(t => t.Name);
+
             // Computed display form; not a stored column.
             e.Ignore(t => t.Display);
         });
