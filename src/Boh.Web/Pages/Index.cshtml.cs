@@ -1,6 +1,7 @@
 using Boh.Web.Data.Entities;
 using Boh.Web.Services;
 using Boh.Web.Tags;
+using Boh.Web.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -8,7 +9,7 @@ namespace Boh.Web.Pages;
 
 public class IndexModel(PostService posts, TagService tags, BohOptions options) : PageModel
 {
-    public IReadOnlyList<Post> Posts { get; private set; } = [];
+    public IReadOnlyList<GalleryPost> Posts { get; private set; } = [];
     public int CurrentPage { get; private set; } = 1;
     public int TotalPages { get; private set; } = 1;
     public int TotalCount { get; private set; }

@@ -11,8 +11,8 @@ namespace Boh.Web.Security;
 /// Cookie authentication normally trusts the claims baked into the ticket until it expires,
 /// which here lasts thirty days. That would make "remove a user" and "revoke someone's admin
 /// rights" advisory rather than immediate — a deleted account would keep working, which is
-/// precisely what an administrator removing someone does not expect. One indexed lookup per
-/// request is a fair price at this scale for those actions taking effect at once.
+/// precisely what an administrator removing someone does not expect. The lookup goes through
+/// <see cref="ActiveUserCache"/>, which drops a user as soon as their row changes.
 /// </remarks>
 public sealed class RevalidateUserEvents : CookieAuthenticationEvents
 {
@@ -28,8 +28,9 @@ public sealed class RevalidateUserEvents : CookieAuthenticationEvents
             return;
         }
 
-        var users = context.HttpContext.RequestServices.GetRequiredService<UserService>();
-        var user = await users.FindByIdAsync(userId.Value, context.HttpContext.RequestAborted);
+        var services = context.HttpContext.RequestServices;
+        var user = await services.GetRequiredService<ActiveUserCache>().GetAsync(userId.Value, () =>
+            services.GetRequiredService<UserService>().FindByIdAsync(userId.Value, context.HttpContext.RequestAborted));
 
         if (user is null)
         {

@@ -1,5 +1,3 @@
-using Boh.Web.Data.Entities;
-
 namespace Boh.Web.ViewModels;
 
 /// <summary>
@@ -10,4 +8,4 @@ namespace Boh.Web.ViewModels;
 /// <param name="Post">The post to render.</param>
 /// <param name="FromPage">The gallery page number this card appears on.</param>
 /// <param name="Query">The active search, or null when the gallery is unfiltered.</param>
-public readonly record struct GalleryCard(Post Post, int FromPage, string? Query);
+public readonly record struct GalleryCard(GalleryPost Post, int FromPage, string? Query);

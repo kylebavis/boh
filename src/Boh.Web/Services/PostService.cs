@@ -2,6 +2,7 @@ using Boh.Web.Data;
 using Boh.Web.Data.Entities;
 using Boh.Web.Jobs;
 using Boh.Web.Tags;
+using Boh.Web.ViewModels;
 using Microsoft.EntityFrameworkCore;
 
 namespace Boh.Web.Services;
@@ -446,7 +447,7 @@ public sealed class PostService(
             .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.Id == id, ct);
 
-    public async Task<(IReadOnlyList<Post> Posts, int TotalCount)> ListAsync(
+    public async Task<(IReadOnlyList<GalleryPost> Posts, int TotalCount)> ListAsync(
         ResolvedSearch? search, int page, int pageSize, CancellationToken ct)
     {
         var query = await ApplySearchAsync(db.Posts.AsNoTracking(), search, ct);
@@ -461,6 +462,7 @@ public sealed class PostService(
         var posts = await ordered
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(p => new GalleryPost(p.Id, p.Sha256, p.Width, p.Height, p.IsVideo))
             .ToListAsync(ct);
 
         return (posts, total);

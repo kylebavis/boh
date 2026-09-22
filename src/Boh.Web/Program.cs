@@ -39,10 +39,14 @@ builder.Services.Configure<FormOptions>(f =>
 var hashIndex = new PerceptualHashIndex();
 builder.Services.AddSingleton(hashIndex);
 
+var activeUsers = new ActiveUserCache();
+builder.Services.AddSingleton(activeUsers);
+
 builder.Services.AddDbContext<BohDbContext>(o => o
     .UseSqlite(options.ConnectionString)
     .AddInterceptors(new SqlitePragmaInterceptor())
-    .AddInterceptors(hashIndex.Interceptors));
+    .AddInterceptors(hashIndex.Interceptors)
+    .AddInterceptors(activeUsers.Interceptors));
 
 // Process-wide caps on what any single ImageMagick decode may consume.
 MagickMediaProcessor.ApplyResourceLimits();
