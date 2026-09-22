@@ -28,6 +28,13 @@ RUN dotnet publish src/Boh.Web/Boh.Web.csproj \
         --no-restore \
         -o /app/publish
 
+# Split boh's own files from its dependencies so a code change ships ~1 MB rather than
+# re-sending Magick's native library and the rest in the same layer.
+RUN mkdir /app/own \
+    && cd /app/publish \
+    && mv Boh.Web.* appsettings*.json wwwroot /app/own/ \
+    && if [ -e web.config ]; then mv web.config /app/own/; fi
+
 # ---- runtime --------------------------------------------------------------
 # Debian rather than Alpine: this image also carries Python (gallery-dl) and the
 # Magick.NET native libraries, and glibc avoids a class of musl packaging problems.
@@ -53,6 +60,9 @@ RUN apt-get update \
     # the kind of override that later bites during a base image upgrade.
     && python3 -m venv /opt/gallery-dl \
     && /opt/gallery-dl/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
+    # Only needed to install; 16 MB otherwise.
+    && /opt/gallery-dl/bin/pip uninstall -y pip \
+    && apt-get purge -y --auto-remove python3-venv \
     && rm -rf /var/lib/apt/lists/* /tmp/requirements.txt \
     # ffmpeg depends on libavdevice, which links the GL stack, which drags in Mesa's
     # software renderer and LLVM — about 180 MB of GPU driver in a container that only
@@ -67,14 +77,18 @@ RUN apt-get update \
 
 ENV PATH="/opt/gallery-dl/bin:${PATH}"
 
+# Created and owned up front so the non-root user can write to a fresh volume. /app stays
+# root-owned: it is only read, and chowning it would duplicate every file into a new layer.
+# Above the copies so it stays cached across releases.
+RUN mkdir -p /data && chown $APP_UID:$APP_UID /data
+
 WORKDIR /app
 COPY --from=build /app/publish .
+COPY --from=build /app/own .
 
 ENV BOH_DATA_PATH=/data \
     ASPNETCORE_URLS=http://+:8080
 
-# Created and owned up front so the non-root user can write to a fresh volume.
-RUN mkdir -p /data && chown -R $APP_UID:$APP_UID /data /app
 VOLUME /data
 EXPOSE 8080
 
