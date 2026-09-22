@@ -114,7 +114,7 @@
     <partial name="_JobStatus" model="Model.StatusOf(MaintenanceTask.UnusedTags)" />
 
     <form method="post" asp-page-handler="Start" asp-route-task="@MaintenanceTask.UnusedTags.Key" class="action-form"
-          onsubmit="return confirm('Delete every tag that no post uses? Aliases and implications are kept.');">
+          data-confirm="Delete every tag that no post uses? Aliases and implications are kept.">
         <button type="submit" class="danger">@MaintenanceTask.UnusedTags.Title</button>
     </form>
 </section>

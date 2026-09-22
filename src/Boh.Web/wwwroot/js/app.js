@@ -413,3 +413,17 @@
         form.reset();
     });
 })();
+
+// Asks before a destructive form submits. Replaces inline onsubmit handlers, which the
+// content security policy refuses to run.
+(function () {
+    'use strict';
+
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement)) return;
+
+        var message = form.getAttribute('data-confirm');
+        if (message && !window.confirm(message)) event.preventDefault();
+    });
+})();

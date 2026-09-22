@@ -98,7 +98,7 @@
                                 @if (!isSelf)
                                 {
                                     <form method="post" asp-page-handler="Delete"
-                                          onsubmit="return confirm('Delete @user.Username? Their posts are kept.');">
+                                          data-confirm="Delete @user.Username? Their posts are kept.">
                                         <input type="hidden" name="userId" value="@user.Id" />
                                         <button type="submit" class="secondary outline danger-text">Delete</button>
                                     </form>
