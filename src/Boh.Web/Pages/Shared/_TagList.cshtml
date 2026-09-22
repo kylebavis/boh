@@ -63,6 +63,7 @@
                    data-suggest-for="#tag-add-suggestions"
                    hx-get="/Tags/Autocomplete"
                    hx-trigger="keyup changed delay:200ms"
+                   hx-sync="this:replace"
                    hx-target="#tag-add-suggestions"
                    hx-swap="innerHTML" />
             <button type="submit">Add</button>

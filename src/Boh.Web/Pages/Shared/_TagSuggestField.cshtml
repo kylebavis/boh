@@ -13,6 +13,7 @@
            data-suggest-single="true"
            hx-get="/Tags/Autocomplete"
            hx-trigger="keyup changed delay:200ms"
+           hx-sync="this:replace"
            hx-target="#@Model.SuggestionsId"
            hx-swap="innerHTML" />
     <div id="@Model.SuggestionsId" class="suggestions"></div>

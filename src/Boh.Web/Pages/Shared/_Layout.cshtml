@@ -119,6 +119,7 @@
                                data-suggest-for="#search-suggestions"
                                hx-get="/Tags/Autocomplete"
                                hx-trigger="keyup changed delay:200ms"
+                               hx-sync="this:replace"
                                hx-target="#search-suggestions"
                                hx-swap="innerHTML" />
                     </form>
