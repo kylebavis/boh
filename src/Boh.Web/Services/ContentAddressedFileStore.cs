@@ -3,13 +3,17 @@ using System.Security.Cryptography;
 
 namespace Boh.Web.Services;
 
+/// <summary>An upload written to scratch space, with its content hash already known.</summary>
+public sealed record StagedFile(string TempPath, string Sha256, long Length);
+
 /// <summary>
-/// Stores blobs at <c>{root}/{aa}/{bb}/{sha256}{ext}</c>. The two shard levels keep any
-/// single directory to a few thousand entries at collection sizes this project targets,
-/// which matters for filesystems that degrade on very wide directories.
+/// Blob storage keyed by content hash, at <c>{root}/{aa}/{bb}/{sha256}{ext}</c>. Paths depend
+/// only on the hash, never on a database identity, so files can be written before any row
+/// exists and writes are safely repeatable. The two shard levels keep any single directory to
+/// a few thousand entries at collection sizes this project targets, which matters for
+/// filesystems that degrade on very wide directories.
 /// </summary>
 public sealed class ContentAddressedFileStore(BohOptions options, ILogger<ContentAddressedFileStore> logger)
-    : IFileStore
 {
     private const int BufferSize = 81920;
 
@@ -23,6 +27,7 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
         Directory.CreateDirectory(options.UploadStagingDir);
     }
 
+    /// <summary>Streams <paramref name="source"/> to scratch space, hashing as it goes.</summary>
     public async Task<StagedFile> StageAsync(Stream source, CancellationToken ct)
     {
         Directory.CreateDirectory(options.UploadStagingDir);
@@ -60,6 +65,7 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
         }
     }
 
+    /// <summary>Moves a staged file to its permanent location. A no-op if the blob already exists.</summary>
     public void CommitOriginal(StagedFile staged, string extension)
     {
         var destination = OriginalPath(staged.Sha256, extension);
@@ -84,6 +90,7 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
         }
     }
 
+    /// <summary>Removes a staged file that will not be committed. Safe to call twice.</summary>
     public void Discard(StagedFile staged) => TryDelete(staged.TempPath);
 
     public string OriginalPath(string sha256, string extension) =>
@@ -120,6 +127,7 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
         TryDelete(ThumbPath(sha256));
     }
 
+    /// <summary>Removes stale scratch files left behind by interrupted uploads.</summary>
     public void CleanTemp(TimeSpan olderThan)
     {
         var cutoff = DateTime.UtcNow - olderThan;

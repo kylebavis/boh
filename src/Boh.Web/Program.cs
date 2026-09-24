@@ -51,7 +51,7 @@ builder.Services.AddDbContext<BohDbContext>(o => o
 // Process-wide caps on what any single ImageMagick decode may consume.
 MagickMediaProcessor.ApplyResourceLimits();
 
-builder.Services.AddSingleton<IFileStore, ContentAddressedFileStore>();
+builder.Services.AddSingleton<ContentAddressedFileStore>();
 builder.Services.AddSingleton<ProcessRunner>();
 
 // Order matters: the registry takes the first processor that recognizes a file, and
@@ -69,7 +69,7 @@ builder.Services.AddScoped<UserService>();
 // Passkeys. The WebAuthn work is ASP.NET Core's, and it is reached through a UserManager —
 // so IdentityCore is registered purely to supply one over boh's existing Users table, with
 // BohUserStore as the adapter. Nothing else about Identity is adopted: passwords stay with
-// UserService and BCrypt, and sign-in stays the cookie written in Pages/Account. The
+// UserService, and sign-in stays the cookie written in Pages/Account. The
 // passkey handler is registered directly because AddSignInManager, which normally does it,
 // would bring a parallel sign-in path boh has no use for.
 builder.Services.AddIdentityCore<User>().AddUserStore<BohUserStore>();
@@ -246,7 +246,7 @@ static async Task InitializeAsync(WebApplication app)
             $"{problems.Count} storage location(s) are not writable — see the messages above.");
     }
 
-    var store = app.Services.GetRequiredService<IFileStore>();
+    var store = app.Services.GetRequiredService<ContentAddressedFileStore>();
     store.EnsureDirectories();
     store.CleanTemp(TimeSpan.FromHours(6));
 

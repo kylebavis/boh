@@ -125,7 +125,24 @@ public class UserServiceTests
         var stored = (await env.Db.Users.SingleAsync(u => u.Username == "friend", Ct)).PasswordHash;
 
         Assert.DoesNotContain(Password, stored);
-        Assert.StartsWith("$2", stored);
+    }
+
+    [Fact]
+    public async Task A_legacy_bcrypt_hash_still_signs_in_and_is_upgraded()
+    {
+        using var env = new TestEnvironment();
+        await env.Users.CreateAsync("friend", Password, false, Ct);
+        await env.Db.Users.Where(u => u.Username == "friend")
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.PasswordHash, BCrypt.Net.BCrypt.HashPassword(Password)), Ct);
+        env.Db.ChangeTracker.Clear();
+
+        Assert.Null(await env.Users.AuthenticateAsync("friend", "wrong-password", Ct));
+        Assert.NotNull(await env.Users.AuthenticateAsync("friend", Password, Ct));
+
+        env.Db.ChangeTracker.Clear();
+        var stored = (await env.Db.Users.SingleAsync(u => u.Username == "friend", Ct)).PasswordHash;
+        Assert.False(stored.StartsWith("$2", StringComparison.Ordinal));
+        Assert.NotNull(await env.Users.AuthenticateAsync("friend", Password, Ct));
     }
 
     // ---- the lockout guards --------------------------------------------

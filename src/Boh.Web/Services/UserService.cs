@@ -1,5 +1,6 @@
 using Boh.Web.Data;
 using Boh.Web.Data.Entities;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace Boh.Web.Services;
@@ -37,7 +38,11 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         var user = await db.Users.FirstOrDefaultAsync(u => u.Username == normalized, ct);
         if (user is null) return null;
 
-        return BCrypt.Net.BCrypt.Verify(password, user.PasswordHash) ? user : null;
+        if (!Verify(user, password)) return null;
+
+        // Verify may have upgraded the stored hash.
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+        return user;
     }
 
     public Task<User?> FindByIdAsync(int id, CancellationToken ct) =>
@@ -72,7 +77,7 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         db.Users.Add(new User
         {
             Username = name,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password!),
+            PasswordHash = Hash(password!),
             IsAdmin = isAdmin,
             CreatedAt = DateTimeOffset.UtcNow
         });
@@ -131,7 +136,7 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null) return new UserResult.Rejected("That user no longer exists.");
 
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password!);
+        user.PasswordHash = Hash(password!);
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation("Password reset for {Username}", user.Username);
@@ -148,12 +153,12 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         if (user is null) return new UserResult.Rejected("That user no longer exists.");
 
         if (string.IsNullOrEmpty(currentPassword)
-            || !BCrypt.Net.BCrypt.Verify(currentPassword, user.PasswordHash))
+            || !Verify(user, currentPassword))
         {
             return new UserResult.Rejected("Your current password is not correct.");
         }
 
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword!);
+        user.PasswordHash = Hash(newPassword!);
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation("User {Username} changed their own password", user.Username);
@@ -209,7 +214,7 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
             db.Users.Add(new User
             {
                 Username = AdminUsername,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+                PasswordHash = Hash(password),
                 IsAdmin = true,
                 CreatedAt = DateTimeOffset.UtcNow
             });
@@ -229,11 +234,9 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
             changed = true;
         }
 
-        if (!BCrypt.Net.BCrypt.Verify(password, admin.PasswordHash))
-        {
-            admin.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
-            changed = true;
-        }
+        var previousHash = admin.PasswordHash;
+        if (!Verify(admin, password)) admin.PasswordHash = Hash(password);
+        changed |= admin.PasswordHash != previousHash;
 
         if (changed)
         {
@@ -243,6 +246,29 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
     }
 
     // ---- internals -----------------------------------------------------
+
+    private static readonly PasswordHasher<User> Hasher = new();
+
+    private static string Hash(string password) => Hasher.HashPassword(null!, password);
+
+    /// <summary>
+    /// Checks a password, upgrading the stored hash when it verifies against an old format.
+    /// BCrypt hashes predate the switch to <see cref="PasswordHasher{TUser}"/>; once none
+    /// remain, the BCrypt branch and package can go.
+    /// </summary>
+    private static bool Verify(User user, string password)
+    {
+        if (user.PasswordHash.StartsWith("$2", StringComparison.Ordinal))
+        {
+            if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash)) return false;
+            user.PasswordHash = Hash(password);
+            return true;
+        }
+
+        var result = Hasher.VerifyHashedPassword(user, user.PasswordHash, password);
+        if (result == PasswordVerificationResult.SuccessRehashNeeded) user.PasswordHash = Hash(password);
+        return result != PasswordVerificationResult.Failed;
+    }
 
     private Task<int> CountOtherAdminsAsync(int excludingUserId, CancellationToken ct) =>
         db.Users.CountAsync(u => u.IsAdmin && u.Id != excludingUserId, ct);
