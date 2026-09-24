@@ -60,7 +60,7 @@ public sealed record DuplicateScan(
 public sealed class DuplicateService(
     BohDbContext db,
     PerceptualHashIndex hashIndex,
-    IFileStore store,
+    ContentAddressedFileStore store,
     MediaProcessorRegistry processors,
     ILogger<DuplicateService> logger)
 {

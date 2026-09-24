@@ -34,7 +34,7 @@ public sealed record ThumbnailRepairResult(int Missing, int Regenerated, int Fai
 
 public sealed class PostService(
     BohDbContext db,
-    IFileStore store,
+    ContentAddressedFileStore store,
     MediaProcessorRegistry processors,
     DuplicateService duplicates,
     BohOptions options,
@@ -220,11 +220,6 @@ public sealed class PostService(
         SourceUrls.TryCanonicalize(url, out var canonical) ? canonical : null;
 
     /// <summary>
-    /// A missing thumbnail degrades the gallery but does not invalidate the post, so a
-    /// failure here is logged rather than propagated.
-    /// <see cref="RegenerateMissingThumbnailsAsync"/> recovers anything that failed here.
-    /// </summary>
-    /// <summary>
     /// Regenerates thumbnails for posts that have none — whether generation failed at upload,
     /// the thumbnail directory was cleared, or it was lost moving between storage.
     /// </summary>
@@ -263,27 +258,26 @@ public sealed class PostService(
                 continue;
             }
 
-            var originalPath = store.OriginalPath(post.Sha256, post.FileExtension);
-
             try
             {
-                var probed = await processors.ProbeAsync(originalPath, ct);
+                var probed = await processors.ProbeAsync(store.OriginalPath(post.Sha256, post.FileExtension), ct);
                 if (probed is null)
                 {
                     logger.LogWarning("No processor recognizes the original for post {PostId}", post.Id);
                     failed++;
-                    continue;
                 }
-
-                store.EnsureThumbDirectory(post.Sha256);
-                await probed.Value.Processor.GenerateThumbnailAsync(
-                    originalPath, store.ThumbPath(post.Sha256), options.ThumbnailMaxEdge, ct);
-
-                regenerated++;
+                else if (await GenerateThumbnailAsync(probed.Value.Processor, post.Sha256, post.FileExtension, ct))
+                {
+                    regenerated++;
+                }
+                else
+                {
+                    failed++;
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogError(ex, "Failed to regenerate the thumbnail for post {PostId}", post.Id);
+                logger.LogError(ex, "Failed to probe the original for post {PostId}", post.Id);
                 failed++;
             }
         }
@@ -297,7 +291,12 @@ public sealed class PostService(
         return new ThumbnailRepairResult(missing, regenerated, failed);
     }
 
-    private async Task GenerateThumbnailAsync(
+    /// <summary>
+    /// A missing thumbnail degrades the gallery but does not invalidate the post, so a
+    /// failure here is logged rather than propagated.
+    /// <see cref="RegenerateMissingThumbnailsAsync"/> recovers anything that failed here.
+    /// </summary>
+    private async Task<bool> GenerateThumbnailAsync(
         IMediaProcessor processor, string sha256, string extension, CancellationToken ct)
     {
         try
@@ -308,10 +307,12 @@ public sealed class PostService(
                 store.ThumbPath(sha256),
                 options.ThumbnailMaxEdge,
                 ct);
+            return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Thumbnail generation failed for {Sha256}", sha256);
+            return false;
         }
     }
 

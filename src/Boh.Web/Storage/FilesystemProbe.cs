@@ -1,8 +1,7 @@
 namespace Boh.Web.Storage;
 
 /// <summary>
-/// Identifies the filesystem backing a path on Linux by consulting
-/// <c>/proc/self/mountinfo</c>.
+/// Identifies the filesystem backing a path on Linux.
 /// </summary>
 /// <remarks>
 /// Exists for one reason: SQLite must not live on a network share. Its locking depends on
@@ -13,73 +12,39 @@ namespace Boh.Web.Storage;
 /// </remarks>
 public static class FilesystemProbe
 {
+    // Names as DriveInfo.DriveFormat reports them. FUSE mounts all report "fuse", so a local
+    // FUSE filesystem is flagged too; it only costs a warning.
     private static readonly HashSet<string> NetworkFilesystems = new(StringComparer.OrdinalIgnoreCase)
     {
-        "cifs", "smbfs", "smb3",
+        "cifs", "smb", "smb2", "smbfs",
         "nfs", "nfs4",
-        "afs", "9p", "ceph", "glusterfs", "lustre", "beegfs",
-        "fuse.sshfs", "fuse.rclone", "fuse.davfs", "fuse.s3fs", "fuse.glusterfs",
+        "afs", "kafs", "v9fs", "9p", "ceph", "glusterfs", "lustre", "beegfs",
+        "fuse",
     };
 
     /// <summary>
     /// Returns the filesystem type backing <paramref name="path"/>, or null when it cannot
-    /// be determined — a non-Linux host, an unreadable mountinfo, or a path that does not
+    /// be determined — a non-Linux host, an unreadable mount, or a path that does not
     /// resolve. Callers treat "unknown" as "no complaint".
     /// </summary>
     public static string? GetFilesystemType(string path)
     {
-        const string mountInfo = "/proc/self/mountinfo";
-        if (!File.Exists(mountInfo)) return null;
+        if (!OperatingSystem.IsLinux()) return null;
 
-        string target;
         try
         {
-            target = Path.GetFullPath(path);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return null;
-        }
-
-        string[] lines;
-        try
-        {
-            lines = File.ReadAllLines(mountInfo);
-        }
-        catch (IOException)
-        {
-            return null;
-        }
-
-        string? bestType = null;
-        var bestLength = -1;
-
-        foreach (var line in lines)
-        {
-            // 36 35 98:0 /root /mount/point rw,... - fstype source super-options
-            // Optional fields sit between the mount point and the " - " separator, so the
-            // separator is the only reliable way to find the type.
-            var separator = line.IndexOf(" - ", StringComparison.Ordinal);
-            if (separator < 0) continue;
-
-            var left = line[..separator].Split(' ');
-            var right = line[(separator + 3)..].Split(' ');
-            if (left.Length < 5 || right.Length < 1) continue;
-
-            var mountPoint = Unescape(left[4]);
-            var fsType = right[0];
-
-            if (!IsUnder(target, mountPoint)) continue;
+            var target = Path.GetFullPath(path);
 
             // The longest matching mount point is the one actually serving this path.
-            if (mountPoint.Length > bestLength)
-            {
-                bestLength = mountPoint.Length;
-                bestType = fsType;
-            }
+            return DriveInfo.GetDrives()
+                .Where(d => IsUnder(target, d.Name))
+                .MaxBy(d => d.Name.Length)
+                ?.DriveFormat;
         }
-
-        return bestType;
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>True when the path is served by a filesystem known to be network-backed.</summary>
@@ -94,11 +59,4 @@ public static class FilesystemProbe
         // "/data" must not match "/database"; the next character has to be a separator.
         return path.Length == mountPoint.Length || path[mountPoint.Length] == '/';
     }
-
-    /// <summary>mountinfo escapes space, tab, newline and backslash as octal.</summary>
-    private static string Unescape(string value) => value
-        .Replace("\\040", " ", StringComparison.Ordinal)
-        .Replace("\\011", "\t", StringComparison.Ordinal)
-        .Replace("\\012", "\n", StringComparison.Ordinal)
-        .Replace("\\134", "\\", StringComparison.Ordinal);
 }

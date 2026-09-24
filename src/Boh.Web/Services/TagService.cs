@@ -612,15 +612,6 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     public async Task<Dictionary<string, string>> GetNamespaceColorsAsync(CancellationToken ct) =>
         await db.TagNamespaces.AsNoTracking().ToDictionaryAsync(n => n.Name, n => n.Color, ct);
 
-    /// <summary>Every namespace currently in use, whether or not it has been styled.</summary>
-    public async Task<List<string>> GetUsedNamespacesAsync(CancellationToken ct) =>
-        await db.Tags.AsNoTracking()
-            .Where(t => t.Namespace != "")
-            .Select(t => t.Namespace)
-            .Distinct()
-            .OrderBy(n => n)
-            .ToListAsync(ct);
-
     public async Task<TagLinkResult> SetNamespaceColorAsync(string? ns, string? color, CancellationToken ct)
     {
         var name = ns?.Trim().ToLowerInvariant();

@@ -313,7 +313,6 @@ EF Core migrations, without needing the SDK installed:
 
 ```sh
 ./scripts/ef.sh migrations add SomeChange
-./scripts/ef.ps1 migrations add SomeChange   # PowerShell
 ```
 
 Migrations are applied automatically at startup, so upgrading the image is enough.

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Boh.Web.Services;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Net.Http.Headers;
@@ -8,7 +9,7 @@ namespace Boh.Web.Endpoints;
 /// Serves blobs out of the data directory, which lives outside wwwroot and so is not
 /// reachable by the static file middleware.
 /// </summary>
-public static class FileEndpoints
+public static partial class FileEndpoints
 {
     private static readonly FileExtensionContentTypeProvider ContentTypes = new();
 
@@ -20,14 +21,14 @@ public static class FileEndpoints
 
     public static void MapFileEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/files/o/{fileName}", (string fileName, HttpContext ctx, IFileStore store) =>
+        app.MapGet("/files/o/{fileName}", (string fileName, HttpContext ctx, ContentAddressedFileStore store) =>
         {
             if (!TrySplit(fileName, out var sha, out var extension)) return Results.NotFound();
 
             return Serve(ctx, store.OriginalPath(sha, extension), sha, extension);
         }).WithName("OriginalFile");
 
-        app.MapGet("/files/t/{fileName}", (string fileName, HttpContext ctx, IFileStore store) =>
+        app.MapGet("/files/t/{fileName}", (string fileName, HttpContext ctx, ContentAddressedFileStore store) =>
         {
             if (!TrySplit(fileName, out var sha, out var extension)) return Results.NotFound();
             if (extension != ".webp") return Results.NotFound();
@@ -60,29 +61,12 @@ public static class FileEndpoints
     /// </summary>
     private static bool TrySplit(string fileName, out string sha, out string extension)
     {
-        sha = "";
-        extension = "";
-
-        var dot = fileName.LastIndexOf('.');
-        if (dot <= 0 || dot == fileName.Length - 1) return false;
-
-        var candidateSha = fileName[..dot];
-        var candidateExt = fileName[dot..];
-
-        if (candidateSha.Length != 64) return false;
-        foreach (var c in candidateSha)
-        {
-            if (c is not (>= '0' and <= '9') and not (>= 'a' and <= 'f')) return false;
-        }
-
-        if (candidateExt.Length is < 2 or > 8) return false;
-        foreach (var c in candidateExt[1..])
-        {
-            if (!char.IsAsciiLetterOrDigit(c)) return false;
-        }
-
-        sha = candidateSha;
-        extension = candidateExt;
-        return true;
+        var match = BlobName().Match(fileName);
+        sha = match.Groups[1].Value;
+        extension = match.Groups[2].Value;
+        return match.Success;
     }
+
+    [GeneratedRegex(@"^([0-9a-f]{64})(\.[A-Za-z0-9]{1,7})\z")]
+    private static partial Regex BlobName();
 }

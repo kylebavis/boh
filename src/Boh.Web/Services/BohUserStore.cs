@@ -11,7 +11,7 @@ namespace Boh.Web.Services;
 /// </summary>
 /// <remarks>
 /// boh does not use ASP.NET Core Identity: accounts are the <see cref="User"/> table,
-/// passwords are BCrypt through <see cref="UserService"/>, and sign-in writes a plain cookie.
+/// passwords are hashed by <see cref="UserService"/>, and sign-in writes a plain cookie.
 /// The framework's WebAuthn implementation, however, is reached through
 /// <c>UserManager&lt;TUser&gt;</c>, and a <c>UserManager</c> needs a store — so this is that
 /// store, and nothing more. It is the adapter that lets the passkey code in the shared

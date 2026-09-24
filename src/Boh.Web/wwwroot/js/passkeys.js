@@ -12,7 +12,8 @@
     'use strict';
 
     // No WebAuthn, or no way to turn the server's JSON into the shapes the API wants.
-    if (!window.PublicKeyCredential || !navigator.credentials) return;
+    if (!window.PublicKeyCredential || !navigator.credentials
+        || !PublicKeyCredential.parseCreationOptionsFromJSON || !Uint8Array.prototype.toBase64) return;
 
     // The antiforgery token the layout hands htmx. Read from there rather than rendered a
     // second time, so there is one copy of it in the document.
@@ -75,59 +76,11 @@
         }
     }
 
-    // ---- converting between the wire format and the API's buffers ----------
-    //
-    // WebAuthn options travel as JSON with base64url in place of the byte arrays, and
-    // browsers have parseCreationOptionsFromJSON/parseRequestOptionsFromJSON to turn them
-    // back. Older ones that support WebAuthn but not those helpers get the same job done
-    // below rather than being shut out.
-
-    function toBuffer(value) {
-        const padded = value.replace(/-/g, '+').replace(/_/g, '/');
-        const raw = atob(padded + '==='.slice((padded.length + 3) % 4));
-        const bytes = new Uint8Array(raw.length);
-
-        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-        return bytes.buffer;
-    }
+    // ---- converting the API's buffers back to the wire format --------------
 
     function toBase64Url(buffer) {
         if (!buffer) return undefined;
-
-        const bytes = new Uint8Array(buffer);
-        let raw = '';
-
-        for (let i = 0; i < bytes.length; i++) raw += String.fromCharCode(bytes[i]);
-        return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    }
-
-    function withDecodedIds(list) {
-        return (list || []).map(function (descriptor) {
-            return Object.assign({}, descriptor, { id: toBuffer(descriptor.id) });
-        });
-    }
-
-    function creationOptions(json) {
-        if (PublicKeyCredential.parseCreationOptionsFromJSON) {
-            return PublicKeyCredential.parseCreationOptionsFromJSON(json);
-        }
-
-        return Object.assign({}, json, {
-            challenge: toBuffer(json.challenge),
-            user: Object.assign({}, json.user, { id: toBuffer(json.user.id) }),
-            excludeCredentials: withDecodedIds(json.excludeCredentials)
-        });
-    }
-
-    function requestOptions(json) {
-        if (PublicKeyCredential.parseRequestOptionsFromJSON) {
-            return PublicKeyCredential.parseRequestOptionsFromJSON(json);
-        }
-
-        return Object.assign({}, json, {
-            challenge: toBuffer(json.challenge),
-            allowCredentials: withDecodedIds(json.allowCredentials)
-        });
+        return new Uint8Array(buffer).toBase64({ alphabet: 'base64url', omitPadding: true });
     }
 
     /// What gets posted back, as a plain object.
@@ -255,7 +208,7 @@
             const options = await readJson(await post(adding.dataset.passkeyOptions));
 
             const credential = await navigator.credentials.create({
-                publicKey: creationOptions(options)
+                publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(options)
             });
 
             if (!credential) throw new Error('The browser produced no passkey.');
@@ -280,7 +233,7 @@
             const options = await readJson(await post(signingIn.dataset.passkeyOptions));
 
             const credential = await navigator.credentials.get({
-                publicKey: requestOptions(options)
+                publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options)
             });
 
             if (!credential) throw new Error('No passkey was offered.');
