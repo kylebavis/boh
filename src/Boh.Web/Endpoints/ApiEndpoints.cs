@@ -46,10 +46,7 @@ public sealed record ApiTagsBody(string[]? Tags);
 
 public sealed record ApiUrlBody(string? Url);
 
-/// <summary>
-/// JSON API for scripts, over the same services the pages use. Authenticated only by
-/// <see cref="ApiTokenAuthentication"/>, which is why antiforgery is off for the group.
-/// </summary>
+/// <summary>JSON API for scripts. Token auth only, so no antiforgery.</summary>
 public static class ApiEndpoints
 {
     private const int MaxAutocomplete = 50;
@@ -150,7 +147,7 @@ public static class ApiEndpoints
             return Results.Accepted($"/api/v1/imports/{job.Id}", ToApi(job));
         });
 
-        // Someone else's import is treated as not existing, as on the import page.
+        // Someone else's import is treated as absent.
         write.MapGet("/imports/{id:guid}", (Guid id, HttpContext http, JobQueue jobs) =>
             jobs.Get(id) is { Kind: GalleryDlImporter.JobKind } job && job.RequestedById == UserPrincipal.GetId(http.User)
                 ? Results.Ok(ToApi(job))
@@ -167,7 +164,7 @@ public static class ApiEndpoints
         return await PostAsync(posts, id, ct);
     }
 
-    /// <summary>False only when there was input and none of it parsed; blank input is an empty list.</summary>
+    /// <summary>False only when there was input and none of it parsed.</summary>
     private static bool TryParseTags(string? input, out List<TagName> parsed)
     {
         parsed = TagName.ParseMany(input);

@@ -32,13 +32,10 @@ public class IndexModel(
     /// <summary>False over plain HTTP, where the form explains why.</summary>
     public bool PasskeysUsable => PasskeyRelyingParty.IsUsable(Request, options);
 
-    /// <summary>This account's API tokens, oldest first. Empty with authentication off.</summary>
+    /// <summary>This account's API tokens. Empty with auth off.</summary>
     public IReadOnlyList<ApiTokenRow> Tokens { get; private set; } = [];
 
-    /// <summary>
-    /// The secret of a token just created. Rendered from the POST rather than carried through a
-    /// redirect, so it never sits in a TempData cookie.
-    /// </summary>
+    /// <summary>A just-created secret, rendered from the POST so it never sits in TempData.</summary>
     public string? NewToken { get; private set; }
 
     [TempData] public string? Message { get; set; }
