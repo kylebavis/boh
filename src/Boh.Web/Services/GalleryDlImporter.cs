@@ -37,6 +37,12 @@ public sealed class GalleryDlImporter(
     /// <summary>The <see cref="JobSnapshot.Kind"/> an import is queued under.</summary>
     public const string JobKind = "import";
 
+    /// <summary>Queues an import of an already canonicalized URL.</summary>
+    public static JobSnapshot Enqueue(JobQueue jobs, string url, int? userId) =>
+        jobs.Enqueue(JobLane.Import, JobKind, url, userId, async job =>
+            await job.Services.GetRequiredService<GalleryDlImporter>()
+                .ImportAsync(url, userId, job, job.CancellationToken));
+
     private static readonly HashSet<string> MetadataExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".json"

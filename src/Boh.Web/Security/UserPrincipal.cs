@@ -13,7 +13,8 @@ public static class UserPrincipal
     public const string LightThemeClaim = "boh:light-theme";
     public const string DarkThemeClaim = "boh:dark-theme";
 
-    public static ClaimsPrincipal Create(User user)
+    public static ClaimsPrincipal Create(
+        User user, string authenticationType = CookieAuthenticationDefaults.AuthenticationScheme)
     {
         var claims = new List<Claim>
         {
@@ -29,7 +30,7 @@ public static class UserPrincipal
         if (user.DarkTheme is { Length: > 0 } dark) claims.Add(new Claim(DarkThemeClaim, dark));
 
         return new ClaimsPrincipal(
-            new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
+            new ClaimsIdentity(claims, authenticationType));
     }
 
     public static string? GetLightTheme(ClaimsPrincipal principal) =>

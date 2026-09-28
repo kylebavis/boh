@@ -77,11 +77,7 @@ public class IndexModel(PostService posts, JobQueue jobs, BohOptions options) : 
             return Page();
         }
 
-        var userId = UserPrincipal.GetId(User);
-
-        jobs.Enqueue(JobLane.Import, GalleryDlImporter.JobKind, url, userId, async job =>
-            await job.Services.GetRequiredService<GalleryDlImporter>()
-                .ImportAsync(url, userId, job, job.CancellationToken));
+        GalleryDlImporter.Enqueue(jobs, url, UserPrincipal.GetId(User));
 
         // Back to the list, ready for the next URL.
         return RedirectToPage(pageName: null, pageHandler: null, routeValues: null, fragment: "imports");
