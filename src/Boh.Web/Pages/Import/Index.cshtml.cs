@@ -85,11 +85,7 @@ public class IndexModel(PostService posts, JobQueue jobs, BohOptions options) : 
             return Page();
         }
 
-        var userId = UserPrincipal.GetId(User);
-
-        jobs.Enqueue(JobLane.Import, GalleryDlImporter.JobKind, url, userId, async job =>
-            await job.Services.GetRequiredService<GalleryDlImporter>()
-                .ImportAsync(url, userId, job, job.CancellationToken));
+        GalleryDlImporter.Enqueue(jobs, url, UserPrincipal.GetId(User));
 
         // Back to the list rather than to a page of its own: the form stays put, ready for the
         // next URL, and this one shows up underneath it.

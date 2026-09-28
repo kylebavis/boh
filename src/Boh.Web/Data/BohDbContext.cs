@@ -27,6 +27,7 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
     public DbSet<TagImplication> TagImplications => Set<TagImplication>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Passkey> Passkeys => Set<Passkey>();
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -180,6 +181,20 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.HasOne(p => p.User)
                 .WithMany(u => u.Passkeys)
                 .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ApiToken>(e =>
+        {
+            e.Property(t => t.Name).HasMaxLength(64).IsRequired();
+            e.Property(t => t.Hash).IsRequired();
+            e.HasIndex(t => t.Hash).IsUnique();
+            e.Property(t => t.CreatedAt).HasConversion(UtcMilliseconds);
+            e.Property(t => t.LastUsedAt).HasConversion(UtcMilliseconds);
+
+            e.HasOne(t => t.User)
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

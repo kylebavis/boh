@@ -23,4 +23,10 @@ public static class BohPolicies
     /// where there is no identity to be an administrator.
     /// </remarks>
     public const string IsAdmin = "IsAdmin";
+
+    /// <summary>API reads: open when pages are, otherwise a token is required. Never the cookie.</summary>
+    public const string ApiRead = "ApiRead";
+
+    /// <summary>API writes: a token, unless authentication is off. Never the cookie.</summary>
+    public const string ApiWrite = "ApiWrite";
 }

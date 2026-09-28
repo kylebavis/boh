@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Boh.Web;
 using Boh.Web.Data;
@@ -8,6 +9,7 @@ using Boh.Web.Pages.Account;
 using Boh.Web.Security;
 using Boh.Web.Services;
 using Boh.Web.Storage;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
@@ -100,7 +102,11 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         // SameAsRequest, not Always: plain-HTTP use on a LAN has to keep working, while
         // an HTTPS deployment still gets the Secure flag.
         o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
-    });
+    })
+    .AddScheme<AuthenticationSchemeOptions, ApiTokenAuthentication>(ApiTokenAuthentication.SchemeName, null);
+
+builder.Services.AddScoped<ApiTokenService>();
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddAuthorization(o =>
 {
@@ -116,6 +122,20 @@ builder.Services.AddAuthorization(o =>
     {
         if (options.AuthDisabled) policy.RequireAssertion(_ => true);
         else policy.RequireRole(UserPrincipal.AdminRole);
+    });
+
+    o.AddPolicy(BohPolicies.ApiRead, policy =>
+    {
+        policy.AddAuthenticationSchemes(ApiTokenAuthentication.SchemeName);
+        if (options.AuthDisabled || options.PublicRead) policy.RequireAssertion(_ => true);
+        else policy.RequireAuthenticatedUser();
+    });
+
+    o.AddPolicy(BohPolicies.ApiWrite, policy =>
+    {
+        policy.AddAuthenticationSchemes(ApiTokenAuthentication.SchemeName);
+        if (options.AuthDisabled) policy.RequireAssertion(_ => true);
+        else policy.RequireAuthenticatedUser();
     });
 
     // Reads are open when auth is off or public browsing is enabled; otherwise every page
@@ -211,6 +231,7 @@ app.UseAuthorization();
 app.MapStaticAssets().AllowAnonymous();
 app.MapRazorPages().WithStaticAssets();
 app.MapFileEndpoints();
+app.MapApiEndpoints();
 
 // Must stay reachable without credentials or the container healthcheck fails.
 app.MapGet("/healthz", () => Results.Ok("ok")).WithName("Health").AllowAnonymous();

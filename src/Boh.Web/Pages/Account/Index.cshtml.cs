@@ -16,6 +16,7 @@ namespace Boh.Web.Pages.Account;
 public class IndexModel(
     UserService users,
     PasskeyService passkeys,
+    ApiTokenService tokens,
     PasskeyChallenge challenges,
     BohOptions options) : PageModel
 {
@@ -41,6 +42,15 @@ public class IndexModel(
     /// </summary>
     public bool PasskeysUsable => PasskeyRelyingParty.IsUsable(Request, options);
 
+    /// <summary>This account's API tokens, oldest first. Empty with authentication off.</summary>
+    public IReadOnlyList<ApiTokenRow> Tokens { get; private set; } = [];
+
+    /// <summary>
+    /// The secret of a token just created. Rendered from the POST rather than carried through a
+    /// redirect, so it never sits in a TempData cookie.
+    /// </summary>
+    public string? NewToken { get; private set; }
+
     [TempData] public string? Message { get; set; }
     public string? Error { get; private set; }
 
@@ -48,6 +58,7 @@ public class IndexModel(
     {
         Load();
         await LoadPasskeysAsync(ct);
+        await LoadTokensAsync(ct);
     }
 
     public async Task<IActionResult> OnPostAsync(
@@ -55,6 +66,7 @@ public class IndexModel(
     {
         Load();
         await LoadPasskeysAsync(ct);
+        await LoadTokensAsync(ct);
 
         if (options.AuthDisabled)
         {
@@ -86,6 +98,7 @@ public class IndexModel(
     {
         Load();
         await LoadPasskeysAsync(ct);
+        await LoadTokensAsync(ct);
 
         // The form is client-side only in this mode; reaching the handler means someone
         // posted directly, and there is still no row to write to.
@@ -180,6 +193,30 @@ public class IndexModel(
         return RedirectToPage();
     }
 
+    // ---- API tokens ----------------------------------------------------
+
+    public async Task<IActionResult> OnPostTokenCreateAsync(string? name, CancellationToken ct)
+    {
+        if (CurrentUserId() is not { } userId) return Forbid();
+
+        var (result, secret) = await tokens.CreateAsync(userId, name, ct);
+        if (result is UserResult.Rejected rejected) return await RerenderAsync(rejected.Reason, ct);
+
+        NewToken = secret;
+        return await RerenderAsync(null, ct);
+    }
+
+    public async Task<IActionResult> OnPostTokenDeleteAsync(int tokenId, CancellationToken ct)
+    {
+        if (CurrentUserId() is not { } userId) return Forbid();
+
+        var result = await tokens.DeleteAsync(userId, tokenId, ct);
+        if (result is UserResult.Rejected rejected) return await RerenderAsync(rejected.Reason, ct);
+
+        Message = "Token revoked.";
+        return RedirectToPage();
+    }
+
     /// <summary>
     /// What the browser posts back once the authenticator has made a credential. The
     /// credential travels as an opaque node rather than a typed model: it is passed straight
@@ -206,10 +243,11 @@ public class IndexModel(
     private IActionResult PasskeyProblem(string reason) =>
         new JsonResult(new { error = reason }) { StatusCode = StatusCodes.Status400BadRequest };
 
-    private async Task<IActionResult> RerenderAsync(string error, CancellationToken ct)
+    private async Task<IActionResult> RerenderAsync(string? error, CancellationToken ct)
     {
         Load();
         await LoadPasskeysAsync(ct);
+        await LoadTokensAsync(ct);
         Error = error;
         return Page();
     }
@@ -226,5 +264,11 @@ public class IndexModel(
     {
         if (CurrentUserId() is not { } userId) return;
         Passkeys = await passkeys.ListAsync(userId, ct);
+    }
+
+    private async Task LoadTokensAsync(CancellationToken ct)
+    {
+        if (CurrentUserId() is not { } userId) return;
+        Tokens = await tokens.ListAsync(userId, ct);
     }
 }
