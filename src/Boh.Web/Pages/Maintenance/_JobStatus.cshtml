@@ -15,8 +15,7 @@
 }
 @if (job is not null)
 {
-    @* While the task is queued or running, this block polls for its own replacement. The
-       finished block it eventually receives carries no trigger, so polling stops by itself. *@
+    @* Polls for its replacement; the finished block has no trigger, so polling stops. *@
     <div id="job-@key" class="job-status"
          hx-get="@(active ? $"/Maintenance?handler=Status&task={key}" : null)"
          hx-trigger="@(active ? "every 2s" : null)"

@@ -4,20 +4,12 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 
 namespace Boh.Web.Security;
 
-/// <summary>
-/// Builds the signed-in identity. Login and cookie revalidation both go through here so the
-/// two can never disagree about what claims a user should be carrying.
-/// </summary>
+/// <summary>Builds the signed-in identity for both login and revalidation.</summary>
 public static class UserPrincipal
 {
     public const string AdminRole = "admin";
 
-    /// <summary>
-    /// The chosen palette for each side of the header toggle, carried on the ticket so the
-    /// layout can apply it before first paint without a query of its own. Safe to keep in the
-    /// cookie because <see cref="RevalidateUserEvents"/> already reloads the row on every
-    /// request and reissues when it finds a difference.
-    /// </summary>
+    /// <summary>Palettes on the ticket, for pre-paint; kept fresh by <see cref="RevalidateUserEvents"/>.</summary>
     public const string LightThemeClaim = "boh:light-theme";
     public const string DarkThemeClaim = "boh:dark-theme";
 

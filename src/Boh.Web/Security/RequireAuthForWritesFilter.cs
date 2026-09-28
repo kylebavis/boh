@@ -4,14 +4,9 @@ using Microsoft.AspNetCore.Mvc.Filters;
 namespace Boh.Web.Security;
 
 /// <summary>
-/// Requires an authenticated user for anything that changes state.
+/// Requires sign-in for non-GET handlers. Per method rather than per page, since pages like
+/// post detail mix public reads with writes.
 /// </summary>
-/// <remarks>
-/// Reads are governed by the fallback authorization policy, which lets everyone in when
-/// <c>BOH_PUBLIC_READ</c> is on. That is page-level, but a page like post detail mixes a
-/// public GET with privileged POST handlers, and Razor Pages cannot attribute individual
-/// handlers — so the method, not the page, decides here.
-/// </remarks>
 public sealed class RequireAuthForWritesFilter(BohOptions options) : IAsyncPageFilter
 {
     public Task OnPageHandlerSelectionAsync(PageHandlerSelectedContext context) => Task.CompletedTask;

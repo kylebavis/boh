@@ -6,24 +6,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Boh.Web.Services;
 
 /// <summary>
-/// Presents boh's own users and passkeys through the interfaces ASP.NET Core's passkey
-/// handler expects.
+/// Minimal Identity store over boh's users and passkeys, so the framework's passkey handler
+/// works without adopting Identity. Only the passkey path's members do anything.
 /// </summary>
-/// <remarks>
-/// boh does not use ASP.NET Core Identity: accounts are the <see cref="User"/> table,
-/// passwords are hashed by <see cref="UserService"/>, and sign-in writes a plain cookie.
-/// The framework's WebAuthn implementation, however, is reached through
-/// <c>UserManager&lt;TUser&gt;</c>, and a <c>UserManager</c> needs a store — so this is that
-/// store, and nothing more. It is the adapter that lets the passkey code in the shared
-/// framework work against the existing table instead of boh taking on Identity, and it is why
-/// there is no third-party WebAuthn library here.
-/// <para>
-/// Only the members the passkey path actually uses do anything. Account creation, deletion
-/// and renaming stay with <see cref="UserService"/>, which is where the rules about
-/// usernames, the last administrator and the seeded admin live; routing some of that through
-/// a second front door would be two implementations of the same thing.
-/// </para>
-/// </remarks>
 public sealed class BohUserStore(BohDbContext db) : IUserStore<User>, IUserPasskeyStore<User>
 {
     // ---- users ---------------------------------------------------------
@@ -34,9 +19,7 @@ public sealed class BohUserStore(BohDbContext db) : IUserStore<User>, IUserPassk
     public Task<string?> GetUserNameAsync(User user, CancellationToken ct) =>
         Task.FromResult<string?>(user.Username);
 
-    /// <summary>
-    /// Usernames are already stored lowercase, so the normalized form is the stored form.
-    /// </summary>
+    /// <summary>Usernames are stored lowercase already.</summary>
     public Task<string?> GetNormalizedUserNameAsync(User user, CancellationToken ct) =>
         Task.FromResult<string?>(user.Username);
 
@@ -48,15 +31,13 @@ public sealed class BohUserStore(BohDbContext db) : IUserStore<User>, IUserPassk
     public Task<User?> FindByNameAsync(string normalizedUserName, CancellationToken ct) =>
         db.Users.FirstOrDefaultAsync(u => u.Username == normalizedUserName, ct);
 
-    /// <summary>Saves whatever the passkey handler changed — in practice, a credential.</summary>
     public async Task<IdentityResult> UpdateAsync(User user, CancellationToken ct)
     {
         await db.SaveChangesAsync(ct);
         return IdentityResult.Success;
     }
 
-    // Accounts are created, removed and renamed through UserService; nothing on the passkey
-    // path does any of it, and an implementation here would be a second set of rules.
+    // Account changes go through UserService.
     public Task SetUserNameAsync(User user, string? userName, CancellationToken ct) =>
         throw new NotSupportedException(Unsupported);
 
@@ -74,15 +55,7 @@ public sealed class BohUserStore(BohDbContext db) : IUserStore<User>, IUserPassk
 
     // ---- passkeys ------------------------------------------------------
 
-    /// <summary>
-    /// Stores a newly registered credential, or brings an existing one up to date after it
-    /// has been used — the sign counter and the backup flags both move.
-    /// </summary>
-    /// <remarks>
-    /// Staged rather than saved: <c>UserManager</c> follows this with
-    /// <see cref="UpdateAsync"/>, which commits, and a save here would make the pair two
-    /// transactions instead of one.
-    /// </remarks>
+    /// <summary>Stages a new or updated credential; <see cref="UpdateAsync"/> commits.</summary>
     public async Task AddOrUpdatePasskeyAsync(User user, UserPasskeyInfo passkey, CancellationToken ct)
     {
         var existing = await db.Passkeys.FirstOrDefaultAsync(
@@ -94,8 +67,7 @@ public sealed class BohUserStore(BohDbContext db) : IUserStore<User>, IUserPassk
             return;
         }
 
-        // The name is the owner's, not the authenticator's, so an assertion carrying an empty
-        // one must not wipe what they typed when they registered it.
+        // Don't let an empty name from an assertion wipe the owner's.
         if (!string.IsNullOrWhiteSpace(passkey.Name)) existing.Name = passkey.Name;
 
         existing.PublicKey = passkey.PublicKey;
@@ -116,10 +88,7 @@ public sealed class BohUserStore(BohDbContext db) : IUserStore<User>, IUserPassk
             .Select(ToInfo)
     ];
 
-    /// <summary>
-    /// The account a credential belongs to, which is how a sign-in that never asked for a
-    /// username finds out who is signing in.
-    /// </summary>
+    /// <summary>Finds the account behind a credential during sign-in.</summary>
     public Task<User?> FindByPasskeyIdAsync(byte[] credentialId, CancellationToken ct) =>
         db.Passkeys
             .Where(p => p.CredentialId == credentialId)
@@ -178,6 +147,5 @@ public sealed class BohUserStore(BohDbContext db) : IUserStore<User>, IUserPassk
     private static string FormatTransports(string[]? transports) =>
         transports is null ? "" : string.Join(',', transports);
 
-    /// <summary>The context is owned by the request scope, so there is nothing to release.</summary>
     public void Dispose() { }
 }

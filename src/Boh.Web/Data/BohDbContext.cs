@@ -7,12 +7,7 @@ namespace Boh.Web.Data;
 
 public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(options)
 {
-    /// <summary>
-    /// SQLite cannot ORDER BY a DateTimeOffset — the provider rejects it outright, which
-    /// would break the gallery's "newest first" query. Storing Unix milliseconds gives an
-    /// INTEGER column that sorts and indexes natively. No information is lost because every
-    /// timestamp we write is UTC.
-    /// </summary>
+    /// <summary>SQLite can't ORDER BY DateTimeOffset; store UTC Unix milliseconds.</summary>
     private static readonly ValueConverter<DateTimeOffset, long> UtcMilliseconds = new(
         v => v.ToUnixTimeMilliseconds(),
         v => DateTimeOffset.FromUnixTimeMilliseconds(v));
@@ -39,9 +34,7 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.Property(p => p.UploadedAt).HasConversion(UtcMilliseconds);
             e.HasIndex(p => p.UploadedAt).IsDescending();
 
-            // Not for lookups — a perceptual hash is never matched exactly. Near-duplicate
-            // search reads every hash in the table, and Id is the SQLite rowid, so this index
-            // holds both columns that read needs and satisfies it without touching the rows.
+            // Covering index for the full hash scan.
             e.HasIndex(p => p.PerceptualHash);
 
             e.Property(p => p.FileExtension).HasMaxLength(16).IsRequired();
@@ -58,8 +51,7 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
         {
             e.Property(s => s.Url).HasMaxLength(2048).IsRequired();
 
-            // A post cannot list the same address twice. That is what lets an import record
-            // its URL on an already-stored file without checking whether it did so before.
+            // Lets an import re-record a URL without checking first.
             e.HasIndex(s => new { s.PostId, s.Url }).IsUnique();
 
             e.HasOne(s => s.Post)
@@ -78,12 +70,10 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             // Autocomplete's bare-prefix lookup, which the (Namespace, Name) index cannot serve.
             e.HasIndex(t => t.Name);
 
-            // Computed display form; not a stored column.
             e.Ignore(t => t.Display);
         });
 
-        // Many-to-many with a payload. The skip navigations (Post.Tags / Tag.Posts) exist so
-        // search reads naturally; writes always go through PostTag directly so Source is set.
+        // Skip navigations are for search; writes go through PostTag so Source is set.
         b.Entity<Post>()
             .HasMany(p => p.Tags)
             .WithMany(t => t.Posts)
@@ -110,8 +100,7 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.Property(n => n.Color).HasMaxLength(16);
         });
 
-        // Keyed by the alias namespace itself rather than a surrogate id: a namespace has no
-        // row of its own to reference, and one namespace can only redirect one way.
+        // Keyed by the alias namespace: one namespace redirects one way.
         b.Entity<TagNamespaceAlias>(e =>
         {
             e.HasKey(a => a.Alias);
@@ -173,9 +162,7 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.Property(p => p.CreatedAt).HasConversion(UtcMilliseconds);
             e.Property(p => p.LastUsedAt).HasConversion(UtcMilliseconds);
 
-            // A credential id is unique across the world, so this is not merely a per-user
-            // constraint: a sign-in looks the credential up by id alone and must land on one
-            // account, and re-registering the same authenticator must not quietly fork it.
+            // Globally unique: sign-in looks credentials up by id alone.
             e.HasIndex(p => p.CredentialId).IsUnique();
 
             e.HasOne(p => p.User)

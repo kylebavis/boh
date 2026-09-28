@@ -9,17 +9,9 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace Boh.Web.Pages.Import;
 
 /// <summary>
-/// Every way a post enters the collection: a file from this machine, or a URL handed to gallery-dl.
+/// Uploads and URL imports. Always authorized: the URL form makes the server fetch a
+/// caller-chosen address. URLs are queued; uploads run in the request.
 /// </summary>
-/// <remarks>
-/// Always authorized, even under BOH_PUBLIC_READ: browsing may be public, adding to the collection
-/// never is — and the URL form makes the server fetch an address the caller chooses, which is not
-/// something to expose anonymously.
-/// <para>
-/// An upload is handled in the request, since the file is already in it. A URL is queued
-/// instead: a gallery can take minutes to download, and nobody needs to sit and watch it.
-/// </para>
-/// </remarks>
 [Authorize(Policy = BohPolicies.CanWrite)]
 public class IndexModel(PostService posts, JobQueue jobs, BohOptions options) : PageModel
 {
@@ -36,7 +28,7 @@ public class IndexModel(PostService posts, JobQueue jobs, BohOptions options) : 
 
     public string? UrlError { get; private set; }
 
-    /// <summary>This person's recent imports, newest first, running ones included.</summary>
+    /// <summary>This person's recent imports, newest first.</summary>
     public IReadOnlyList<JobSnapshot> Imports { get; private set; } = [];
 
     public int MaxUploadMb => options.MaxUploadMb;
@@ -87,16 +79,13 @@ public class IndexModel(PostService posts, JobQueue jobs, BohOptions options) : 
 
         GalleryDlImporter.Enqueue(jobs, url, UserPrincipal.GetId(User));
 
-        // Back to the list rather than to a page of its own: the form stays put, ready for the
-        // next URL, and this one shows up underneath it.
+        // Back to the list, ready for the next URL.
         return RedirectToPage(pageName: null, pageHandler: null, routeValues: null, fragment: "imports");
     }
 
     /// <summary>
-    /// One import's block on its own, which a running import polls to replace itself. An import
-    /// that is not there — someone else's, or one a restart forgot — answers with nothing, which
-    /// removes the block. An error status would not: htmx leaves the block in place on one, so a
-    /// page left open across a restart would keep polling every two seconds for good.
+    /// One import's block, polled while running. A missing import answers empty (not an error),
+    /// which removes the block and stops htmx polling.
     /// </summary>
     public IActionResult OnGetJob(Guid id) =>
         VisibleImport(id) is { } job ? Partial("_ImportJob", job) : new EmptyResult();
@@ -109,10 +98,7 @@ public class IndexModel(PostService posts, JobQueue jobs, BohOptions options) : 
         return RedirectToPage(pageName: null, pageHandler: null, routeValues: null, fragment: "imports");
     }
 
-    /// <summary>
-    /// One of this person's imports, or null. Anyone else's is treated as not existing: the URL
-    /// and what it brought in are theirs.
-    /// </summary>
+    /// <summary>This person's import, or null; anyone else's is treated as absent.</summary>
     private JobSnapshot? VisibleImport(Guid id) =>
         jobs.Get(id) is { Kind: GalleryDlImporter.JobKind } job && job.RequestedById == UserPrincipal.GetId(User)
             ? job

@@ -4,11 +4,7 @@ using Boh.Web.Tags;
 
 namespace Boh.Web.Services;
 
-/// <summary>
-/// A file the import stored. <paramref name="Similar"/> names posts that already look like
-/// it, which is worth reporting where the import cannot act on it: the file was stored
-/// either way, and only a person can say whether the older post is the same picture.
-/// </summary>
+/// <summary>A stored file. <paramref name="Similar"/>: existing look-alikes, for a person to judge.</summary>
 public sealed record ImportedItem(
     int PostId,
     string Sha256,
@@ -16,11 +12,7 @@ public sealed record ImportedItem(
     IReadOnlyList<string> Tags,
     IReadOnlyList<SimilarPost> Similar);
 
-/// <summary>
-/// A file the import did not store, and why. <paramref name="DuplicateOfPostId"/> is set when
-/// the reason is that the bytes are already a post, so the report can link to it; the reason
-/// then reads as the lead-in to that link.
-/// </summary>
+/// <summary>A skipped file. <paramref name="DuplicateOfPostId"/> is set when it's already a post.</summary>
 public sealed record SkippedItem(string FileName, string Reason, int? DuplicateOfPostId = null);
 
 public sealed record ImportResult(
@@ -32,15 +24,9 @@ public sealed record ImportResult(
 }
 
 /// <summary>
-/// Imports posts from a third-party URL by driving the bundled gallery-dl binary.
+/// Imports from a URL via gallery-dl. Fetches a user-chosen URL, so always authenticated;
+/// capped by <c>--range</c> and a timeout since imports share one lane.
 /// </summary>
-/// <remarks>
-/// This fetches a URL chosen by the user from inside the container, so it is gated behind
-/// authentication regardless of BOH_PUBLIC_READ. It runs as a background job, but imports
-/// share one lane of the queue, so the run is still bounded on both axes — <c>--range</c> caps
-/// how many files a single gallery can produce, and the process is killed after a timeout —
-/// or one endless gallery or hung download would hold up every import queued behind it.
-/// </remarks>
 public sealed class GalleryDlImporter(
     ProcessRunner runner,
     PostService posts,
@@ -65,9 +51,7 @@ public sealed class GalleryDlImporter(
     public async Task<ImportResult> ImportAsync(
         string url, int? uploadedById, IProgress<JobProgress>? progress, CancellationToken ct)
     {
-        // Canonical from here on: what gets fetched, logged and recorded is the rewritten form,
-        // never the raw submission. Uri.TryCreate alone would let control characters through
-        // into the log — see SourceUrls.TryCanonicalize.
+        // Canonical from here on; the raw input may carry control characters.
         if (!SourceUrls.TryCanonicalize(url, out var galleryUrl))
         {
             return new ImportResult([], [], SourceUrls.Requirement);
@@ -98,7 +82,7 @@ public sealed class GalleryDlImporter(
 
             if (mediaFiles.Count == 0)
             {
-                // A non-zero exit with no files is the informative case; surface what it said.
+                // Non-zero exit and no files: surface what it said.
                 var detail = FirstMeaningfulLine(result.StandardError) ?? FirstMeaningfulLine(result.StandardOutput);
                 return new ImportResult([], [],
                     detail is null
@@ -153,7 +137,7 @@ public sealed class GalleryDlImporter(
 
         for (var i = 0; i < mediaFiles.Count; i++)
         {
-            // Between files, so cancelling keeps every post already stored whole.
+            // Between files, so cancelling keeps stored posts whole.
             ct.ThrowIfCancellationRequested();
             progress?.Report(new JobProgress("Storing files", i, mediaFiles.Count));
 
@@ -161,9 +145,7 @@ public sealed class GalleryDlImporter(
             var fileName = Path.GetFileName(path);
             var metadata = ReadSidecar(path);
 
-            // The page this particular file lives on, when the extractor reports one. The
-            // typed URL is only a fallback: importing an artist's gallery would otherwise
-            // stamp all forty posts with the same address, which points at none of them.
+            // Prefer the file's own page; the typed URL is a fallback.
             var source = GalleryDlSourceMapper.PageUrl(metadata) ?? galleryUrl;
 
             await using var stream = File.OpenRead(path);
@@ -179,9 +161,7 @@ public sealed class GalleryDlImporter(
                     {
                         await tags.AddPostTagsAsync(createdPost.Post.Id, mapped, ct);
 
-                        // Read the tags back rather than reporting what the mapper produced:
-                        // an aliased name is stored as its canonical form, and the summary
-                        // showing the alias makes it look as though the alias was ignored.
+                        // Read back, so aliased names show as stored.
                         stored = (await tags.GetExplicitTagNamesAsync(createdPost.Post.Id, ct))
                             .Select(t => t.Display)
                             .OrderBy(t => t, StringComparer.Ordinal)
@@ -196,8 +176,7 @@ public sealed class GalleryDlImporter(
                         createdPost.Similar));
                     break;
 
-                // Skipped as a post, but not as information: the file being reachable from
-                // this URL too is recorded on the post that already holds it.
+                // Still records this URL on the existing post.
                 case PostCreateResult.Duplicate duplicate:
                     skipped.Add(new SkippedItem(
                         fileName,
@@ -219,10 +198,7 @@ public sealed class GalleryDlImporter(
         return new ImportResult(created, skipped, null);
     }
 
-    /// <summary>
-    /// gallery-dl writes metadata beside each file as <c>{filename}.json</c>.
-    /// A missing sidecar is normal for some extractors and simply means no tags.
-    /// </summary>
+    /// <summary>Reads gallery-dl's <c>{filename}.json</c> sidecar; missing is normal.</summary>
     private JsonElement? ReadSidecar(string mediaPath)
     {
         var sidecar = mediaPath + ".json";

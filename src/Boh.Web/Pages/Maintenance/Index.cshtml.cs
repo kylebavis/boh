@@ -10,14 +10,7 @@ namespace Boh.Web.Pages.Maintenance;
 /// <summary>The latest run of one task, or none if it has not run since the server started.</summary>
 public sealed record MaintenanceJobView(MaintenanceTask Task, JobSnapshot? Job);
 
-/// <summary>
-/// Every push-button repair, tag ones included. Tag administration is configuration; these
-/// change nothing about how the instance is set up, only bring derived data back in line with it.
-/// </summary>
-/// <remarks>
-/// A button queues its task and comes straight back rather than doing the work in the request:
-/// several of these re-read every original, which on a real archive outlasts any request.
-/// </remarks>
+/// <summary>Repairs that bring derived data back in line. Each button queues a job.</summary>
 [Authorize(Policy = BohPolicies.IsAdmin)]
 public class IndexModel(JobQueue jobs) : PageModel
 {

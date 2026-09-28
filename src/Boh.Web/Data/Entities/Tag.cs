@@ -1,9 +1,6 @@
 namespace Boh.Web.Data.Entities;
 
-/// <summary>
-/// A namespaced label. <see cref="Namespace"/> is empty for plain tags, so
-/// ("", "landscape") renders as <c>landscape</c> and ("artist", "foo") as <c>artist:foo</c>.
-/// </summary>
+/// <summary>A tag. <see cref="Namespace"/> is empty for plain tags.</summary>
 public class Tag
 {
     public int Id { get; set; }
@@ -11,10 +8,7 @@ public class Tag
     public string Namespace { get; set; } = "";
     public string Name { get; set; } = "";
 
-    /// <summary>
-    /// Denormalized count of posts carrying this tag, kept current by TagService so
-    /// autocomplete can rank without a COUNT subquery. Repairable via a recount action.
-    /// </summary>
+    /// <summary>Denormalized post count for ranking; repairable by recount.</summary>
     public int PostCount { get; set; }
 
     public List<PostTag> PostTags { get; } = [];

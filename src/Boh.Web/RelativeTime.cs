@@ -1,9 +1,6 @@
 namespace Boh.Web;
 
-/// <summary>
-/// "5 minutes ago", for moments recent enough that a clock time would make the reader work out
-/// how long ago it was — and which, rendered on the server, would be in the server's time zone.
-/// </summary>
+/// <summary>"5 minutes ago": avoids server time zones and mental arithmetic.</summary>
 public static class RelativeTime
 {
     public static string Since(DateTimeOffset moment, DateTimeOffset now)

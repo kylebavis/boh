@@ -3,20 +3,12 @@ using ImageMagick;
 namespace Boh.Web.Services;
 
 /// <summary>
-/// Handles still images via ImageMagick, which identifies formats from magic bytes —
-/// nothing here trusts the uploaded filename.
+/// Still images via ImageMagick, identified by magic bytes. Decoding untrusted input in native
+/// code, so formats are allowlisted and resources capped.
 /// </summary>
-/// <remarks>
-/// ImageMagick decodes untrusted input in native code, so this class deliberately
-/// narrows what reaches it: only formats on <see cref="Allowed"/> are accepted, and
-/// <see cref="ApplyResourceLimits"/> caps what a single decode may consume.
-/// </remarks>
 public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) : IMediaProcessor
 {
-    /// <summary>
-    /// Formats we are willing to decode, mapped to the MIME type and extension used for
-    /// storage. Anything absent is rejected rather than handed to a less-exercised coder.
-    /// </summary>
+    /// <summary>Decodable formats, with storage MIME type and extension.</summary>
     private static readonly Dictionary<MagickFormat, (string Mime, string Extension)> Allowed = new()
     {
         [MagickFormat.Jpeg] = ("image/jpeg", ".jpg"),
@@ -41,10 +33,7 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
         [MagickFormat.Heif] = ("image/heif", ".heif"),
     };
 
-    /// <summary>
-    /// Bounds a single decode so a malicious file cannot exhaust the host. These are
-    /// process-wide ImageMagick settings and only need applying once at startup.
-    /// </summary>
+    /// <summary>Process-wide decode limits, applied once at startup.</summary>
     public static void ApplyResourceLimits()
     {
         ResourceLimits.Width = 50_000;
@@ -58,7 +47,7 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
     {
         try
         {
-            // Reads the header only; the pixel data is never decoded here.
+            // Header only.
             var info = new MagickImageInfo(sourcePath);
 
             if (!Allowed.TryGetValue(info.Format, out var mapping))
@@ -77,7 +66,6 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
         }
         catch (MagickException)
         {
-            // Not an image ImageMagick recognizes; another processor may claim it.
             return Task.FromResult<MediaInfo?>(null);
         }
     }
@@ -85,14 +73,13 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
     public async Task GenerateThumbnailAsync(
         string sourcePath, string destinationPath, int maxEdge, CancellationToken ct)
     {
-        // MagickImage reads a single frame, so animated sources thumbnail from frame one.
+        // Single frame, so animations thumbnail from frame one.
         using var image = new MagickImage(sourcePath);
 
         image.AutoOrient();     // honour EXIF rotation before resizing
         image.Strip();          // drop EXIF/GPS: thumbnails are public surface
 
-        // The '>' geometry flag shrinks oversized images and leaves smaller ones alone,
-        // so a 50x50 source never becomes a blurry upscale.
+        // Shrink only; never upscale.
         image.Resize(new MagickGeometry((uint)maxEdge, (uint)maxEdge) { Greater = true });
 
         image.Format = MagickFormat.WebP;
@@ -102,16 +89,9 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
     }
 
     /// <summary>
-    /// Hashes the original rather than the thumbnail, so the hash does not shift with
-    /// <c>BOH_THUMBNAIL_SIZE</c> and stays comparable across instances.
+    /// Hashes the original, so the hash doesn't depend on thumbnail size. Our DCT hash, not
+    /// Magick's <see cref="PerceptualHash"/>.
     /// </summary>
-    /// <remarks>
-    /// Not ImageMagick's own <see cref="PerceptualHash"/>, which is why the type is spelled
-    /// out here. That one is a set of image moments per colour channel, compared by summed
-    /// squared distance: several hundred characters to store, a floating-point threshold with
-    /// no natural scale to pick it on, and no way to ask "within N of this" in a query. The
-    /// DCT hash in <see cref="Media.PerceptualHash"/> is eight bytes and a bit count.
-    /// </remarks>
     public Task<long?> TryComputePerceptualHashAsync(string sourcePath, CancellationToken ct)
     {
         try
@@ -120,21 +100,17 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
 
             image.AutoOrient();     // hash what a viewer sees, not how the file happens to be stored
 
-            // Transparent pixels have no brightness of their own, and Magick leaves them
-            // arbitrary. Compositing onto a fixed background first means a PNG and the JPEG
-            // someone made of it — which had nowhere to put the alpha but white — agree.
+            // Flatten alpha onto white so a PNG and its JPEG agree.
             image.BackgroundColor = MagickColors.White;
             image.Alpha(AlphaOption.Remove);
 
             image.Grayscale();
 
-            // IgnoreAspectRatio deliberately squashes the image into a square: the hash has to
-            // describe the picture, not its shape, or a crop of one edge would move every bit.
+            // Squash to a square: describe the picture, not its shape.
             var edge = (uint)Media.PerceptualHash.GridEdge;
             image.Resize(new MagickGeometry(edge, edge) { IgnoreAspectRatio = true });
 
-            // Q8 makes one channel one byte, and greyscale collapses the three into the same
-            // value, so the red channel alone is the luminance grid the hash wants.
+            // Q8 greyscale: the red channel is the luminance.
             using var pixels = image.GetPixels();
             var greyscale = pixels.ToByteArray("R");
 
@@ -142,8 +118,7 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
         }
         catch (MagickException ex)
         {
-            // The file probed as an image but will not decode. A post without a hash is only
-            // missing near-duplicate detection, so this is a warning rather than a failure.
+            // Probes as an image but won't decode. A missing hash is not fatal.
             logger.LogWarning(ex, "Could not decode {Path} to hash it perceptually", sourcePath);
             return Task.FromResult<long?>(null);
         }

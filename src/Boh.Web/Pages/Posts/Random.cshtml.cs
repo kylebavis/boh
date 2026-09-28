@@ -5,10 +5,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Boh.Web.Pages.Posts;
 
-/// <summary>
-/// Redirects to a randomly chosen post. Carries the active search through, so "random" from a
-/// filtered gallery stays inside that filter rather than jumping to the whole collection.
-/// </summary>
+/// <summary>Redirects to a random post within the active search.</summary>
 public class RandomModel(PostService posts, TagService tags) : PageModel
 {
     public async Task<IActionResult> OnGetAsync(string? q, CancellationToken ct)

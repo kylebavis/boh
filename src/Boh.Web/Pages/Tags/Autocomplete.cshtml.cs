@@ -5,11 +5,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Boh.Web.Pages.Tags;
 
-/// <summary>
-/// Returns an HTML fragment of tag suggestions for the token currently being typed.
-/// HTMX sends the whole input value, so the last whitespace-separated token is extracted
-/// here rather than in the browser.
-/// </summary>
+/// <summary>Suggestions for the last token of the input, as an HTML fragment.</summary>
 public class AutocompleteModel(TagService tags) : PageModel
 {
     private const int SuggestionLimit = 10;
@@ -24,9 +20,7 @@ public class AutocompleteModel(TagService tags) : PageModel
 
         var token = LastToken(raw);
 
-        // In a search, `url:` introduces a source predicate rather than a namespace, so there
-        // are no tags to offer. Only in a search: in the tag editor the same text would be an
-        // ordinary namespace, and someone who has such tags should still get them completed.
+        // In a search, <c>url:</c> is a predicate, not a namespace.
         if (searching && token.StartsWith(SearchQuery.SourcePrefix, StringComparison.OrdinalIgnoreCase))
         {
             return Partial("_TagAutocomplete", Suggestions);

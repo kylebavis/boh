@@ -1,10 +1,6 @@
 namespace Boh.Web.Services;
 
-/// <summary>
-/// Facts about a media file, determined by inspecting its content rather than its name.
-/// <paramref name="Extension"/> is the canonical extension for the detected format, which
-/// is why a <c>.png</c> that is really a JPEG gets stored as <c>.jpg</c>.
-/// </summary>
+/// <summary>Facts from a file's content. <paramref name="Extension"/> is canonical for the detected format.</summary>
 public sealed record MediaInfo(
     int Width,
     int Height,
@@ -15,20 +11,12 @@ public sealed record MediaInfo(
 
 public interface IMediaProcessor
 {
-    /// <summary>
-    /// Returns details if this processor recognizes the file, otherwise null.
-    /// Returning null is the normal "not mine" signal and must not throw.
-    /// </summary>
+    /// <summary>Null means "not mine"; must not throw.</summary>
     Task<MediaInfo?> TryProbeAsync(string sourcePath, CancellationToken ct);
 
     Task GenerateThumbnailAsync(string sourcePath, string destinationPath, int maxEdge, CancellationToken ct);
 
-    /// <summary>
-    /// A perceptual hash of what the file looks like — see <see cref="Media.PerceptualHash"/> —
-    /// or null when this processor has none to offer, because the format is not one it reduces
-    /// to a still image or the image carries no detail to hash. Null is an ordinary answer and
-    /// must not throw: a post is still a post without a hash.
-    /// </summary>
+    /// <summary>See <see cref="Media.PerceptualHash"/>. Null when there's nothing to hash; must not throw.</summary>
     Task<long?> TryComputePerceptualHashAsync(string sourcePath, CancellationToken ct);
 }
 

@@ -45,9 +45,6 @@ Entity Framework Core, ASP.NET Core — MIT
     https://github.com/dotnet/efcore
     https://github.com/dotnet/aspnetcore
 
-BCrypt.Net-Next — MIT
-    https://github.com/BcryptNet/bcrypt.net
-
 SQLitePCLRaw — Apache-2.0, bundling SQLite (public domain)
     https://github.com/ericsink/SQLitePCL.raw
     https://www.sqlite.org/copyright.html

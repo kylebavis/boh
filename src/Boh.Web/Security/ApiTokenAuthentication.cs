@@ -6,14 +6,9 @@ using Microsoft.Extensions.Options;
 namespace Boh.Web.Security;
 
 /// <summary>
-/// Authenticates <c>Authorization: Bearer boh_…</c> against <see cref="ApiTokenService"/>.
+/// Authenticates <c>Authorization: Bearer boh_…</c>. The API accepts only this, never the
+/// cookie, so it can't be driven cross-site.
 /// </summary>
-/// <remarks>
-/// The API accepts only this scheme, never the cookie: a request that authenticates without a
-/// header the browser adds on its own cannot be forged cross-site, so the API needs no
-/// antiforgery token. The principal is built from the user row on every request, so deleting
-/// or demoting someone applies to their tokens immediately.
-/// </remarks>
 public sealed class ApiTokenAuthentication(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,

@@ -1,15 +1,8 @@
 namespace Boh.Web.ViewModels;
 
 /// <summary>
-/// One tag as shown on a post. <paramref name="Implied"/> tags have no remove control:
-/// they are derived from an implication, so deleting one directly would only have it
-/// reappear on the next write.
-/// </summary>
-/// <summary>
-/// <paramref name="Display"/> is the full <c>namespace:name</c> form and is what links,
-/// tooltips and the remove handler must use. <paramref name="Name"/> is the bare name shown
-/// in the chip — the namespace is conveyed by <paramref name="Color"/> instead of repeating
-/// it as a prefix on every tag.
+/// A tag on a post. <paramref name="Display"/> is the full form for links and removal; the
+/// chip shows <paramref name="Name"/> coloured by namespace. Implied tags can't be removed.
 /// </summary>
 public sealed record PostTagEntry(
     string Display,
@@ -19,11 +12,7 @@ public sealed record PostTagEntry(
     int PostCount,
     string? Color);
 
-/// <summary>
-/// <paramref name="CanEdit"/> hides the add and remove controls from viewers who could not
-/// use them anyway — the case that matters is an anonymous visitor under BOH_PUBLIC_READ.
-/// The server still enforces this; the flag only avoids showing dead controls.
-/// </summary>
+/// <summary><paramref name="CanEdit"/> only hides controls; the server enforces.</summary>
 public sealed record PostTagView(
     int PostId,
     IReadOnlyList<PostTagEntry> Tags,

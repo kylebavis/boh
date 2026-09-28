@@ -1,14 +1,6 @@
 namespace Boh.Web.Jobs;
 
-/// <summary>
-/// Runs what <see cref="JobQueue"/> holds: each lane's jobs one at a time, the lanes alongside
-/// one another.
-/// </summary>
-/// <remarks>
-/// One job at a time per lane is deliberate. Maintenance passes decode originals and write to
-/// the same tables; two at once would fight over the CPU and the SQLite write lock to finish no
-/// sooner.
-/// </remarks>
+/// <summary>Runs each lane's jobs one at a time, lanes in parallel.</summary>
 public sealed class JobWorker(JobQueue queue, IServiceScopeFactory scopes, ILogger<JobWorker> logger)
     : BackgroundService
 {

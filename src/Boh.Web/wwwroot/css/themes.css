@@ -1,37 +1,13 @@
-/*
-   Packaged colour schemes.
-   =========================================================================
-   Each theme is a flat entry in the picker: it owns its light/dark polarity rather than
-   varying with one. Selecting a theme sets three attributes on <html> (see Themes.cs):
+/* Packaged colour schemes.
+   Each palette sets fifteen --boh-* tokens, mapped onto Pico once below. <html> also gets
+   data-theme (light|dark) because Pico bakes icon colours per mode. To add a theme: a
+   token block here and an entry in Themes.cs. Values are adjusted to pass WCAG AA; see
+   scripts/build-themes.py. */
 
-       data-theme-choice   the raw selection, for the picker to reflect
-       data-theme          light | dark  — the Pico base the palette is built on
-       data-theme-name     the palette below
-
-   data-theme still lands on the element because Pico bakes stroke colours into its icon
-   data URIs per mode: a dark palette without data-theme="dark" gets dark chevrons and
-   checkmarks on its own dark surfaces, and no amount of variable overriding reaches them.
-   Sitting on the correct base also means any Pico variable this file misses falls back to
-   something of the right polarity rather than inverting.
-
-   Adding a theme is two edits: a block of the fifteen --boh-* tokens here, and an entry in
-   Themes.Palettes. The mapping onto Pico's ~90 variables is written once, below.
-
-   The token values are not copied verbatim from upstream. Editor schemes are built for
-   syntax on a single background, not for web chrome, and across these nine every one of
-   them failed WCAG AA somewhere boh renders text — 46 failing pairs on the first pass.
-   Tokens that fell short were moved along their own hue until they cleared, and the
-   derivation is reproducible: see scripts/build-themes.py.
-*/
-
-/* Mapping ---------------------------------------------------------------
-   The palette contract, expressed once against Pico. Every value below resolves through
-   the --boh-* tokens, so a palette block never mentions a Pico variable. */
+/* Mapping: every value resolves through the --boh-* tokens. */
 
 :root[data-theme-name] {
-    /* Hover moves the accent toward the theme's own foreground, which lightens it on a
-       dark palette and darkens it on a light one — so one rule serves both polarities and
-       contrast against the accent's label colour can only improve. */
+    /* Hover moves the accent toward the foreground, which works in both polarities. */
     --boh-accent-hover: color-mix(in oklab, var(--boh-accent), var(--boh-fg) 25%);
 
     --pico-background-color: var(--boh-bg);
@@ -146,11 +122,7 @@
     --pico-modal-overlay-background-color: color-mix(in srgb, var(--boh-bg) 70%, transparent);
 }
 
-/*
-   The sticky table headers in app.css paint over scrolling rows, so they need an opaque
-   fill. --pico-background-color is opaque in every palette, but the header sits inside a
-   card in the tag admin, where the page colour is the wrong one.
-*/
+/* Sticky headers need an opaque fill that matches the card they sit in. */
 :root[data-theme-name] .scroll-y thead th {
     background: var(--boh-surface);
 }

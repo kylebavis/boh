@@ -16,22 +16,13 @@ public sealed record SimilarPostCard(Post Post, int Distance);
 /// <param name="Pending">Posts that had no hash when the pass started.</param>
 /// <param name="Hashed">Posts that now have one.</param>
 /// <param name="Featureless">Posts with nothing to hash, recorded so they are not retried.</param>
-/// <param name="Failed">
-/// Posts whose original could not be read at all. They are deliberately left pending, so a
-/// later pass — once a missing mount is back, say — picks them up.
-/// </param>
+/// <param name="Failed">Unreadable originals, left pending for a later pass.</param>
 public sealed record HashingResult(int Pending, int Hashed, int Featureless, int Failed);
 
 /// <summary>
-/// A group of posts that all look alike, oldest first — which is usually the one to keep.
-/// <paramref name="ClosestDistance"/> is the tightest match inside the group.
+/// Posts that look alike, oldest first. <paramref name="Posts"/> may be capped;
+/// <paramref name="Size"/> is the real count.
 /// </summary>
-/// <param name="Posts">The members to show, which is all of them until a group gets large.</param>
-/// <param name="Size">
-/// How many posts the group really holds. Larger than <paramref name="Posts"/> for a group
-/// nobody could work through in one sitting, where loading and rendering every member would
-/// cost far more than it tells the reader.
-/// </param>
 public sealed record DuplicateCluster(IReadOnlyList<Post> Posts, int Size, int ClosestDistance);
 
 /// <summary>Outcome of an archive-wide scan.</summary>
@@ -42,21 +33,9 @@ public sealed record DuplicateScan(
     int OmittedClusters);
 
 /// <summary>
-/// Near-duplicate detection over perceptual hashes: everything that asks "what else looks
-/// like this", as opposed to the byte-identical check <see cref="PostService"/> does against
-/// <see cref="Post.Sha256"/>.
+/// Near-duplicate detection over perceptual hashes, by linear scan of the in-memory
+/// <see cref="PerceptualHashIndex"/>. Cheap at this scale except the all-pairs scan, which runs as a job.
 /// </summary>
-/// <remarks>
-/// Every query here reads all the hashes and compares them in memory. A perceptual hash
-/// cannot be matched with an index — the question is never "which row equals this" but
-/// "which rows are within eight bits of it" — so the alternatives are a linear scan or a
-/// purpose-built structure (a BK-tree, or multi-index hashing) maintained alongside the
-/// table. At the scale this project targets the scan is not worth avoiding: the hashes are
-/// eight bytes each and held in memory by <see cref="PerceptualHashIndex"/>, and a hundred
-/// thousand popcounts is well under a millisecond of CPU. The archive-wide scan is the one place that stops being true, because it compares
-/// every pair rather than one hash against every other, which is why it runs as a background
-/// job.
-/// </remarks>
 public sealed class DuplicateService(
     BohDbContext db,
     PerceptualHashIndex hashIndex,
@@ -65,39 +44,18 @@ public sealed class DuplicateService(
     ILogger<DuplicateService> logger)
 {
     /// <summary>
-    /// How many of the 63 hash bits may differ before two images are no longer considered the
-    /// same picture. Eight is deliberately cautious: re-encoding, resizing and light
-    /// watermarking move a handful of bits, while unrelated images sit near the middle of the
-    /// range — around 31 bits apart — so the gap either side of this line is wide. Raising it
-    /// finds crops and heavier edits at the cost of pairs that merely share a composition,
-    /// which is why nothing here refuses an upload on the strength of it.
+    /// Differing bits (of 63) still counted as the same picture. Cautious: re-encodes move a
+    /// few bits, unrelated images sit ~31 apart.
     /// </summary>
     public const int MaxDistance = 8;
 
-    /// <summary>
-    /// Posts a hashing pass loads and commits together. Small enough that the context never
-    /// tracks much at once and a cancelled pass loses little work; large enough that committing
-    /// is not the cost — decoding is.
-    /// </summary>
     private const int HashingBatchSize = 200;
 
-    /// <summary>
-    /// Clusters a single report will render. A collection with a large set of near-identical
-    /// posts would otherwise produce a page nobody can act on.
-    /// </summary>
     private const int ScanMaxClusters = 50;
 
-    /// <summary>
-    /// Members of one group the report will load and render. A group is a set of things that
-    /// look alike, so the twelfth thumbnail tells the reader nothing the third did not — and
-    /// without a cap, one enormous group would put thousands of ids into a query.
-    /// </summary>
     private const int ScanMaxClusterPosts = 12;
 
-    /// <summary>
-    /// Posts a <c>similar:</c> search may resolve to. The threshold keeps this small in
-    /// practice; the cap is here so a pathological hash cannot build an unbounded query.
-    /// </summary>
+    /// <summary>Bounds the query a <c>similar:</c> search builds.</summary>
     private const int SearchMaxMatches = 500;
 
     private enum HashOutcome
@@ -107,10 +65,7 @@ public sealed class DuplicateService(
         Failed
     }
 
-    /// <summary>
-    /// Posts that look like <paramref name="hash"/>, closest first.
-    /// <paramref name="excludePostId"/> keeps a post out of its own results.
-    /// </summary>
+    /// <summary>Posts that look like <paramref name="hash"/>, closest first.</summary>
     public async Task<IReadOnlyList<SimilarPost>> FindSimilarAsync(
         long hash, int? excludePostId, int limit, CancellationToken ct)
     {
@@ -128,10 +83,7 @@ public sealed class DuplicateService(
         return [.. found.OrderBy(f => f.Distance).ThenByDescending(f => f.PostId).Take(limit)];
     }
 
-    /// <summary>
-    /// What else looks like a given post, loaded for display. Empty when the post has no hash,
-    /// which is also what a caller gets for a post that does not exist.
-    /// </summary>
+    /// <summary>Look-alikes of a post, loaded for display. Empty when it has no hash.</summary>
     public async Task<IReadOnlyList<SimilarPostCard>> GetSimilarToPostAsync(
         int postId, int limit, CancellationToken ct)
     {
@@ -146,7 +98,7 @@ public sealed class DuplicateService(
             .Where(p => ids.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, ct);
 
-        // Preserves the closest-first ordering the scan produced, which the lookup lost.
+        // Keep closest-first order.
         return
         [
             .. found
@@ -156,14 +108,8 @@ public sealed class DuplicateService(
     }
 
     /// <summary>
-    /// The post ids a <c>similar:</c> search matches, the reference post included — the point
-    /// of that search is to put a post beside its look-alikes and compare them.
+    /// Ids a <c>similar:</c> search matches, the reference post included. Empty when it has no hash.
     /// </summary>
-    /// <remarks>
-    /// Empty when the post has no hash or does not exist. That is the honest answer to
-    /// "what looks like this", and it leaves the caller to decide what an unanswerable
-    /// requirement means for the search as a whole.
-    /// </remarks>
     public async Task<IReadOnlyList<int>> FindSimilarIdsAsync(int postId, CancellationToken ct)
     {
         var hash = await HashOfAsync(postId, ct);
@@ -173,14 +119,7 @@ public sealed class DuplicateService(
         return [postId, .. found.Select(f => f.PostId)];
     }
 
-    /// <summary>
-    /// Hashes posts that have none — every post in an archive that predates this feature, and
-    /// anything whose hashing failed at upload.
-    /// </summary>
-    /// <remarks>
-    /// Video is left alone rather than marked as attempted: nothing has tried it, and a
-    /// release that learns to hash video should find those posts still waiting here.
-    /// </remarks>
+    /// <summary>Hashes posts that have none. Video is skipped, not marked as tried.</summary>
     public async Task<HashingResult> ComputeMissingHashesAsync(
         IProgress<JobProgress>? progress, CancellationToken ct)
     {
@@ -192,9 +131,7 @@ public sealed class DuplicateService(
 
         while (true)
         {
-            // Paged by id rather than by what is still pending: a failure stays pending, so
-            // asking again for "the next pending posts" would return it every time and never
-            // reach the posts after it.
+            // Paged by id: failures stay pending and would otherwise repeat forever.
             var batch = await pending
                 .Where(p => p.Id > after)
                 .OrderBy(p => p.Id)
@@ -218,8 +155,6 @@ public sealed class DuplicateService(
                 done++;
             }
 
-            // One transaction per batch. Saving per post would fsync for every post in a pass
-            // whose real cost is decoding.
             await db.SaveChangesAsync(ct);
             db.ChangeTracker.Clear();
 
@@ -240,8 +175,7 @@ public sealed class DuplicateService(
     {
         if (!store.OriginalExists(post.Sha256, post.FileExtension))
         {
-            // Left un-tried on purpose: an original missing because a mount is offline
-            // comes back, and a later pass should hash it then rather than write it off now.
+            // Left un-tried: an offline mount may come back.
             logger.LogWarning("Post {PostId} has no original at {Sha256}; cannot hash it",
                 post.Id, post.Sha256);
             return HashOutcome.Failed;
@@ -251,9 +185,6 @@ public sealed class DuplicateService(
 
         try
         {
-            // Re-probed rather than trusting the stored MIME type, so the same processor
-            // handles it as at upload — and a post whose original has since become
-            // unreadable is reported instead of throwing.
             var probed = await processors.ProbeAsync(originalPath, ct);
             if (probed is null)
             {
@@ -275,24 +206,14 @@ public sealed class DuplicateService(
         }
     }
 
-    /// <summary>
-    /// Groups the whole archive into sets of posts that look alike, for finding duplicates
-    /// that were stored before anything was watching for them.
-    /// </summary>
-    /// <remarks>
-    /// Transitive by construction: A near B and B near C puts all three in one group even when
-    /// A and C are further apart than the threshold. That is the useful shape for a report —
-    /// a chain of re-encodings is one duplicate to resolve, not several overlapping pairs.
-    /// </remarks>
+    /// <summary>Groups the archive into look-alike sets. Transitive: A~B and B~C is one group.</summary>
     public async Task<DuplicateScan> ScanForDuplicatesAsync(
         IProgress<JobProgress>? progress, CancellationToken ct)
     {
         var (ids, hashes) = await hashIndex.GetAsync(db, ct);
         var count = ids.Length;
 
-        // Union-find over the hash array. Groups form as pairs are discovered, so the pass
-        // needs no list of pairs — which matters, because a collection with a thousand
-        // near-identical posts has half a million of them.
+        // Union-find, so no list of pairs is held.
         var parent = new int[count];
         var closest = new int[count];
 
@@ -304,8 +225,6 @@ public sealed class DuplicateService(
 
         for (var i = 0; i < count; i++)
         {
-            // Once per row rather than per pair: a row is one sweep over the hashes, and the
-            // inner loop is the part worth keeping tight.
             ct.ThrowIfCancellationRequested();
             progress?.Report(new JobProgress("Comparing posts", i, count));
 
@@ -330,14 +249,12 @@ public sealed class DuplicateService(
 
         var found = groups
             .Where(g => g.Value.Count > 1)
-            // Tightest match first: an exact-looking pair is likelier to be a real duplicate
-            // than a group that only just cleared the threshold.
+            // Tightest match first.
             .OrderBy(g => closest[g.Key])
             .ThenByDescending(g => g.Value.Count)
             .ToList();
 
-        // Post ids per group, oldest first — ids ascend with age because the snapshot holds
-        // them in order — and trimmed to what the report will actually show.
+        // Oldest first: the snapshot is ordered by id.
         var shown = found
             .Take(ScanMaxClusters)
             .Select(g => (
@@ -357,8 +274,7 @@ public sealed class DuplicateService(
                 [.. g.Members.Select(posts.GetValueOrDefault).OfType<Post>()],
                 g.Size,
                 g.Closest))
-            // A post deleted between the two queries can leave a group of one, which is no
-            // longer a duplicate of anything.
+            // A concurrent delete can leave a group of one.
             .Where(c => c.Posts.Count > 1)
             .ToList();
 

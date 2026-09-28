@@ -17,14 +17,9 @@ public sealed record PerceptualHashSnapshot(int[] Ids, long[] Hashes)
 }
 
 /// <summary>
-/// Keeps every perceptual hash in memory, so a post page does not read the whole column
-/// to find its look-alikes.
+/// All perceptual hashes in memory, cleared on EF changes to posts. Bulk updates must call
+/// <see cref="Invalidate"/>.
 /// </summary>
-/// <remarks>
-/// Cleared by EF whenever a post is added or deleted or its hash changes, and reloaded on
-/// the next read. Bulk <c>ExecuteUpdate</c>/<c>ExecuteDelete</c> on posts bypasses that and
-/// must call <see cref="Invalidate"/>.
-/// </remarks>
 public sealed class PerceptualHashIndex
 {
     private readonly Lock gate = new();

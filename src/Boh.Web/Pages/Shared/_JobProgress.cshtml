@@ -13,8 +13,7 @@
             ? $"{progress!.Stage} — {progress.Done:N0} of {progress.Total:N0}"
             : progress?.Stage ?? "Starting…";
 }
-@* A queued or running job, from either page. The cancel form posts to whichever page
-   rendered this, which is the one that knows whose job it is allowed to stop. *@
+@* Cancel posts to the rendering page, which knows whose job it may stop. *@
 <div class="notice job-running">
     <div class="job-line">
         <span>@text</span>

@@ -2,10 +2,7 @@ using System.Threading.Channels;
 
 namespace Boh.Web.Jobs;
 
-/// <summary>
-/// Which worker a job waits for. Each lane runs its jobs one at a time and the lanes run
-/// alongside each other, so an hour-long hashing pass never holds up an import.
-/// </summary>
+/// <summary>Each lane runs one job at a time; lanes run in parallel.</summary>
 public enum JobLane
 {
     Maintenance,
@@ -21,15 +18,10 @@ public enum JobState
     Cancelled
 }
 
-/// <summary>
-/// How far a running job has got. <paramref name="Total"/> is null when the work cannot be
-/// measured in advance — a download, or one large query — which renders as a bar with no end.
-/// </summary>
+/// <summary>Null <paramref name="Total"/> means unmeasurable.</summary>
 public sealed record JobProgress(string Stage, long Done = 0, long? Total = null);
 
 /// <summary>A job as it stood at one moment, safe to hand to a page.</summary>
-/// <param name="Title">What the page calls it: a task name, or the URL being imported.</param>
-/// <param name="Message">Why a failed or cancelled job ended, when there is more to say than that it did.</param>
 public sealed record JobSnapshot(
     Guid Id,
     JobLane Lane,
@@ -46,11 +38,7 @@ public sealed record JobSnapshot(
     public bool IsActive => State is JobState.Queued or JobState.Running;
 }
 
-/// <summary>
-/// What a job's work is handed: services from a scope of its own, the token that cancels it,
-/// and somewhere to report progress — which is why it can be passed straight to a service as
-/// its <see cref="IProgress{T}"/>.
-/// </summary>
+/// <summary>Scoped services, cancellation, and progress reporting for a job.</summary>
 public sealed class JobContext(
     IServiceProvider services,
     CancellationToken cancellationToken,
@@ -68,21 +56,10 @@ public delegate Task<object?> JobWork(JobContext job);
 internal sealed record StartedJob(Guid Id, string Kind, JobWork Work, CancellationToken Cancellation);
 
 /// <summary>
-/// Work too long for a request — passes over the whole archive, and imports — waiting for
-/// <see cref="JobWorker"/> to run it, plus the outcome of what already has.
+/// Background work and recent outcomes. In memory only: every job is safe to rerun after a restart.
 /// </summary>
-/// <remarks>
-/// Held in memory only, and every job here is safe to lose that way. A maintenance pass works
-/// from whatever is still unrepaired, so running it again after a restart carries on where it
-/// stopped; an interrupted import keeps the posts it had already stored. Durable storage would
-/// add a second writer to the SQLite file to protect nothing.
-/// </remarks>
 public sealed class JobQueue
 {
-    /// <summary>
-    /// Finished runs remembered per kind. Enough for a list of recent imports; anything older
-    /// describes a collection that has since moved on.
-    /// </summary>
     public const int FinishedKeptPerKind = 20;
 
     private readonly Lock _gate = new();
@@ -94,10 +71,7 @@ public sealed class JobQueue
             lane => lane,
             _ => Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions { SingleReader = true }));
 
-    /// <param name="exclusive">
-    /// Allows at most one job of <paramref name="kind"/> queued or running at a time: while there
-    /// is one, this returns it rather than adding a second pass over the same rows.
-    /// </param>
+    /// <param name="exclusive">At most one active job of this kind; returns the existing one.</param>
     public JobSnapshot Enqueue(
         JobLane lane, string kind, string title, int? requestedById, JobWork work, bool exclusive = false)
     {
@@ -144,10 +118,7 @@ public sealed class JobQueue
     /// <summary>The most recent job of a kind, finished or not.</summary>
     public JobSnapshot? Latest(string kind) => List(j => j.Kind == kind).FirstOrDefault();
 
-    /// <summary>
-    /// Stops a job. One still waiting never starts; a running one is signalled, and ends at its
-    /// next cancellation check — so it can show as running for a moment after this returns.
-    /// </summary>
+    /// <summary>Stops a job. A running one ends at its next cancellation check.</summary>
     /// <returns>False when there is no such job, or it had already finished.</returns>
     public bool Cancel(Guid id)
     {
@@ -166,8 +137,7 @@ public sealed class JobQueue
             signal = entry.Cancellation;
         }
 
-        // Outside the lock: cancelling runs the token's callbacks inline, and nothing they do
-        // should be able to deadlock against a page reading the queue.
+        // Outside the lock: cancellation callbacks run inline.
         signal.Cancel();
         return true;
     }

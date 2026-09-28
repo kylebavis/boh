@@ -25,11 +25,10 @@ builder.Services.AddSingleton(options);
 
 builder.WebHost.ConfigureKestrel(k =>
 {
-    // The framework default of ~28.6 MB would reject most video before it reached our code.
+    // The default ~28.6 MB would reject most video.
     k.Limits.MaxRequestBodySize = options.MaxUploadBytes;
 
-    // Nothing needs to know which server this is, and naming it only helps someone
-    // deciding which exploits are worth trying.
+    // Don't advertise the server.
     k.AddServerHeader = false;
 });
 builder.Services.Configure<FormOptions>(f =>
@@ -56,8 +55,7 @@ MagickMediaProcessor.ApplyResourceLimits();
 builder.Services.AddSingleton<ContentAddressedFileStore>();
 builder.Services.AddSingleton<ProcessRunner>();
 
-// Order matters: the registry takes the first processor that recognizes a file, and
-// ImageMagick is cheaper to ask than spawning ffprobe.
+// First match wins; Magick is cheaper than spawning ffprobe.
 builder.Services.AddSingleton<IMediaProcessor, MagickMediaProcessor>();
 builder.Services.AddSingleton<IMediaProcessor, VideoMediaProcessor>();
 builder.Services.AddSingleton<MediaProcessorRegistry>();
@@ -68,19 +66,14 @@ builder.Services.AddScoped<PostService>();
 builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<UserService>();
 
-// Passkeys. The WebAuthn work is ASP.NET Core's, and it is reached through a UserManager —
-// so IdentityCore is registered purely to supply one over boh's existing Users table, with
-// BohUserStore as the adapter. Nothing else about Identity is adopted: passwords stay with
-// UserService, and sign-in stays the cookie written in Pages/Account. The
-// passkey handler is registered directly because AddSignInManager, which normally does it,
-// would bring a parallel sign-in path boh has no use for.
+// IdentityCore only supplies a UserManager for passkeys over boh's Users table.
+// Passwords and the sign-in cookie stay boh's own, so no SignInManager.
 builder.Services.AddIdentityCore<User>().AddUserStore<BohUserStore>();
 builder.Services.AddScoped<IPasskeyHandler<User>, PasskeyHandler<User>>();
 builder.Services.Configure<IdentityPasskeyOptions>(p => PasskeyRelyingParty.Configure(p, options));
 builder.Services.AddScoped<PasskeyService>();
 builder.Services.AddSingleton<PasskeyChallenge>();
 
-// Maintenance passes and URL imports outlive a request, so pages queue them and this runs them.
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddHostedService<JobWorker>();
 
@@ -89,8 +82,7 @@ builder.Services.AddScoped<RevalidateUserEvents>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o =>
     {
-        // Deleting or demoting a user has to take effect now, not whenever their cookie
-        // happens to expire.
+        // Deletion or demotion applies immediately.
         o.EventsType = typeof(RevalidateUserEvents);
         o.LoginPath = "/Account/Login";
         o.AccessDeniedPath = "/Account/Login";
@@ -99,8 +91,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         o.Cookie.Name = "boh.auth";
         o.Cookie.HttpOnly = true;
         o.Cookie.SameSite = SameSiteMode.Lax;
-        // SameAsRequest, not Always: plain-HTTP use on a LAN has to keep working, while
-        // an HTTPS deployment still gets the Secure flag.
+        // SameAsRequest keeps plain-HTTP LAN use working.
         o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     })
     .AddScheme<AuthenticationSchemeOptions, ApiTokenAuthentication>(ApiTokenAuthentication.SchemeName, null);
@@ -110,8 +101,7 @@ builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Ad
 
 builder.Services.AddAuthorization(o =>
 {
-    // Applied to the pages that stay private even under BOH_PUBLIC_READ. When auth is
-    // switched off nobody can sign in, so the requirement has to fall away with it.
+    // Pages private even under BOH_PUBLIC_READ; open when auth is off.
     o.AddPolicy(BohPolicies.CanWrite, policy =>
     {
         if (options.AuthDisabled) policy.RequireAssertion(_ => true);
@@ -138,9 +128,7 @@ builder.Services.AddAuthorization(o =>
         else policy.RequireAuthenticatedUser();
     });
 
-    // Reads are open when auth is off or public browsing is enabled; otherwise every page
-    // requires a signed-in user. Writes are handled separately by the page filter, since
-    // they must stay restricted even when reads are public.
+    // Reads. Writes are gated by RequireAuthForWritesFilter.
     if (!options.AuthDisabled && !options.PublicRead)
     {
         o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
@@ -150,9 +138,7 @@ builder.Services.AddAuthorization(o =>
 builder.Services.AddRazorPages(o => o.Conventions.ConfigureFilter(
     new RequireAuthForWritesFilter(options)));
 
-// Nothing else bounds online password guessing: there is no lockout, and a self-hosted
-// instance is usually reachable from wherever its owner is. Attempts only, so somebody
-// reloading the form is never turned away.
+// No lockout exists, so rate-limit login attempts (POSTs only).
 builder.Services.AddRateLimiter(r =>
 {
     r.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -168,14 +154,10 @@ builder.Services.AddRateLimiter(r =>
         if (!HttpMethods.IsPost(context.Request.Method))
             return RateLimitPartition.GetNoLimiter("read");
 
-        // The forwarded headers have already been applied, so behind a proxy that appends
-        // X-Forwarded-For this is the client the proxy saw. A caller reaching the container
-        // directly can forge that header and partition itself away from its own limit —
-        // the same trust the forwarded-headers configuration already extends.
+        // Forwarded headers already applied, so this is the client the proxy saw.
         var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-        // Sliding rather than fixed: a fixed window lets twice the limit through in the
-        // moments either side of a boundary.
+        // Sliding, so a window boundary can't let twice the limit through.
         return RateLimitPartition.GetSlidingWindowLimiter(client, _ => new SlidingWindowRateLimiterOptions
         {
             PermitLimit = LoginModel.RateLimitAttempts,
@@ -186,12 +168,10 @@ builder.Services.AddRateLimiter(r =>
     });
 });
 
-// HTMX cannot post a hidden form field on every request, so the token travels in a header
-// that the layout attaches once via hx-headers.
+// htmx sends the token as a header, set once via hx-headers.
 builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
 
-// Keys default to the user profile, which is not persisted in the container. Without this,
-// every restart invalidates antiforgery tokens and (later) auth cookies.
+// Persist keys, or every restart invalidates tokens and cookies.
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(options.KeysDir))
     .SetApplicationName("boh");
@@ -199,7 +179,6 @@ builder.Services.AddDataProtection()
 builder.Services.Configure<ForwardedHeadersOptions>(f =>
 {
     f.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // Self-hosted proxies sit at arbitrary addresses and the operator controls both ends.
     f.KnownIPNetworks.Clear();
     f.KnownProxies.Clear();
 });
@@ -213,27 +192,25 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error");
 }
 
-// Below the exception handler on purpose: handling one clears the response headers and
-// re-runs the pipeline from here, so anything registered above it would have its headers
-// thrown away and never get the chance to set them again.
+// Below the exception handler, which clears headers and re-runs from here.
 app.UseBohSecurityHeaders();
 
-// No HTTPS redirection: the container speaks plain HTTP and TLS terminates at the proxy.
+// No HTTPS redirection: TLS terminates at the proxy.
 app.UseRouting();
 
-// After routing, so the login policy can be found on the endpoint it is declared on.
+// After routing, so endpoint policies are visible.
 app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Fingerprinted, precompressed and cached as immutable. Anonymous so the sign-in page is styled.
+// Anonymous so the sign-in page is styled.
 app.MapStaticAssets().AllowAnonymous();
 app.MapRazorPages().WithStaticAssets();
 app.MapFileEndpoints();
 app.MapApiEndpoints();
 
-// Must stay reachable without credentials or the container healthcheck fails.
+// Anonymous for the container healthcheck.
 app.MapGet("/healthz", () => Results.Ok("ok")).WithName("Health").AllowAnonymous();
 
 await InitializeAsync(app);
@@ -245,9 +222,7 @@ static async Task InitializeAsync(WebApplication app)
     var options = app.Services.GetRequiredService<BohOptions>();
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Boh.Startup");
 
-    // Each location may be its own mount, so none can be assumed to exist or be writable.
-    // Checked up front so a permissions problem names the path instead of surfacing later
-    // as a failed upload.
+    // Each path may be its own mount; fail early naming the path.
     var problems = StoragePreflight.Check(options);
     if (problems.Count > 0)
     {
@@ -293,10 +268,7 @@ static async Task InitializeAsync(WebApplication app)
         options.DatabasePath, options.OriginalsDir, options.ThumbsDir, options.PublicRead);
 }
 
-/// <summary>
-/// Flags a storage layout that will misbehave. Warnings only: a misidentified filesystem
-/// should never stop the application from starting.
-/// </summary>
+/// <summary>Warns about storage layouts that will misbehave. Never fails startup.</summary>
 static void WarnAboutStorageLayout(BohOptions options, ILogger logger)
 {
     var databaseFs = FilesystemProbe.GetFilesystemType(options.DatabasePath);

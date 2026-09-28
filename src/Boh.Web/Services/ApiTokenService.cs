@@ -7,13 +7,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Boh.Web.Services;
 
-/// <summary>One of an account's API tokens, as the account page lists it.</summary>
+/// <summary>A token as the account page lists it.</summary>
 public sealed record ApiTokenRow(int Id, string Name, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt);
 
 /// <summary>Creates, lists, revokes and checks the bearer tokens the API accepts.</summary>
 public sealed class ApiTokenService(BohDbContext db, ILogger<ApiTokenService> logger)
 {
-    /// <summary>Marks a string as a boh token, so one pasted somewhere it should not be is recognizable.</summary>
+    /// <summary>Makes a leaked token recognizable.</summary>
     public const string Prefix = "boh_";
 
     public const int MaxPerUser = 20;
@@ -29,7 +29,7 @@ public sealed class ApiTokenService(BohDbContext db, ILogger<ApiTokenService> lo
             .Select(t => new ApiTokenRow(t.Id, t.Name, t.CreatedAt, t.LastUsedAt))
             .ToListAsync(ct);
 
-    /// <summary>Makes a token and returns its secret, which is not recoverable afterwards.</summary>
+    /// <summary>Returns the secret, which can't be recovered later.</summary>
     public async Task<(UserResult Result, string? Secret)> CreateAsync(int userId, string? name, CancellationToken ct)
     {
         var chosen = (name ?? "").Trim();
@@ -54,7 +54,7 @@ public sealed class ApiTokenService(BohDbContext db, ILogger<ApiTokenService> lo
         return (new UserResult.Ok(), secret);
     }
 
-    /// <remarks>Scoped to the owner, so a guessed id cannot revoke somebody else's token.</remarks>
+    /// <remarks>Scoped to the owner.</remarks>
     public async Task<UserResult> DeleteAsync(int userId, int tokenId, CancellationToken ct)
     {
         var removed = await db.ApiTokens
@@ -64,7 +64,7 @@ public sealed class ApiTokenService(BohDbContext db, ILogger<ApiTokenService> lo
         return removed == 0 ? new UserResult.Rejected("That token is already gone.") : new UserResult.Ok();
     }
 
-    /// <summary>The account a secret belongs to, or null. Read fresh, so a demotion applies at once.</summary>
+    /// <summary>The secret's account, or null. Read fresh, so demotion applies at once.</summary>
     public async Task<User?> AuthenticateAsync(string secret, CancellationToken ct)
     {
         if (!secret.StartsWith(Prefix, StringComparison.Ordinal)) return null;
