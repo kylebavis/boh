@@ -20,6 +20,7 @@ Think danbooru, minus everything needed to serve thousands of strangers. It shou
 - Optional public browsing with private writes
 - Multi-user: ordinary accounts plus administrators who manage them
 - **Passkeys** — sign in with a fingerprint, face unlock or a hardware key instead of a password
+- JSON [API](#api) with per-user tokens, for scripts and shortcuts
 
 ## Quick start
 
@@ -292,6 +293,29 @@ background with a progress bar, so it can be left to work through a large archiv
 To import from sites needing credentials, drop a [gallery-dl configuration file](https://github.com/mikf/gallery-dl#configuration) at `/data/gallery-dl.conf`; boh passes it through when present.
 
 Imports run in the background, one at a time, so you can queue several and leave the page; each shows its progress and then what it created, and stays listed until the server restarts. They are still capped (`BOH_IMPORT_MAX`) and time-limited (`BOH_IMPORT_TIMEOUT_SEC`), because they share one queue — an endless gallery or a hung download would otherwise hold up every import behind it.
+
+## API
+
+A small JSON API under `/api/v1`, for scripts and things like an iOS Shortcut. Create a token under **Account → API tokens** and send it as `Authorization: Bearer <token>`. The API only accepts tokens, not the sign-in cookie. `BOH_PUBLIC_READ` opens the read endpoints to anonymous callers, and `BOH_AUTH_MODE=none` opens everything.
+
+| Method | Path | |
+|---|---|---|
+| `GET` | `/posts?q=&page=` | Search, same syntax as the gallery |
+| `GET` | `/posts/random?q=` | `{ "id": … }` |
+| `GET` | `/posts/{id}` | Post with tags, sources and file URLs |
+| `POST` | `/posts` | Multipart upload: `file`, optional `tags` (space separated) and `source`. `409` with `postId` if already stored |
+| `DELETE` | `/posts/{id}` | |
+| `POST` | `/posts/{id}/tags` | `{ "tags": [...] }` adds |
+| `PUT` | `/posts/{id}/tags` | `{ "tags": [...] }` replaces the explicit tags |
+| `POST` | `/posts/{id}/sources` | `{ "url": … }` |
+| `DELETE` | `/posts/{id}/sources/{sourceId}` | |
+| `GET` | `/tags?q=&limit=` | Autocomplete |
+| `POST` | `/imports` | `{ "url": … }` queues a gallery-dl import; `202` with its status |
+| `GET` | `/imports/{id}` | Import status and result |
+
+```sh
+curl -H "Authorization: Bearer $BOH_TOKEN" -F file=@cat.jpg -F "tags=cat rating:safe" https://boh.example/api/v1/posts
+```
 
 ## Development
 
