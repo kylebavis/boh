@@ -20,7 +20,7 @@ Think danbooru, minus everything needed to serve thousands of strangers. It shou
 - Optional public browsing with private writes
 - Multi-user: ordinary accounts plus administrators who manage them
 - **Passkeys** — sign in with a fingerprint, face unlock or a hardware key instead of a password
-- JSON [API](#api) with per-user tokens, for scripts and shortcuts
+- REST [API](#api) with per-user tokens
 
 ## Quick start
 
@@ -296,7 +296,7 @@ Imports run in the background, one at a time, so you can queue several and leave
 
 ## API
 
-A small JSON API under `/api/v1`, for scripts and things like an iOS Shortcut. Create a token under **Account → API tokens** and send it as `Authorization: Bearer <token>`. The API only accepts tokens, not the sign-in cookie. `BOH_PUBLIC_READ` opens the read endpoints to anonymous callers, and `BOH_AUTH_MODE=none` opens everything.
+A small JSON API under `/api/v1`, for scripting etc. Create a token under **Account → API tokens** and send it as `Authorization: Bearer <token>`. The API only accepts tokens, not the sign-in cookie. `BOH_PUBLIC_READ` opens the read endpoints to anonymous callers, and `BOH_AUTH_MODE=none` opens everything.
 
 | Method | Path | |
 |---|---|---|
