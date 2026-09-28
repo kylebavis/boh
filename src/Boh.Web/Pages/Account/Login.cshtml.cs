@@ -20,17 +20,9 @@ public class LoginModel(
     BohOptions options,
     ILogger<LoginModel> logger) : PageModel
 {
-    /// <summary>
-    /// Names the limiter configured in <c>Program.cs</c> that caps how fast passwords can be
-    /// guessed here. Only POSTs are counted, so reloading the form is never throttled.
-    /// </summary>
+    /// <summary>Limiter policy name, configured in <c>Program.cs</c>.</summary>
     public const string RateLimitPolicy = "login";
 
-    /// <summary>
-    /// Attempts allowed per address per <see cref="RateLimitWindow"/>. Loose enough that
-    /// someone fumbling a password manager never notices, tight enough that guessing at
-    /// scale is not worth starting.
-    /// </summary>
     public const int RateLimitAttempts = 10;
 
     public static readonly TimeSpan RateLimitWindow = TimeSpan.FromMinutes(5);
@@ -40,10 +32,7 @@ public class LoginModel(
 
     public string? Error { get; private set; }
 
-    /// <summary>
-    /// Whether a passkey can work here — see <see cref="PasskeyRelyingParty.IsUsable"/>. The
-    /// button is left out entirely when it cannot, rather than offered and made to fail.
-    /// </summary>
+    /// <summary>When false the passkey button is omitted.</summary>
     public bool PasskeysUsable => PasskeyRelyingParty.IsUsable(Request, options);
 
     public IActionResult OnGet(string? returnUrl)
@@ -62,9 +51,7 @@ public class LoginModel(
         var user = await users.AuthenticateAsync(Username, Password, ct);
         if (user is null)
         {
-            // Logged at warning, and with the address attached, because a run of these is the
-            // one signal that someone is working on the password. The attempted name is
-            // whatever was typed, so it goes through LogSafe.
+            // Warning with address: repeated failures signal guessing. The name is user input.
             logger.LogWarning(
                 "Failed sign-in for {Username} from {RemoteIp}",
                 LogSafe.Value(Username), ClientAddress());
@@ -86,11 +73,7 @@ public class LoginModel(
 
     // ---- passkeys ------------------------------------------------------
 
-    /// <summary>
-    /// Hands the browser a challenge to sign. It names no credential, so the browser offers
-    /// whatever passkeys it holds for this site and the chosen one identifies its own
-    /// account — which is why this page never asks who is signing in first.
-    /// </summary>
+    /// <summary>A challenge naming no credential; the chosen passkey identifies the account.</summary>
     public async Task<IActionResult> OnPostPasskeyOptionsAsync()
     {
         if (options.AuthDisabled) return PasskeyProblem("This instance has no accounts to sign in to.");
@@ -103,17 +86,9 @@ public class LoginModel(
     }
 
     /// <summary>
-    /// Checks the signed challenge and, if it holds up, signs the owner in — the same ticket
-    /// a password would have produced.
+    /// Verifies the signed challenge and signs in. The return URL travels in the body: a
+    /// <c>ReturnUrl</c> query parameter makes cookie auth redirect, breaking the JSON reply.
     /// </summary>
-    /// <remarks>
-    /// Where the visitor was headed travels in the body, and must not be put in the query
-    /// string. Cookie authentication treats a <c>ReturnUrl</c> query parameter as an
-    /// instruction to redirect after signing in — it is how the ordinary login form works —
-    /// and it matches the name without regard to case. A handler that answers with JSON would
-    /// have that answer turned into a 302, which fetch follows without a word, leaving the
-    /// script parsing a page as though it were the reply.
-    /// </remarks>
     public async Task<IActionResult> OnPostPasskeyAsync(CancellationToken ct)
     {
         if (options.AuthDisabled) return PasskeyProblem("This instance has no accounts to sign in to.");
@@ -138,8 +113,6 @@ public class LoginModel(
 
         if (result is not PasskeySignIn.Ok(var user))
         {
-            // Logged with the address for the same reason a failed password is: a run of
-            // them is the signal that somebody is working on the door.
             logger.LogWarning("Failed passkey sign-in from {RemoteIp}", ClientAddress());
             return PasskeyProblem("That passkey was not accepted.");
         }
@@ -152,8 +125,7 @@ public class LoginModel(
         logger.LogInformation(
             "User {Username} signed in with a passkey from {RemoteIp}", user.Username, ClientAddress());
 
-        // The browser is driving this with fetch, so it navigates itself rather than
-        // following a redirect it would only have to unpick.
+        // fetch drives this, so the script navigates itself.
         return new JsonResult(new { redirect = SafeReturnUrl(posted.ReturnUrl) });
     }
 
@@ -165,24 +137,15 @@ public class LoginModel(
         PropertyNameCaseInsensitive = true,
     };
 
-    /// <summary>
-    /// A failed ceremony, in the shape passkeys.js reads. Deliberately a 400 rather than a
-    /// success carrying an error, so the script can treat any non-OK response the same way.
-    /// </summary>
+    /// <summary>A 400 in the shape passkeys.js reads.</summary>
     private IActionResult PasskeyProblem(string reason) =>
         new JsonResult(new { error = reason }) { StatusCode = StatusCodes.Status400BadRequest };
 
-    /// <summary>
-    /// Whoever the reverse proxy said the request came from, the forwarded headers having
-    /// already been applied. Without a proxy in front this is the socket's own address.
-    /// </summary>
+    /// <summary>Client address after forwarded headers.</summary>
     private string ClientAddress() =>
         HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-    /// <summary>
-    /// Only local paths are honoured, so a crafted <c>returnUrl</c> cannot bounce someone
-    /// to another site after they sign in.
-    /// </summary>
+    /// <summary>Local paths only, so returnUrl can't redirect off-site.</summary>
     private string SafeReturnUrl(string? returnUrl) =>
         !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl) ? returnUrl : "/";
 }

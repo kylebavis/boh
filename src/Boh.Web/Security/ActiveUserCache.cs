@@ -6,15 +6,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Boh.Web.Security;
 
-/// <summary>
-/// Signed-in users as <see cref="RevalidateUserEvents"/> last read them, so a page of
-/// thumbnails is not a user lookup per image.
-/// </summary>
-/// <remarks>
-/// An entry is dropped as soon as EF commits a change to that user, so deleting or demoting
-/// someone still applies on their next request. The lifetime only bounds a change made
-/// outside EF.
-/// </remarks>
+/// <summary>Users as last read by <see cref="RevalidateUserEvents"/>. Dropped when EF commits a change to them.</summary>
 public sealed class ActiveUserCache
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(1);

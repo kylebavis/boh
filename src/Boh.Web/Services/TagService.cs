@@ -8,16 +8,9 @@ namespace Boh.Web.Services;
 public sealed record TagSuggestion(string Display, int PostCount, string? AliasOf, string? Color);
 
 /// <summary>
-/// Search terms already resolved to canonical tag ids. <paramref name="Unsatisfiable"/> is
-/// set when a required tag does not exist at all, in which case no post can match and the
-/// caller should skip querying entirely.
+/// Search terms resolved to canonical tag ids. <paramref name="Unsatisfiable"/>: a required tag
+/// does not exist, so nothing can match. <paramref name="Predicates"/>: non-tag terms, passed through.
 /// </summary>
-/// <remarks>
-/// <paramref name="Predicates"/> arrives unchanged from the parser: every term that is about
-/// something other than a tag. A URL fragment has nothing to resolve against — no alias graph,
-/// no row that must already exist — and a <c>similar:</c> term needs the post table rather
-/// than the tag graph, so both are carried here to keep one object describing a whole search.
-/// </remarks>
 public sealed record ResolvedSearch(
     IReadOnlyList<int> Include,
     IReadOnlyList<int> Exclude,
@@ -37,16 +30,10 @@ public abstract record TagLinkResult
 }
 
 /// <summary>
-/// Owns every write to the tag graph. Aliases are resolved before storage so an aliased
-/// tag never lands on a post, and implied tags are materialized into <see cref="PostTag"/>
-/// rows so search stays a plain indexed join.
+/// Owns every write to the tag graph. Aliases resolve before storage; implied tags are
+/// materialized as <see cref="PostTag"/> rows so search stays a plain join. Closures are
+/// computed in memory, which is fine at personal-collection scale.
 /// </summary>
-/// <remarks>
-/// The alias map and implication graph are loaded into memory to compute closures. At the
-/// scale this project targets — a personal collection, hundreds of implications — that is
-/// far simpler than recursive CTEs and costs one small query. It would need revisiting for
-/// a graph with tens of thousands of edges.
-/// </remarks>
 public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 {
     /// <summary>Stops a malformed alias chain from looping forever.</summary>
@@ -66,15 +53,9 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         .ToList();
 
     /// <summary>
-    /// Tags containing the typed text, in tiers: names starting with it, then names with a
-    /// word starting with it (<c>orb</c> finds <c>pondering_my_orb</c>), then any other name
-    /// containing it. Most-used first within a tier, so a popular tag that merely contains
-    /// the text cannot push out the ones that start with it.
+    /// Tags matching the typed text, tiered: prefix matches, then word-start matches
+    /// (<c>orb</c> finds <c>pondering_my_orb</c>), then substring. Most-used first within a tier.
     /// </summary>
-    /// <remarks>
-    /// Matching inside a name reads every tag, which no index can avoid (about 1 ms at 16k tags,
-    /// 6 ms at 70k), so it only runs when fewer than <paramref name="limit"/> names start with the text.
-    /// </remarks>
     public async Task<List<TagSuggestion>> AutocompleteAsync(string? prefix, int limit, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(prefix)) return [];
@@ -92,8 +73,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         }
         else
         {
-            // Typing an aliased namespace completes against the one it redirects to, so a
-            // habit like "copyright:" keeps working instead of returning nothing.
+            // An aliased namespace completes against its target.
             var ns = ResolveNamespace(await LoadNamespaceAliasesAsync(ct), raw[..colon]);
             scope = scope.Where(t => t.Namespace == ns);
             term = raw[(colon + 1)..];
@@ -110,8 +90,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
         var matches = await Ranked(startsWith, limit, ct);
 
-        // The prefix query is indexed; this one reads every tag, so it only runs when the
-        // first tier leaves room — which also means every prefix match is already in hand.
+        // Unindexed scan, so only when the prefix tier leaves room.
         if (matches.Count < limit && term.Length > 0)
         {
             var found = matches.Select(m => m.Id).ToList();
@@ -136,7 +115,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
         if (matches.Count == 0) return [];
 
-        // Surface aliases so the user learns the canonical name instead of picking a dead end.
+        // Show what aliases point to.
         var ids = matches.Select(m => m.Id).ToList();
         var aliases = await db.TagAliases.AsNoTracking()
             .Where(a => ids.Contains(a.AliasTagId))
@@ -161,8 +140,6 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     {
         if (query.IsEmpty) return new ResolvedSearch([], [], false);
 
-        // Non-tag terms need nothing from the tag graph, so a search made only of them must
-        // not pay for the alias map or a round trip that asks about no tags at all.
         var predicates = query.Terms.Where(t => t is not QueryTerm.TagMatch).ToList();
 
         var tagTerms = query.TagTerms.ToList();
@@ -192,11 +169,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
     // ---- post tagging --------------------------------------------------
 
-    /// <summary>
-    /// Replaces a post's explicit tags and recomputes its implied ones. Implied rows that
-    /// are no longer justified by the remaining explicit tags are dropped, which is only
-    /// decidable because <see cref="PostTag.Source"/> records how each row got there.
-    /// </summary>
+    /// <summary>Replaces a post's explicit tags and recomputes its implied ones.</summary>
     public async Task SetPostTagsAsync(int postId, IReadOnlyCollection<TagName> names, CancellationToken ct)
     {
         var aliasMap = await LoadAliasMapAsync(ct);
@@ -239,8 +212,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         var alias = tags[aliasName];
         var canonical = tags[canonicalName];
 
-        // Two spellings can already be one tag — aliasing copyright:x to series:x when the
-        // copyright namespace itself redirects. There is nothing left to alias.
+        // Possible when a namespace alias already merges the two.
         if (alias.Id == canonical.Id)
             return new TagLinkResult.Rejected(
                 $"'{aliasName.Display}' and '{canonicalName.Display}' are already the same tag.");
@@ -257,8 +229,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         db.TagAliases.Add(new TagAlias { AliasTagId = alias.Id, CanonicalTagId = canonical.Id });
         await db.SaveChangesAsync(ct);
 
-        // With the alias in place, re-applying each affected post's explicit tags moves
-        // them onto the canonical tag through the ordinary tagging path.
+        // Re-applying explicit tags moves affected posts onto the canonical tag.
         var affected = await db.PostTags.AsNoTracking()
             .Where(pt => pt.TagId == alias.Id)
             .Select(pt => pt.PostId)
@@ -285,14 +256,9 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     // ---- namespace aliases ---------------------------------------------
 
     /// <summary>
-    /// Redirects a whole namespace, so every tag imported into it from now on lands in the
-    /// canonical one instead, and every tag already there is moved across.
+    /// Redirects a namespace and moves its existing tags across. The alias row is saved first,
+    /// so a failed migration still leaves the redirect in force.
     /// </summary>
-    /// <remarks>
-    /// The alias row is written before the migration runs, so the migration cannot leave
-    /// tags stranded in a namespace that nothing redirects — if it fails part way, the
-    /// redirect is still in force and re-adding it finishes the job.
-    /// </remarks>
     public async Task<TagLinkResult> AddNamespaceAliasAsync(string? alias, string? canonical, CancellationToken ct)
     {
         if (!TagName.TryParseNamespace(alias, out var aliasNs))
@@ -309,8 +275,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         if (map.ContainsKey(aliasNs))
             return new TagLinkResult.Rejected($"'{aliasNs}:' is already an alias.");
 
-        // Chains are resolved on read, so the destination may itself redirect onwards —
-        // which is fine unless it comes back here, where resolution would never settle.
+        // Chains are fine; loops are not.
         var target = ResolveNamespace(map, canonicalNs);
         if (target == aliasNs)
             return new TagLinkResult.Rejected(
@@ -327,10 +292,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         return new TagLinkResult.Ok();
     }
 
-    /// <summary>
-    /// Stops a namespace redirecting. Tags already migrated stay where they were moved to;
-    /// nothing is moved back, because there is no record of which tags came from where.
-    /// </summary>
+    /// <summary>Stops a namespace redirecting. Already-moved tags stay put.</summary>
     public async Task RemoveNamespaceAliasAsync(string alias, CancellationToken ct) =>
         await db.TagNamespaceAliases.Where(a => a.Alias == alias).ExecuteDeleteAsync(ct);
 
@@ -339,14 +301,9 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         await LoadNamespaceAliasesAsync(ct);
 
     /// <summary>
-    /// Empties a namespace into another, renaming each tag or merging it into the one
-    /// already holding that name. Returns how many tags were moved.
+    /// Empties a namespace into another, renaming or merging each tag. Iterates names, not
+    /// entities, because a merge clears the change tracker.
     /// </summary>
-    /// <remarks>
-    /// Works from a list of names rather than tracked entities because a merge clears the
-    /// change tracker; entities held across iterations would silently detach and their
-    /// renames would never be saved.
-    /// </remarks>
     private async Task<int> MigrateNamespaceAsync(string from, string to, CancellationToken ct)
     {
         var names = await db.Tags.AsNoTracking()
@@ -392,8 +349,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
         var implications = await LoadImplicationsAsync(ct);
 
-        // If the parent already reaches the child, adding this edge closes a loop and the
-        // closure walk would never terminate on its own.
+        // Reject cycles.
         if (AncestorsOf(implications, aliasMap, [parentId]).Contains(childId))
             return new TagLinkResult.Rejected(
                 $"'{parentName.Display}' already implies '{childName.Display}'; that would form a cycle.");
@@ -419,12 +375,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
     // ---- maintenance ---------------------------------------------------
 
-    /// <summary>
-    /// Recomputes the implied tags of every post. Exposed for the admin "rebuild" action,
-    /// which is the repair-everything path; routine implication edits use the scoped
-    /// rebuild instead. Also recounts tag totals, since a full pass is the natural place
-    /// to correct any drift.
-    /// </summary>
+    /// <summary>Recomputes every post's implied tags and recounts tag totals.</summary>
     public async Task<int> RebuildAllImpliedAsync(CancellationToken ct)
     {
         var changes = await RebuildImpliedAsync(null, ct);
@@ -435,15 +386,9 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     }
 
     /// <summary>
-    /// Recomputes implied tags only for posts carrying <paramref name="tagId"/>.
+    /// Recomputes implied tags for posts carrying <paramref name="tagId"/>, explicitly or
+    /// implied — the only posts an edge from that tag can affect.
     /// </summary>
-    /// <remarks>
-    /// Adding or removing the edge <c>tag -&gt; parent</c> can only change the closure of a
-    /// post whose closure already contains <c>tag</c>. Because closures are materialized,
-    /// every such post has a PostTags row for it — implied rows included — so this single
-    /// indexed lookup finds them all. Recomputing the rest of the collection would be
-    /// wasted work.
-    /// </remarks>
     private async Task<int> RebuildImpliedForTagAsync(int tagId, CancellationToken ct)
     {
         var postIds = await db.PostTags.AsNoTracking()
@@ -462,10 +407,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         return changes;
     }
 
-    /// <summary>
-    /// Shared rebuild core. A null <paramref name="postIds"/> means every post.
-    /// Counts are adjusted from the same change set so they land in one SaveChanges.
-    /// </summary>
+    /// <summary>Null <paramref name="postIds"/> means every post.</summary>
     private async Task<int> RebuildImpliedAsync(IReadOnlyCollection<int>? postIds, CancellationToken ct)
     {
         var implications = await LoadImplicationsAsync(ct);
@@ -511,21 +453,11 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     // ---- renaming and namespacing --------------------------------------
 
     /// <summary>
-    /// Renames a tag, which is also how a tag is moved into a namespace — <c>foo</c> to
-    /// <c>artist:foo</c> is just a rename. Merges into the destination when it already exists.
+    /// Renames a tag (also how it moves namespace), merging into the destination if it exists.
     /// </summary>
-    /// <remarks>
-    /// When nothing occupies the destination this is a single column update, which keeps
-    /// every post link, alias and implication pointing at the same row automatically.
-    /// A merge is the harder path: links must be repointed without duplicating the primary
-    /// key, and an explicit link must never be demoted to implied just because the
-    /// destination happened to hold an implied one.
-    /// </remarks>
     public async Task<TagLinkResult> MoveTagAsync(TagName from, TagName to, CancellationToken ct)
     {
-        // Only the destination is resolved through namespace aliases: a move must not put a
-        // tag back into a namespace that redirects away, while the source is left alone so
-        // anything still sitting in an aliased namespace remains addressable by its real name.
+        // Only the destination follows namespace aliases; the source keeps its real name.
         to = ResolveNamespace(await LoadNamespaceAliasesAsync(ct), to);
 
         if (from == to) return new TagLinkResult.Rejected("Those are the same tag.");
@@ -566,13 +498,13 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         {
             if (destinationByPost.TryGetValue(link.PostId, out var existing))
             {
-                // Both tags on one post: keep the stronger provenance, drop the duplicate.
+                // Both on one post: keep the stronger source.
                 if (link.Source == TagSource.Explicit) existing.Source = TagSource.Explicit;
                 db.PostTags.Remove(link);
             }
             else
             {
-                // TagId is part of the primary key, so the row is replaced rather than updated.
+                // TagId is in the key, so replace rather than update.
                 db.PostTags.Remove(link);
                 db.PostTags.Add(new PostTag
                 {
@@ -585,9 +517,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
         await db.SaveChangesAsync(ct);
 
-        // Alias and implication rows reference the source by id and would cascade away with
-        // it, silently discarding rules the operator configured. Repoint them first, then
-        // drop anything that has become self-referential.
+        // Repoint aliases and implications before the delete cascades them away.
         await db.TagAliases.Where(a => a.AliasTagId == source.Id)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.AliasTagId, destination.Id), ct);
         await db.TagAliases.Where(a => a.CanonicalTagId == source.Id)
@@ -634,24 +564,9 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         await db.TagNamespaces.Where(n => n.Name == ns).ExecuteDeleteAsync(ct);
 
     /// <summary>
-    /// Deletes tags that no post carries and that no alias or implication refers to.
-    /// Returns how many rows went.
+    /// Deletes tags no post, alias or implication uses. Reads the link table, not the
+    /// drift-prone counter; alias tags have a zero count by design and must survive.
     /// </summary>
-    /// <remarks>
-    /// Two things make this less obvious than "PostCount == 0".
-    /// <para>
-    /// Usage is read from the link table rather than the denormalized counter, because that
-    /// counter can drift — repairing it is what <see cref="RecountTagsAsync"/> is for, and a
-    /// destructive operation should not trust a value it is able to check directly.
-    /// </para>
-    /// <para>
-    /// Alias and implication rows cascade when their tag is deleted, and an alias tag holds
-    /// a count of zero by design so that it stays discoverable. Deleting on count alone
-    /// would therefore wipe every alias and implication the operator had configured, with
-    /// no error — aliases would simply stop redirecting. Configuration counts as a reason
-    /// to keep a tag, even with nothing tagged.
-    /// </para>
-    /// </remarks>
     public async Task<int> DeleteUnusedTagsAsync(CancellationToken ct)
     {
         var deleted = await db.Tags
@@ -711,10 +626,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         await AdjustPostCountsAsync(added, removed, ct);
     }
 
-    /// <summary>
-    /// Adjusts counts on tracked entities so they land in the same SaveChanges as the link
-    /// changes; an ExecuteUpdate here would commit separately and drift on failure.
-    /// </summary>
+    /// <summary>Tracked, not ExecuteUpdate, so counts save with the link changes.</summary>
     private async Task AdjustPostCountsAsync(List<int> added, List<int> removed, CancellationToken ct)
     {
         var affected = added.Concat(removed).Distinct().ToList();
@@ -738,11 +650,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         IReadOnlyCollection<TagName> names, CancellationToken ct) =>
         await LookupManyAsync(names, await LoadNamespaceAliasesAsync(ct), ct);
 
-    /// <summary>
-    /// Finds the stored tag behind each requested name. Keyed by the name as it was asked
-    /// for, not the name that was found, so a caller can look up what it passed in even
-    /// when a namespace alias redirected it somewhere else.
-    /// </summary>
+    /// <summary>Stored tag per requested name, keyed by the name as requested.</summary>
     private async Task<Dictionary<TagName, Tag>> LookupManyAsync(
         IReadOnlyCollection<TagName> names,
         IReadOnlyDictionary<string, string> namespaceAliases,
@@ -752,14 +660,12 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
         var targets = names.Distinct().ToDictionary(n => n, n => ResolveNamespace(namespaceAliases, n));
 
-        // EF cannot translate a Contains over (namespace, name) pairs, so filter on the
-        // name column — which is indexed and highly selective — and pair up in memory.
+        // EF can't Contains over pairs; filter on the indexed name and pair up in memory.
         var candidateNames = targets.Values.Select(n => n.Name).Distinct().ToList();
         var candidates = await db.Tags
             .Where(t => candidateNames.Contains(t.Name))
             .ToListAsync(ct);
 
-        // Safe as a dictionary key: (Namespace, Name) carries a unique index.
         var found = candidates.ToDictionary(t => new TagName(t.Namespace, t.Name));
 
         var result = new Dictionary<TagName, Tag>();
@@ -780,9 +686,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         var missing = names.Distinct().Where(n => !result.ContainsKey(n)).ToList();
         if (missing.Count == 0) return result;
 
-        // Two requested names can resolve to one tag — `copyright:x` and `series:x` when
-        // the namespace is aliased — so new rows are tracked by their canonical name to
-        // avoid inserting the same tag twice and tripping the unique index.
+        // Keyed by canonical name: two requested names can resolve to one new tag.
         var created = new Dictionary<TagName, Tag>();
 
         foreach (var name in missing)
@@ -799,17 +703,12 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
             result[name] = tag;
         }
 
-        // Needs its own save so the new rows have ids before links reference them.
+        // Assigns ids before links reference them.
         await db.SaveChangesAsync(ct);
         return result;
     }
 
-    /// <summary>
-    /// Upper bound for a prefix match written as a range. SQLite compares text bytewise, so
-    /// every string starting with <paramref name="prefix"/> sorts below it with the highest
-    /// code point appended. A range can use an index where <c>LIKE</c> cannot: <c>LIKE</c>
-    /// folds case and the indexes do not.
-    /// </summary>
+    /// <summary>Upper bound for an indexable prefix range (<c>LIKE</c> can't use the index).</summary>
     private static string PrefixEnd(string prefix) => prefix + "\U0010FFFF";
 
     private sealed record TagHit(int Id, string Namespace, string Name, int PostCount);
@@ -827,10 +726,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         await db.TagAliases.AsNoTracking()
             .ToDictionaryAsync(a => a.AliasTagId, a => a.CanonicalTagId, ct);
 
-    /// <summary>
-    /// The part of the alias map reachable from <paramref name="tagIds"/>: enough for
-    /// <see cref="ResolveAlias"/> on those ids, without reading every alias.
-    /// </summary>
+    /// <summary>The part of the alias map reachable from <paramref name="tagIds"/>.</summary>
     private async Task<Dictionary<int, int>> LoadAliasChainsAsync(IEnumerable<int> tagIds, CancellationToken ct)
     {
         var map = new Dictionary<int, int>();
@@ -874,10 +770,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         return ns == name.Namespace ? name : name with { Namespace = ns };
     }
 
-    /// <summary>
-    /// Follows a namespace alias chain to its end, bounded exactly as
-    /// <see cref="ResolveAlias"/> is so a malformed chain cannot spin.
-    /// </summary>
+    /// <summary>Follows a namespace alias chain, depth-bounded.</summary>
     private static string ResolveNamespace(IReadOnlyDictionary<string, string> map, string ns)
     {
         var current = ns;
@@ -905,17 +798,9 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
     }
 
     /// <summary>
-    /// Every tag transitively implied by <paramref name="seeds"/>, excluding the seeds
-    /// themselves — a seed that is also an ancestor stays explicit rather than being
-    /// demoted to implied.
+    /// Tags transitively implied by <paramref name="seeds"/>, excluding the seeds. Parents
+    /// resolve through aliases, since edges can predate an alias.
     /// </summary>
-    /// <remarks>
-    /// Parents are resolved through <paramref name="aliasMap"/> on the way out. An
-    /// implication is stored canonically when it is created, but aliasing a tag afterwards
-    /// leaves every existing edge pointing at what is now an alias — and an implied row is
-    /// the one way an aliased tag could still reach a post. The alias's own edges are walked
-    /// as well, since they remain real implications after the redirect.
-    /// </remarks>
     private static HashSet<int> AncestorsOf(
         ILookup<int, int> childToParents, Dictionary<int, int> aliasMap, IReadOnlyCollection<int> seeds)
     {
@@ -929,7 +814,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
             {
                 var canonical = ResolveAlias(aliasMap, parent);
 
-                // Follow the alias's edges without letting the alias itself become implied.
+                // Walk the alias's edges without implying the alias itself.
                 if (canonical != parent && visited.Add(parent)) queue.Enqueue(parent);
 
                 if (!visited.Add(canonical)) continue;

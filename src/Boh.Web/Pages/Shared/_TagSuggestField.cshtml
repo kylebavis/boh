@@ -1,8 +1,6 @@
 @model Boh.Web.ViewModels.TagSuggestField
 
-@* The panel is a sibling of the input inside a positioned wrapper, so the dropdown spans the
-   field's width. It cannot be a direct child of .pair-form: that is a flex row, and a bare
-   panel there would become a zero-width flex item with nothing to align to. *@
+@* A positioned wrapper, so the dropdown spans the field inside the .pair-form flex row. *@
 <span class="suggest-field">
     <input type="text" name="@Model.Name" id="@Model.Id" required
            placeholder="@Model.Placeholder" aria-label="@Model.Label"

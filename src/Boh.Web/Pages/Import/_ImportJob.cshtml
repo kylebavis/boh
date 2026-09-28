@@ -5,8 +5,7 @@
     var active = Model.IsActive;
     var result = Model.Result as ImportResult;
 }
-@* Polls for its own replacement while the import is queued or running, and stops once the
-   block it receives is a finished one — the same arrangement as a maintenance task. *@
+@* Polls for its replacement until a finished block arrives. *@
 <div id="import-@Model.Id" class="import-job"
      hx-get="@(active ? $"/Import?handler=Job&id={Model.Id}" : null)"
      hx-trigger="@(active ? "every 2s" : null)"
@@ -63,8 +62,7 @@
                                 @(item.Tags.Count == 0 ? "no tags found" : string.Join(" ", item.Tags))
                             </small>
 
-                            @* Reported rather than acted on: the file was stored either way, and
-                               which of the two posts to keep is not a decision an import can make. *@
+                            @* Reported only: which post to keep is a person's call. *@
                             @if (item.Similar.Count > 0)
                             {
                                 <small class="hint-duplicate">

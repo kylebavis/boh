@@ -8,14 +8,7 @@ public sealed record ProcessResult(int ExitCode, string StandardOutput, string S
     public bool Succeeded => ExitCode == 0 && !TimedOut;
 }
 
-/// <summary>
-/// Runs an external tool with output captured and a hard timeout.
-/// </summary>
-/// <remarks>
-/// ffmpeg runs inside an upload request and gallery-dl in the import queue, so a process that
-/// hangs would otherwise hold a connection open — or every import behind it — indefinitely.
-/// Killing the whole tree matters for gallery-dl, which spawns children of its own.
-/// </remarks>
+/// <summary>Runs an external tool with captured output and a timeout that kills the whole tree.</summary>
 public sealed class ProcessRunner(ILogger<ProcessRunner> logger)
 {
     public async Task<ProcessResult> RunAsync(

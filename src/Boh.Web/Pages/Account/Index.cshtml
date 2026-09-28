@@ -106,8 +106,6 @@ else
                                                maxlength="64" required aria-label="Name for this passkey" />
                                         <button type="submit" class="link-button">Rename</button>
                                     </form>
-                                    @* Worth saying plainly: one of these survives losing the device,
-                                       the other does not. *@
                                     <small class="muted">
                                         @(passkey.IsBackedUp ? "synced to your account" : "this device only")
                                     </small>
@@ -131,9 +129,7 @@ else
             <p><small class="muted">This account has no passkeys yet.</small></p>
         }
 
-        @* No method or action: passkeys.js owns the submit, because registering one is a
-           conversation with the authenticator rather than a single post. The button stays
-           hidden until that script has confirmed the browser can do it at all. *@
+        @* No method or action: passkeys.js owns the submit and reveals the button when supported. *@
         <form class="import-form" id="passkey-form"
               data-passkey-options="/Account?handler=PasskeyOptions"
               data-passkey-register="/Account?handler=Passkey">
@@ -154,10 +150,8 @@ else
         These choose which colour scheme each side uses.
     </p>
 
-    @* Where the choice gets stored. With no account to store against, app.js intercepts the
-       submit and writes to localStorage instead. Spelled out as a value rather than a bare
-       marker attribute: Razor renders a null attribute value as data-theme-local="", which
-       hasAttribute() reads as present, so the account case would have taken the wrong path. *@
+    @* With no account, app.js stores the choice in localStorage. A value, not a bare attribute:
+       Razor renders null as "", which hasAttribute() reads as present. *@
     <form method="post" asp-page-handler="Theme" id="theme-form"
           data-theme-store="@(Model.AuthDisabled ? "local" : "account")">
         <div class="theme-fields">

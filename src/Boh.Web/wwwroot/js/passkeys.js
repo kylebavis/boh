@@ -1,22 +1,12 @@
-// Registering and using passkeys: the browser half of the two WebAuthn ceremonies.
-//
-// Each one is the same shape. Ask the server for options, hand them to the authenticator,
-// post back what it produced, and let the server decide. Both forms this attaches to are
-// inert markup until now — neither has a method or an action — so a browser that cannot do
-// any of this simply never sees a control that would fail.
-//
-// Written with async/await rather than the ES5 style app.js keeps: every browser that
-// implements WebAuthn has had both for years, and the alternative is four nested callbacks
-// per ceremony.
+// Browser half of the WebAuthn ceremonies: fetch options, run the authenticator, post the
+// result. The forms have no method or action, so nothing shows where this can't run.
 (function () {
     'use strict';
 
-    // No WebAuthn, or no way to turn the server's JSON into the shapes the API wants.
     if (!window.PublicKeyCredential || !navigator.credentials
         || !PublicKeyCredential.parseCreationOptionsFromJSON || !Uint8Array.prototype.toBase64) return;
 
-    // The antiforgery token the layout hands htmx. Read from there rather than rendered a
-    // second time, so there is one copy of it in the document.
+    // The antiforgery token from the layout's hx-headers.
     function verificationToken() {
         try {
             return JSON.parse(document.body.getAttribute('hx-headers') || '{}').RequestVerificationToken || '';
@@ -38,7 +28,6 @@
 
         if (response.ok) return response;
 
-        // Every handler answers a refusal the same way, so one reader covers all of them.
         let reason = 'The server refused that. Try again.';
         try {
             const problem = await response.json();
@@ -48,14 +37,8 @@
         throw new Error(reason);
     }
 
-    /// Reads a JSON reply, and says something useful when it is not one.
-    ///
-    /// These handlers only ever answer with JSON, so a reply that will not parse means the
-    /// request did not reach the one that was asked for — and the likeliest way that happens
-    /// is a redirect to the sign-in page after a session ended mid-ceremony, which fetch
-    /// follows silently and hands back looking like success. Letting the parser's own
-    /// complaint reach the page says nothing anybody can act on, so the detail goes to the
-    /// console and the person gets the situation.
+    /// Reads a JSON reply. A non-JSON one usually means a redirect to sign-in after the
+    /// session ended; say that, and log the detail.
     async function readJson(response) {
         const body = await response.text();
 
@@ -83,28 +66,19 @@
         return new Uint8Array(buffer).toBase64({ alphabet: 'base64url', omitPadding: true });
     }
 
-    /// What gets posted back, as a plain object.
-    ///
-    /// A credential's own toJSON is the right source when there is one, but it cannot be
-    /// taken on trust. A password manager that offers to store passkeys replaces
-    /// navigator.credentials wholesale and hands back an object of its own making, and those
-    /// are not all complete: 1Password's omits clientExtensionResults, which the server
-    /// requires, and others throw outright. Neither is something the person can act on, and
-    /// both look the same to them — a passkey that will not register. So the result is
-    /// inspected and completed rather than sent as it arrives.
+    /// The credential as a plain object. toJSON can't be trusted: password managers replace
+    /// navigator.credentials and may omit fields (1Password drops clientExtensionResults) or throw.
     function serialize(credential) {
         let json = null;
 
         try {
             json = JSON.parse(JSON.stringify(credential));
         } catch (e) {
-            // A toJSON that throws, or output that is not JSON at all.
         }
 
         if (!isCredentialJson(json)) json = assemble(credential);
 
-        // The field most often left out, and required: absent, the server rejects the whole
-        // ceremony over an empty object nobody had to think about.
+        // Required by the server and the likeliest field to be missing.
         if (!json.clientExtensionResults || typeof json.clientExtensionResults !== 'object') {
             json.clientExtensionResults = extensionResults(credential);
         }
@@ -112,12 +86,7 @@
         return json;
     }
 
-    /// Whether what came back is really the JSON form of a credential, rather than something
-    /// that merely survived JSON.stringify. Two ways it can fail to be: an object whose
-    /// accessors all live on its prototype — a real PublicKeyCredential — serializes to
-    /// nothing at all, and a plain stand-in for one serializes its buffers as {} instead of
-    /// base64url. Checking for the strings that must be there catches both, where checking
-    /// that the result is an object catches neither.
+    /// Whether this is real credential JSON, not an empty or {}-buffered stand-in.
     function isCredentialJson(json) {
         return !!json
             && typeof json.id === 'string'
@@ -134,10 +103,7 @@
         }
     }
 
-    /// Every field the server reads, taken off the credential by hand. Registration and
-    /// sign-in return different responses, so anything belonging to only one of them is
-    /// asked for defensively and left undefined — which drops out of the JSON — when this
-    /// is the other.
+    /// Every field the server reads, taken by hand; fields of the other ceremony drop out.
     function assemble(credential) {
         const response = credential.response;
 
@@ -171,8 +137,7 @@
         problem.hidden = !message;
     }
 
-    /// Runs one ceremony with the button disabled, so a second click cannot start a second
-    /// one while an authenticator prompt is already open.
+    /// Disables the button so a second click can't start a second ceremony.
     function wire(form, run) {
         const button = form.querySelector('button');
 
@@ -188,8 +153,7 @@
             try {
                 await run();
             } catch (error) {
-                // NotAllowedError is the browser's word for "cancelled, or nothing
-                // matched", which is a choice rather than a fault and needs no notice.
+                // NotAllowedError is cancellation or no match, not a fault.
                 if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') {
                     report(error.message || 'That did not work.');
                 }
@@ -218,8 +182,7 @@
                 credential: serialize(credential)
             }));
 
-            // Reloaded rather than patched in: the new row, and the message the server left
-            // in TempData, both come from the page it renders next.
+            // Reload: the new row and TempData message come from the server.
             window.location.reload();
         });
     }
@@ -238,9 +201,7 @@
 
             if (!credential) throw new Error('No passkey was offered.');
 
-            // Where to go next travels in the body, not the query string — a returnUrl there
-            // makes cookie authentication answer the sign-in with a redirect instead of the
-            // JSON this is waiting for.
+            // returnUrl in the body: in the query string, cookie auth answers with a redirect.
             const response = await post(signingIn.dataset.passkeyAssert, JSON.stringify({
                 returnUrl: signingIn.dataset.passkeyReturn || '/',
                 credential: serialize(credential)

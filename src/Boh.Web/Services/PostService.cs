@@ -11,19 +11,10 @@ public abstract record PostCreateResult
 {
     private PostCreateResult() { }
 
-    /// <summary>
-    /// The file was stored. <paramref name="Similar"/> holds posts that look like it — empty
-    /// in the ordinary case. A perceptual match is a suspicion rather than a fact, so it is
-    /// reported alongside a post that was created regardless; see
-    /// <see cref="DuplicateService.MaxDistance"/> for why nothing refuses an upload over one.
-    /// </summary>
+    /// <summary>The file was stored. <paramref name="Similar"/> lists look-alikes, informational only.</summary>
     public sealed record Created(Post Post, IReadOnlyList<SimilarPost> Similar) : PostCreateResult;
 
-    /// <summary>
-    /// The identical file is already stored; <paramref name="ExistingPostId"/> holds it.
-    /// <paramref name="SourceAdded"/> is true when the incoming URL was not among that
-    /// post's sources and has now been recorded on it.
-    /// </summary>
+    /// <summary>The same bytes are already stored. <paramref name="SourceAdded"/>: the URL was new to that post.</summary>
     public sealed record Duplicate(int ExistingPostId, bool SourceAdded = false) : PostCreateResult;
 
     public sealed record Rejected(string Reason) : PostCreateResult;
@@ -40,27 +31,12 @@ public sealed class PostService(
     BohOptions options,
     ILogger<PostService> logger)
 {
-    /// <summary>
-    /// Guards against decompression bombs: a small file can declare enormous dimensions,
-    /// and decoding it would allocate pixels * 4 bytes before anything else could intervene.
-    /// </summary>
+    /// <summary>Decompression-bomb guard.</summary>
     private const long MaxPixels = 400_000_000;
 
-    /// <summary>
-    /// How many look-alikes a newly stored post reports. Enough to show the upload was
-    /// probably a repost; the post's own page lists the rest.
-    /// </summary>
     private const int SimilarOnCreate = 4;
 
-    /// <summary>
-    /// Stores a file as a new post, or reports the post that already holds those bytes.
-    /// </summary>
-    /// <remarks>
-    /// <paramref name="sourceUrl"/> is attached to whichever post ends up holding the
-    /// content, new or already stored. Finding the same bytes at a second address is a fact
-    /// about the file worth keeping, and dropping it was the only way the old single-URL
-    /// column could handle it.
-    /// </remarks>
+    /// <summary>Stores a file as a post, or reports the post already holding those bytes. The source is recorded either way.</summary>
     public async Task<PostCreateResult> CreateAsync(
         Stream content,
         int? uploadedById,
@@ -99,9 +75,7 @@ public sealed class PostService(
 
             await GenerateThumbnailAsync(processor, staged.Sha256, info.Extension, ct);
 
-            // Video is not hashed. Recorded as never attempted rather than attempted-and-empty,
-            // so a release that learns how would find these posts waiting for the backfill —
-            // see DuplicateService.ComputeMissingHashesAsync.
+            // Video is not hashed, and not marked as tried.
             var perceptualHash = info.IsVideo
                 ? null
                 : await ComputePerceptualHashAsync(processor, staged.Sha256, info.Extension, ct);
@@ -132,10 +106,7 @@ public sealed class PostService(
             }
             catch (DbUpdateException)
             {
-                // Most likely the unique index on Sha256: another request stored the same
-                // content between our existence check and this insert. The pending source row
-                // is detached alongside the post, or the retry below would try to insert it
-                // again against a post id that was never assigned.
+                // Probably a concurrent insert of the same bytes. Detach the post and its source before retrying as a duplicate.
                 foreach (var pending in post.Sources) db.Entry(pending).State = EntityState.Detached;
                 db.Entry(post).State = EntityState.Detached;
 
@@ -146,8 +117,7 @@ public sealed class PostService(
                     racedId.Value, await AddSourceAsync(racedId.Value, source, ct));
             }
 
-            // After the insert rather than before it, so the post can be excluded from its own
-            // results by id instead of the search having to know it is about to exist.
+            // After the insert, so the post can exclude itself.
             var similar = perceptualHash is null
                 ? []
                 : await duplicates.FindSimilarAsync(perceptualHash.Value, post.Id, SimilarOnCreate, ct);
@@ -161,15 +131,7 @@ public sealed class PostService(
         }
     }
 
-    /// <summary>
-    /// Records another origin for a post. Returns true only when a row was actually added,
-    /// so a caller can tell "we learned something new about this file" from "we already knew".
-    /// </summary>
-    /// <remarks>
-    /// Blank input and an address the post already carries are both ordinary outcomes rather
-    /// than errors — re-importing the same gallery is a normal thing to do, and it must stay
-    /// a no-op however many times it happens.
-    /// </remarks>
+    /// <summary>Records another origin. True only when a row was added; blank or known URLs are no-ops.</summary>
     public async Task<bool> AddSourceAsync(int postId, string? url, CancellationToken ct)
     {
         var source = NormalizeSource(url);
@@ -186,14 +148,10 @@ public sealed class PostService(
         }
         catch (DbUpdateException ex)
         {
-            // The unique index on (PostId, Url): a concurrent import recorded the same address
-            // first, which leaves the post in exactly the state this call wanted. Detaching
-            // matters because an import reuses one context across every file it downloaded.
+            // Concurrent insert of the same URL. Detach, as imports reuse the context.
             db.Entry(row).State = EntityState.Detached;
 
-            // The URL is deliberately not in the message. It originates with whoever submitted
-            // it, and a log line is the wrong place to repeat user input — the post id and the
-            // exception identify this race well enough to debug it.
+            // No URL in the log: it's user input.
             logger.LogDebug(ex, "A source was already recorded on post {PostId}", postId);
             return false;
         }
@@ -201,33 +159,17 @@ public sealed class PostService(
         return true;
     }
 
-    /// <summary>
-    /// Removes one recorded source. Scoped to the post rather than keyed on the row id alone,
-    /// so a stale or forged id cannot reach a source belonging to a different post.
-    /// </summary>
+    /// <summary>Scoped to the post so a forged id can't reach another post's source.</summary>
     public async Task<bool> RemoveSourceAsync(int postId, int sourceId, CancellationToken ct) =>
         await db.PostSources
             .Where(s => s.Id == sourceId && s.PostId == postId)
             .ExecuteDeleteAsync(ct) > 0;
 
-    /// <summary>
-    /// Null means "nothing to record": an empty URL, which is what a direct upload passes, or
-    /// one that is not an address anyone could follow. Validating and canonicalizing here
-    /// rather than trusting callers means no entry point can put a junk or malformed value in
-    /// the table — see <see cref="SourceUrls.TryCanonicalize"/> for why the rewrite matters.
-    /// </summary>
+    /// <summary>Canonical URL, or null when there is nothing worth recording.</summary>
     private static string? NormalizeSource(string? url) =>
         SourceUrls.TryCanonicalize(url, out var canonical) ? canonical : null;
 
-    /// <summary>
-    /// Regenerates thumbnails for posts that have none — whether generation failed at upload,
-    /// the thumbnail directory was cleared, or it was lost moving between storage.
-    /// </summary>
-    /// <remarks>
-    /// Deliberately re-probes each original rather than trusting the stored MIME type, so the
-    /// same processor selection runs as at upload and a post whose original has since become
-    /// unreadable is reported instead of throwing.
-    /// </remarks>
+    /// <summary>Regenerates missing thumbnails, re-probing each original.</summary>
     public async Task<ThumbnailRepairResult> RegenerateMissingThumbnailsAsync(
         IProgress<JobProgress>? progress, CancellationToken ct)
     {
@@ -242,8 +184,6 @@ public sealed class PostService(
         {
             ct.ThrowIfCancellationRequested();
 
-            // Counted in posts checked rather than thumbnails rebuilt: how many are missing is
-            // only known at the end, while how many there are to check is known now.
             progress?.Report(new JobProgress("Checking posts", i, posts.Count));
 
             var post = posts[i];
@@ -291,11 +231,7 @@ public sealed class PostService(
         return new ThumbnailRepairResult(missing, regenerated, failed);
     }
 
-    /// <summary>
-    /// A missing thumbnail degrades the gallery but does not invalidate the post, so a
-    /// failure here is logged rather than propagated.
-    /// <see cref="RegenerateMissingThumbnailsAsync"/> recovers anything that failed here.
-    /// </summary>
+    /// <summary>Logs rather than throws: <see cref="RegenerateMissingThumbnailsAsync"/> can repair it.</summary>
     private async Task<bool> GenerateThumbnailAsync(
         IMediaProcessor processor, string sha256, string extension, CancellationToken ct)
     {
@@ -316,11 +252,7 @@ public sealed class PostService(
         }
     }
 
-    /// <summary>
-    /// Hashes the committed original. Treated like thumbnail generation: a post without a hash
-    /// is only a post that near-duplicate detection cannot see, which is no reason to fail an
-    /// upload, and <see cref="DuplicateService.ComputeMissingHashesAsync"/> can fill it in later.
-    /// </summary>
+    /// <summary>Logs rather than throws: the hashing job can fill it in later.</summary>
     private async Task<long?> ComputePerceptualHashAsync(
         IMediaProcessor processor, string sha256, string extension, CancellationToken ct)
     {
@@ -342,23 +274,13 @@ public sealed class PostService(
             .Select(p => (int?)p.Id)
             .FirstOrDefaultAsync(ct);
 
-    /// <summary>
-    /// Narrows a post query by a resolved search. Null means the search cannot match anything,
-    /// which is distinct from matching nothing — the caller should not run a query at all.
-    /// </summary>
-    /// <remarks>
-    /// Asynchronous because of <c>similar:</c>, which cannot be expressed in SQL: SQLite has
-    /// no bit-count function, so "within eight bits of that post's hash" has to be answered in
-    /// memory first and the resulting ids folded into the query.
-    /// </remarks>
+    /// <summary>Narrows a query by a resolved search. Null means nothing can match, so don't query.</summary>
     private async Task<IQueryable<Post>?> ApplySearchAsync(
         IQueryable<Post> query, ResolvedSearch? search, CancellationToken ct)
     {
         if (search is { Unsatisfiable: true }) return null;
         if (search is null) return query;
 
-        // Filtering on tag id rather than name keeps this on the PostTags index and
-        // avoids repeating string comparisons per term.
         foreach (var tagId in search.Include)
         {
             var id = tagId;
@@ -375,10 +297,7 @@ public sealed class PostService(
         {
             switch (term)
             {
-                // Lowercasing both sides rather than relying on the column's collation: a
-                // stored path keeps whatever case it arrived with, and a search typed in
-                // another case should still find it. SQLite's lower() is ASCII-only, which a
-                // URL never exceeds in the part anyone searches by.
+                // Case-insensitive; SQLite lower() is ASCII-only, fine for URLs.
                 case QueryTerm.SourceMatch(var text, var exclude):
                     var needle = text;
                     query = exclude
@@ -395,9 +314,7 @@ public sealed class PostService(
                 case QueryTerm.SimilarTo(var postId, var exclude):
                     var alike = await duplicates.FindSimilarIdsAsync(postId, ct);
 
-                    // No hash on the reference post — or no such post — means the question has
-                    // no answer. Requiring an unanswerable term matches nothing, the same as
-                    // requiring a tag that does not exist; excluding it excludes nothing.
+                    // No hash to compare: requiring matches nothing, excluding excludes nothing.
                     if (alike.Count == 0)
                     {
                         if (!exclude) return null;
@@ -414,15 +331,7 @@ public sealed class PostService(
         return query;
     }
 
-    /// <summary>
-    /// Picks a post at random, honouring the active search so "random" stays within whatever
-    /// the user is currently looking at. Returns null only when nothing matches.
-    /// </summary>
-    /// <remarks>
-    /// Ordering the whole table by RANDOM() would sort every row to take one. Counting first
-    /// and skipping to an offset costs an indexed count plus a single-row read, which stays
-    /// flat as the collection grows.
-    /// </remarks>
+    /// <summary>A random post within the search, via count + offset rather than ORDER BY RANDOM().</summary>
     public async Task<int?> GetRandomIdAsync(ResolvedSearch? search, CancellationToken ct)
     {
         var query = await ApplySearchAsync(db.Posts.AsNoTracking(), search, ct);
@@ -453,8 +362,7 @@ public sealed class PostService(
     {
         var query = await ApplySearchAsync(db.Posts.AsNoTracking(), search, ct);
 
-        // A required tag that does not exist cannot be satisfied by any post, so there is
-        // nothing to query for.
+        // A required tag that doesn't exist: nothing to query.
         if (query is null) return ([], 0);
 
         var ordered = query.OrderByDescending(p => p.UploadedAt).ThenByDescending(p => p.Id);
@@ -469,10 +377,7 @@ public sealed class PostService(
         return (posts, total);
     }
 
-    /// <summary>
-    /// Removes a post, its tag links, and its blobs. Because Sha256 is unique per post,
-    /// no other post can reference the same blob, so deletion needs no reference counting.
-    /// </summary>
+    /// <summary>Removes a post and its blobs. Sha256 is unique, so no refcounting.</summary>
     public async Task<bool> DeleteAsync(int postId, CancellationToken ct)
     {
         var post = await db.Posts
@@ -500,7 +405,7 @@ public sealed class PostService(
             await tx.CommitAsync(ct);
         }
 
-        // Only after the row is durably gone, so a failed delete never orphans a live post.
+        // Only after the row is gone, so a failed delete never orphans a live post.
         store.DeleteBlobs(sha, extension);
         return true;
     }

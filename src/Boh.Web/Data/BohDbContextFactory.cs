@@ -3,12 +3,7 @@ using Microsoft.EntityFrameworkCore.Design;
 
 namespace Boh.Web.Data;
 
-/// <summary>
-/// Used only by <c>dotnet ef</c>. Without it the tooling would boot the real host, which
-/// creates the data directory and applies migrations — neither of which is wanted, or
-/// even permitted, on a developer machine where BOH_DATA_PATH points at /data.
-/// The connection string here is never opened for scaffolding.
-/// </summary>
+/// <summary>For <c>dotnet ef</c> only, so tooling doesn't boot the real host.</summary>
 public sealed class BohDbContextFactory : IDesignTimeDbContextFactory<BohDbContext>
 {
     public BohDbContext CreateDbContext(string[] args)

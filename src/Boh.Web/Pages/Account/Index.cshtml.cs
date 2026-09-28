@@ -8,10 +8,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Boh.Web.Pages.Account;
 
-/// <summary>
-/// Self-service account page. Any signed-in user reaches this, not just administrators —
-/// someone handed a password by an admin needs a way to change it.
-/// </summary>
+/// <summary>Self-service account page for any signed-in user.</summary>
 [Authorize(Policy = BohPolicies.CanWrite)]
 public class IndexModel(
     UserService users,
@@ -24,21 +21,14 @@ public class IndexModel(
     public bool AuthDisabled => options.AuthDisabled;
     public int MinPasswordLength => UserService.MinPasswordLength;
 
-    /// <summary>
-    /// The stored palette for each side of the header toggle. Null is the stock Pico look.
-    /// With authentication off there is no row to read, so these stay null and the form
-    /// falls back to browser storage.
-    /// </summary>
+    /// <summary>Stored palettes; null is stock Pico. Null with auth off, where the form uses browser storage.</summary>
     public string? LightTheme { get; private set; }
     public string? DarkTheme { get; private set; }
 
     /// <summary>This account's registered passkeys, oldest first. Empty with authentication off.</summary>
     public IReadOnlyList<PasskeyRow> Passkeys { get; private set; } = [];
 
-    /// <summary>
-    /// Whether a passkey can work here. False on a plain-HTTP instance, where the form is
-    /// shown with the reason rather than left to fail at the click.
-    /// </summary>
+    /// <summary>False over plain HTTP, where the form explains why.</summary>
     public bool PasskeysUsable => PasskeyRelyingParty.IsUsable(Request, options);
 
     [TempData] public string? Message { get; set; }
@@ -87,8 +77,7 @@ public class IndexModel(
         Load();
         await LoadPasskeysAsync(ct);
 
-        // The form is client-side only in this mode; reaching the handler means someone
-        // posted directly, and there is still no row to write to.
+        // Client-side only in this mode; a direct post has no row to write.
         if (options.AuthDisabled)
         {
             Error = "Authentication is disabled on this instance, so there is no account to save against.";
@@ -105,19 +94,14 @@ public class IndexModel(
             return Page();
         }
 
-        // No need to reissue the cookie here: the palettes ride on the auth ticket, and
-        // RevalidateUserEvents compares it against the row on every request, so the redirect
-        // below already arrives carrying the new claims.
+        // No reissue needed: RevalidateUserEvents refreshes the claims on the next request.
         Message = "Theme saved.";
         return RedirectToPage();
     }
 
     // ---- passkeys ------------------------------------------------------
 
-    /// <summary>
-    /// Hands the browser what it needs to make a credential, and keeps the matching state so
-    /// the answer can be checked against it. Answers JSON: passkeys.js drives this, not a form.
-    /// </summary>
+    /// <summary>Credential creation options for passkeys.js; the state is kept server-side.</summary>
     public async Task<IActionResult> OnPostPasskeyOptionsAsync(CancellationToken ct)
     {
         if (CurrentUserId() is not { } userId) return PasskeyProblem("There is no account to add a passkey to.");
@@ -180,12 +164,7 @@ public class IndexModel(
         return RedirectToPage();
     }
 
-    /// <summary>
-    /// What the browser posts back once the authenticator has made a credential. The
-    /// credential travels as an opaque node rather than a typed model: it is passed straight
-    /// through to the framework's verifier, which parses it itself, so restating its shape
-    /// here would only be a second place for it to be wrong.
-    /// </summary>
+    /// <summary>The credential stays opaque; the framework's verifier parses it.</summary>
     private sealed record NewPasskey(string? Name, JsonNode? Credential);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -193,16 +172,10 @@ public class IndexModel(
         PropertyNameCaseInsensitive = true,
     };
 
-    /// <summary>
-    /// Null when there is no account behind the request, which is the case with authentication
-    /// off — the page is reachable then, but there is no row to hang a credential on.
-    /// </summary>
+    /// <summary>Null with auth off: no account to attach a credential to.</summary>
     private int? CurrentUserId() => options.AuthDisabled ? null : UserPrincipal.GetId(User);
 
-    /// <summary>
-    /// A failed ceremony, in the shape passkeys.js reads. Deliberately a 400 rather than a
-    /// success carrying an error: the script can then treat any non-OK response the same way.
-    /// </summary>
+    /// <summary>A 400 in the shape passkeys.js reads.</summary>
     private IActionResult PasskeyProblem(string reason) =>
         new JsonResult(new { error = reason }) { StatusCode = StatusCodes.Status400BadRequest };
 

@@ -43,13 +43,7 @@
 
     @if (Model.CanEdit)
     {
-        @* The listener behind data-reset-on-success only fires when the form itself made the
-           request, which is essential rather than defensive: htmx events bubble, and the
-           input inside this form issues its own request on every keystroke for autocomplete.
-           Without that check, each suggestion fetch completing would reset the form and wipe
-           what the user was typing, leaving them unable to enter more than one character.
-           It lives in app.js because htmx evaluates hx-on handlers with new Function, which
-           the content security policy does not permit. *@
+        @* Handled in app.js (hx-on is blocked by the CSP), which ignores the autocomplete input's own requests. *@
         <form class="tag-add"
               hx-post="/Posts/Detail/@Model.PostId?handler=AddTags"
               hx-target="#tag-list"

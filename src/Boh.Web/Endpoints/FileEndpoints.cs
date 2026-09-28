@@ -5,18 +5,12 @@ using Microsoft.Net.Http.Headers;
 
 namespace Boh.Web.Endpoints;
 
-/// <summary>
-/// Serves blobs out of the data directory, which lives outside wwwroot and so is not
-/// reachable by the static file middleware.
-/// </summary>
+/// <summary>Serves blobs from the data directory, outside wwwroot.</summary>
 public static partial class FileEndpoints
 {
     private static readonly FileExtensionContentTypeProvider ContentTypes = new();
 
-    /// <summary>
-    /// Blobs are immutable — their URL contains a hash of their bytes — so they can be
-    /// cached indefinitely and revalidated with a strong ETag that costs nothing to compute.
-    /// </summary>
+    /// <summary>URLs are content hashes, so cache forever.</summary>
     private const string ImmutableCacheControl = "public, max-age=31536000, immutable";
 
     public static void MapFileEndpoints(this IEndpointRouteBuilder app)
@@ -54,11 +48,7 @@ public static partial class FileEndpoints
             enableRangeProcessing: true);   // Required for video seeking.
     }
 
-    /// <summary>
-    /// Splits "abc123….jpg" into hash and extension, rejecting anything that is not a
-    /// plain lowercase hex digest and a short alphanumeric extension. This doubles as
-    /// path traversal protection: no separators or dots can survive the check.
-    /// </summary>
+    /// <summary>Splits "hash.ext", accepting only hex and a short extension, which also blocks path traversal.</summary>
     private static bool TrySplit(string fileName, out string sha, out string extension)
     {
         var match = BlobName().Match(fileName);

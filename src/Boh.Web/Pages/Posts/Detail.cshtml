@@ -20,23 +20,19 @@
         }
     </div>
 
-    @* Everything sits below the media in one column. Tags are the variable-length part, so
-       they lead; the fixed facts tile underneath. *@
+    @* One column below the media; tags lead, facts tile underneath. *@
     <section class="post-below">
         <div class="tag-section">
             <h2>Tags</h2>
             <partial name="_TagList" model="Model.TagView" />
         </div>
 
-        @* Its own section rather than a row in the facts list below: sources are editable and
-           there can be several, so they need the room a <dd> in a two-column grid does not have. *@
+        @* Own section: sources are editable and can be several. *@
         <div class="source-section">
             <partial name="_SourceList" model="Model.SourceView" />
         </div>
 
-        @* Only rendered when there is something to say, so an ordinary post is unaffected by
-           the feature existing. Nothing here blocked the upload: a perceptual match is a
-           suspicion, and the two posts are equally likely to be the one worth keeping. *@
+        @* Only when there are look-alikes. Informational: nothing was blocked. *@
         @if (Model.Similar.Count > 0)
         {
             <div class="similar-section">
@@ -103,7 +99,6 @@
             {
                 <form method="post" asp-page-handler="Delete"
                       data-confirm="Delete post @post.Id? This cannot be undone.">
-                    @* Where to go afterwards: the listing this post was opened from. *@
                     <input type="hidden" name="q" value="@Model.Query" />
                     <input type="hidden" name="fromPage" value="@Model.FromPage" />
                     <button type="submit" class="danger">Delete post</button>

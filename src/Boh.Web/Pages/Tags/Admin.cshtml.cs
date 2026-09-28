@@ -13,10 +13,7 @@ public sealed record AliasRow(int AliasTagId, string Alias, string Canonical);
 public sealed record NamespaceAliasRow(string Alias, string Canonical);
 public sealed record ImplicationRow(int ChildTagId, int ParentTagId, string Child, string Parent);
 
-/// <summary>
-/// <paramref name="IsDefault"/> distinguishes a colour picked from the palette from one the
-/// operator set, so the UI can offer to reset only what was actually overridden.
-/// </summary>
+/// <summary><paramref name="IsDefault"/>: palette colour, not an override.</summary>
 public sealed record NamespaceRow(string Name, string Color, bool IsDefault, int TagCount);
 
 /// <summary>Authorized explicitly so it stays private even when browsing is public.</summary>
@@ -129,11 +126,7 @@ public class AdminModel(BohDbContext db, TagService tags) : PageModel
         else Message = successMessage;
     }
 
-    /// <summary>
-    /// Projects plain columns and assembles the display strings in memory. Building
-    /// "namespace:name" inside the query and then ordering by that computed value is not
-    /// translatable, and these tables are small enough that shaping client-side costs nothing.
-    /// </summary>
+    /// <summary>Display strings built in memory; the computed ordering isn't translatable.</summary>
     private async Task LoadNamespacesAsync(CancellationToken ct)
     {
         var overrides = await tags.GetNamespaceColorsAsync(ct);

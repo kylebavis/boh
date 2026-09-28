@@ -3,29 +3,17 @@ using Boh.Web.Tags;
 
 namespace Boh.Web.Services;
 
-/// <summary>
-/// Maps a gallery-dl metadata sidecar onto namespaced tags.
-/// </summary>
-/// <remarks>
-/// Extractors disagree about field names, so several spellings are accepted per concept and
-/// anything unrecognized is ignored rather than guessed at. Pure and side-effect free so the
-/// mapping rules can be tested without running gallery-dl.
-/// </remarks>
+/// <summary>Maps a gallery-dl sidecar onto namespaced tags. Unknown fields are ignored.</summary>
 public static class GalleryDlTagMapper
 {
-    /// <summary>
-    /// Whether a string value packs several tags separated by spaces. Danbooru's
-    /// <c>tag_string*</c> fields do — their values always use underscores, never spaces.
-    /// A plain <c>artist</c> or <c>character</c> field is a single name that may legitimately
-    /// contain a space ("Pondering My Orb"), and splitting it would invent two bogus tags.
-    /// </summary>
+    /// <summary>Space-separated tag lists (Danbooru <c>tag_string*</c>) vs single names that may contain spaces.</summary>
     private enum Packing
     {
         SingleValue,
         SpaceSeparatedList
     }
 
-    /// <summary>Fields carrying every tag for the post, including ones better expressed with a namespace.</summary>
+    /// <summary>Fields carrying every tag for the post.</summary>
     private static readonly (string Field, Packing Packing)[] GeneralFields =
     [
         ("tag_string_general", Packing.SpaceSeparatedList),
@@ -59,18 +47,14 @@ public static class GalleryDlTagMapper
 
         var seen = new HashSet<TagName>();
 
-        // Names already expressed with a namespace. Danbooru-style extractors repeat every
-        // character/artist/copyright inside the general tag list too, so without this a post
-        // ends up with both `character:pondering_my_orb` and a bare `pondering_my_orb`.
+        // Names a namespace already claimed, so general lists don't duplicate them bare.
         var claimed = new HashSet<string>(StringComparer.Ordinal);
 
         void Add(string? raw, string ns)
         {
             if (string.IsNullOrWhiteSpace(raw)) return;
 
-            // TryParseInNamespace rather than concatenating "ns:raw" and letting the parser
-            // find the split: a value that itself contains a colon — "nier:automata" — would
-            // otherwise have its own namespace inferred when it arrives without a category.
+            // Keeps a colon in the name from being read as a namespace.
             if (!TagName.TryParseInNamespace(ns, raw, out var tag)) return;
 
             if (ns.Length == 0 && claimed.Contains(tag.Name)) return;
@@ -97,7 +81,6 @@ public static class GalleryDlTagMapper
                     Add(value.GetString(), ns);
                     break;
 
-                // An array is always a list of whole values, whatever the field is called.
                 case JsonValueKind.Array:
                     foreach (var item in value.EnumerateArray())
                     {
@@ -111,8 +94,7 @@ public static class GalleryDlTagMapper
             }
         }
 
-        // Namespaced categories run first so they can claim their names; the general list
-        // then contributes only what no namespace covered.
+        // Namespaced fields first, so they claim their names.
         foreach (var (field, ns, packing) in NamespacedFields) AddFrom(field, ns, packing);
 
         // Nested user object, used by several social-media extractors.
