@@ -17,7 +17,6 @@
       format allowlist are applied in MagickMediaProcessor.
     -->
     <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.17.1" />
-    <PackageReference Include="BCrypt.Net-Next" Version="4.2.1" />
 
     <!--
       EF Core 10.0.10 still resolves SQLitePCLRaw 2.1.11, whose bundled SQLite is

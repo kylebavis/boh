@@ -251,19 +251,11 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
 
     private static string Hash(string password) => Hasher.HashPassword(null!, password);
 
-    /// <summary>
-    /// Checks a password, upgrading the stored hash when it verifies against an old format.
-    /// BCrypt hashes predate the switch to <see cref="PasswordHasher{TUser}"/>; once none
-    /// remain, the BCrypt branch and package can go.
-    /// </summary>
+    /// <summary>Checks a password, upgrading the stored hash when the hasher asks for it.</summary>
     private static bool Verify(User user, string password)
     {
-        if (user.PasswordHash.StartsWith("$2", StringComparison.Ordinal))
-        {
-            if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash)) return false;
-            user.PasswordHash = Hash(password);
-            return true;
-        }
+        // Leftover BCrypt hash: no longer verifiable, and not base64, which the hasher throws on.
+        if (user.PasswordHash.StartsWith("$2", StringComparison.Ordinal)) return false;
 
         var result = Hasher.VerifyHashedPassword(user, user.PasswordHash, password);
         if (result == PasswordVerificationResult.SuccessRehashNeeded) user.PasswordHash = Hash(password);
