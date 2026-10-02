@@ -121,26 +121,19 @@
     }
 
     // Every completing input sends its term as `q`, whatever the field is named.
-    document.addEventListener('htmx:configRequest', function (event) {
-        var input = event.detail.elt;
+    document.addEventListener('htmx:config:request', function (event) {
+        var input = event.detail.ctx.sourceElement;
         if (!input || !input.matches || !input.matches('[data-suggest-for]')) return;
 
-        var params = event.detail.parameters;
+        var params = event.detail.ctx.request.body;
         var name = input.getAttribute('name');
-
-        // htmx 2 hands over a FormData; earlier versions a plain object.
-        if (params && typeof params.set === 'function') {
-            if (name) params.delete(name);
-            params.set('q', input.value);
-        } else if (params) {
-            if (name) delete params[name];
-            params.q = input.value;
-        }
+        if (name) params.delete(name);
+        params.set('q', input.value);
     });
 
-    // ARIA state and row ids, made unique per panel here.
-    document.addEventListener('htmx:afterSwap', function (event) {
-        var panel = event.target;
+    // ARIA state and row ids, made unique per panel here. Fires on the source, not the target.
+    document.addEventListener('htmx:after:swap', function (event) {
+        var panel = event.detail.ctx.target;
         if (!panel || !panel.classList || !panel.classList.contains('suggestions')) return;
 
         options(panel).forEach(function (option, index) {
@@ -354,15 +347,54 @@
 (function () {
     'use strict';
 
-    document.addEventListener('htmx:afterRequest', function (event) {
+    document.addEventListener('htmx:after:request', function (event) {
         var form = event.target;
 
         // Only the form itself: its autocomplete input issues requests on every keystroke.
         if (!(form instanceof HTMLFormElement)) return;
         if (!form.hasAttribute('data-reset-on-success')) return;
-        if (!event.detail || !event.detail.successful) return;
+        if (event.detail.ctx.response.status >= 400) return;
 
         form.reset();
+    });
+})();
+
+// Error responses aren't swapped (see the htmx-config meta), so say so above the target.
+// One notice per target, cleared by its next successful swap.
+(function () {
+    'use strict';
+
+    // Keyed by id: an outerHTML swap detaches the old target.
+    function existing(target) {
+        return target.id ? document.querySelector('[data-error-for="' + CSS.escape(target.id) + '"]') : null;
+    }
+
+    function show(event) {
+        var ctx = event.detail.ctx;
+        var target = ctx && ctx.target;
+        if (!target || !target.isConnected || existing(target)) return;
+        if (event.detail.error && event.detail.error.name === 'AbortError') return;
+        // Failed suggestions aren't worth interrupting typing for.
+        if (ctx.sourceElement && ctx.sourceElement.matches('[data-suggest-for]')) return;
+
+        var notice = document.createElement('div');
+        notice.className = 'notice notice-error';
+        notice.setAttribute('role', 'alert');
+        if (target.id) notice.setAttribute('data-error-for', target.id);
+        notice.textContent = "That didn't work. Reload the page and try again.";
+        target.parentNode.insertBefore(notice, target);
+    }
+
+    document.addEventListener('htmx:response:error', show);
+    document.addEventListener('htmx:error', show);
+
+    // Also fires for the skipped swap of an error response, which must keep its notice.
+    document.addEventListener('htmx:after:swap', function (event) {
+        var ctx = event.detail.ctx;
+        if (ctx.response && ctx.response.status >= 400) return;
+
+        var notice = ctx.target && existing(ctx.target);
+        if (notice) notice.remove();
     });
 })();
 

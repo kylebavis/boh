@@ -168,7 +168,7 @@ builder.Services.AddRateLimiter(r =>
     });
 });
 
-// htmx sends the token as a header, set once via hx-headers.
+// htmx sends the token as a header, set once via hx-headers:inherited.
 builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
 
 // Persist keys, or every restart invalidates tokens and cookies.

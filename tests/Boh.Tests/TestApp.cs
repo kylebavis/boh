@@ -168,7 +168,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public static async Task<HttpResponseMessage> PostHxAsync(
         HttpClient client, string url, string pageHtml, Dictionary<string, string>? fields = null)
     {
-        var token = Regex.Match(pageHtml, "hx-headers='([^']*)'");
+        var token = Regex.Match(pageHtml, "hx-headers:inherited='([^']*)'");
         Assert.True(token.Success, "the layout rendered no hx-headers");
 
         using var headers = JsonDocument.Parse(WebUtility.HtmlDecode(token.Groups[1].Value));
