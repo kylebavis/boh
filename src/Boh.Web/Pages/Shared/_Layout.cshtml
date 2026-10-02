@@ -84,10 +84,12 @@
     <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/themes.css" asp-append-version="true" />
     <link rel="icon" href="~/favicon.ico" />
+    @* Keep htmx 2's behavior of not swapping error responses. *@
+    <meta name="htmx-config" content='{"noSwap":[204,304,"4xx","5xx"]}' />
     <script src="~/js/htmx.min.js" asp-append-version="true" defer></script>
     <script src="~/js/app.js" asp-append-version="true" defer></script>
 </head>
-<body hx-headers='@hxHeaders'>
+<body hx-headers:inherited='@hxHeaders'>
     <header class="container">
         <nav>
             <ul>

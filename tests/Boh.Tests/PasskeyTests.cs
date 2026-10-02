@@ -549,7 +549,7 @@ public class PasskeyTests
         TestApp app, HttpClient client, string pageUrl, string url, string json)
     {
         var page = await app.GetHtmlAsync(client, pageUrl);
-        var headers = Regex.Match(page, "hx-headers='([^']*)'");
+        var headers = Regex.Match(page, "hx-headers:inherited='([^']*)'");
         Assert.True(headers.Success, "the layout rendered no hx-headers");
 
         using var token = JsonDocument.Parse(WebUtility.HtmlDecode(headers.Groups[1].Value));
