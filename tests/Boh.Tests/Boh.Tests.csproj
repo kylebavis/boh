@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="10.0.1" />
+    <PackageReference Include="coverlet.collector" Version="10.1.0" />
     <!--
       Boots the real application in-process. Needed because model binding and routing defects
       are invisible to unit tests: pagination silently failed because Razor Pages reserves the
