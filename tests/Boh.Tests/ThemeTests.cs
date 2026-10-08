@@ -9,7 +9,7 @@ namespace Boh.Tests;
 /// <summary>
 /// Guards the seams between the four places a theme id has to line up: the C# list, the
 /// generated stylesheet, the auth ticket and the account form. Nothing here fails loudly at
-/// runtime — a mismatched id just leaves the page rendering in the default colours — so the
+/// runtime — a mismatched id just leaves the page rendering in the default colors — so the
 /// checks have to be mechanical.
 /// </summary>
 public class ThemeTests
@@ -52,7 +52,7 @@ public class ThemeTests
         Assert.All(Themes.Dark, t => Assert.Equal(Themes.DarkMode, t.Mode));
     }
 
-    // ---- normalisation -------------------------------------------------
+    // ---- normalization -------------------------------------------------
 
     /// <summary>
     /// A dark scheme selected for the light side would emit a data-theme-name whose palette

@@ -88,7 +88,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
     /// <summary>
     /// Creates a post from a picture with structure to it, which is what gives it a perceptual
-    /// hash — <see cref="CreatePostAsync"/>'s flat colours deliberately have none. The same
+    /// hash — <see cref="CreatePostAsync"/>'s flat colors deliberately have none. The same
     /// <paramref name="seed"/> at another size is the same picture in different bytes.
     /// </summary>
     public async Task<int> CreatePatternPostAsync(

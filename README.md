@@ -75,18 +75,15 @@ All settings are environment variables.
 
 ### Storage layout
 
-The three kinds of state can be split across different storage; this is useful if you have different classes of storage (e.g. local SSD for DB/thumbs vs remote and/or slow storage for raw media).
+You may wish to store different types of files in different locations.
 
 | What | Grows | Notes |
 |---|---|---|
 | Database | Slowly | Small, but written constantly. **Local disk only.** |
-| Originals | Fast | The reason to reach for a NAS. Written once, read occasionally. |
-| Thumbnails | With the archive | ~1–2% of originals. Fast storage helps, since a gallery page reads dozens at once. |
+| Originals | Fast |  Written once, read occasionally. |
+| Thumbnails | Meh | ~1–2% of originals. Local storage helps, but is not strictly necessary. |
 
-> **Do not put the database on a network share.** SQLite depends on filesystem locks
-> behaving correctly, which SMB/CIFS and NFS do not reliably provide, and WAL mode needs
-> shared memory they cannot offer at all. See <https://sqlite.org/useovernet.html> for more information. Boh checks the filesystem backing the database at startup and logs a
-> warning if it looks network-backed, but it will not stop you.
+> **Do not put the database on a network share.** See <https://sqlite.org/useovernet.html> for more information.
 
 A split deployment — database and thumbnails on local disk, media on a NAS:
 
@@ -120,7 +117,7 @@ sudo mkdir -p /var/lib/boh
 sudo chown -R 1654:1654 /var/lib/boh
 ```
 
-For an SMB mount, set the owner at mount time rather than with `chown` — in `/etc/fstab`:
+For an SMB mount, set the owner at mount time; for example, in `/etc/fstab`:
 
 ```
 //nas/booru  /mnt/nas/booru  cifs  credentials=/etc/boh-smb,uid=1654,gid=1654,nofail  0  0
@@ -130,10 +127,9 @@ boh checks every configured location is writable before it starts, and names the
 
 **Notes on splitting**
 
-- Upload staging always lives inside `BOH_ORIGINALS_PATH`, so committing a file is a rename within one filesystem rather than a copy across two. It is not separately configurable for that reason.
 - Originals are content-addressed, so the tree can be moved between hosts or storage as-is — paths depend only on the file's SHA-256.
-- Thumbnails are derived data and can be rebuilt from the originals — **Maintenance → Regenerate missing thumbnails**. That makes the thumbnail directory the one location safe to drop or move without a backup, at the cost of re-reading every original to rebuild it.
-- Back up the database and originals. As noted above, you can probably get away with a simple filesystem snapshot every so often, but, if you want something more configurable for the database, <https://github.com/nfrastack/container-db-backup> is useful for handling those backups.
+- Thumbnails are derived data and can be rebuilt from the originals — **Maintenance → Regenerate missing thumbnails**. Any non-trivial setup should probably put thumbnails persistent storage, but you can get away with not backing it up.
+- As noted above, you can probably get away with a simple filesystem snapshot every so often, but, if you want something more configurable for the database, <https://github.com/nfrastack/container-db-backup> is useful for handling those backups.
 
 ### Users and roles
 
@@ -146,26 +142,21 @@ boh checks every configured location is writable before it starts, and names the
 | Import from a URL | ✓ | ✓ |
 | Change own password, manage own passkeys | ✓ | ✓ |
 | Manage users | | ✓ |
-| Aliases, implications, namespace colours | | ✓ |
+| Aliases, implications, namespace colors | | ✓ |
 | Maintenance (rebuild thumbnails and implied tags, hash for duplicates, delete unused tags) | | ✓ |
 
-A few behaviours worth knowing:
+A few behaviors worth knowing:
 
-- **Changes apply immediately.** Deleting someone signs them out on their next request rather than whenever their cookie expires, and promoting or demoting takes effect without asking them to sign in again.
-- **The last administrator cannot be deleted or demoted**, and you cannot delete the account you are currently signed in with — either would leave the instance unmanageable from inside.
-- **Deleting a user keeps their posts.** The uploader field is cleared; nothing in the collection is removed. Their passkeys go with them.
-- **The seeded `admin` account is reapplied on every start** while `BOH_ADMIN_PASSWORD` is set — including its administrator rights. That makes it the way back in if you lock yourself out, but it also means deleting or demoting it does not stick. Unset the variable once you have another administrator if you would rather manage accounts entirely from the UI.
+- **The last administrator cannot be deleted or demoted**, and you cannot delete the account you are currently signed in with.
+- **Deleting a user keeps their posts.** The uploader field is cleared; nothing in the collection is removed.
+- **The seeded `admin` account is reapplied on every start** while `BOH_ADMIN_PASSWORD` is set. You can clear this variable after first startup to manage the admin account's creds in-app.
 - `BOH_AUTH_MODE=none` removes accounts altogether; the app is anonymously-writable in this configuration.
 
 ### Passkeys
 
-A passkey signs you in with whatever unlocks your device — fingerprint, face, screen lock — or with a hardware key, instead of a password. Add one from **Account** while signed in, name it so you can tell your devices apart, and the login page grows a **Sign in with a passkey** button. Passwords keep working; a passkey is an addition to an account, not a replacement for it, and the same account can hold several.
+This app supports passkeys. I probably won't remove password auth entirely for usability reasons.
 
-Two things are worth knowing before you rely on it.
-
-**It needs HTTPS.** Two things insist on it: browsers refuse passkeys outside a secure context, and the origin check refuses a plain-HTTP origin even on `localhost`. On a plain-HTTP instance the account page says so rather than offering a button that cannot work — put the reverse proxy in front first. To develop against a local instance over HTTP, name it in `BOH_PASSKEY_ORIGINS` (`http://localhost:8080`), which replaces that check with your list.
-
-**A passkey is bound to the hostname it was registered at.** That is the property that makes it unphishable, and it means one registered at `boh.example.com` will not work through `192.168.1.5:8080` or through a Tailscale name. Left alone, boh takes the domain from each request, which is right when there is one way in. If you reach the same instance by several names and want one passkey to cover them all, set both:
+**Passkeys require HTTPS.** Browsers refuse passkeys outside a secure context. To develop against a local instance over HTTP, name it in `BOH_PASSKEY_ORIGINS` (`http://localhost:8080`). Don't do this on a real deployment (duh).
 
 ```yaml
 environment:
@@ -173,20 +164,14 @@ environment:
   BOH_PASSKEY_ORIGINS: https://boh.example.com,https://boh.internal.example.com
 ```
 
-`BOH_PASSKEY_RP_ID` has to be a domain the hostnames share — the registrable suffix, so `example.com` for `boh.example.com`. Do not point it at a domain you also serve untrusted content from: anything under it can then ask for these credentials. Changing it later invalidates every passkey already registered, and everyone re-registers.
-
-The implementation is ASP.NET Core's own WebAuthn support; boh adds the storage and the pages around it.
+`BOH_PASSKEY_RP_ID` has to be a domain the hostnames share — the registrable suffix, so `example.com` for `boh.example.com`.
 
 ### Security notes
 
-Read these before exposing boh to anything.
-
-- **boh speaks plain HTTP.** Put it behind a reverse proxy that terminates TLS. It honors `X-Forwarded-For` and `X-Forwarded-Proto`, so the auth cookie picks up the `Secure` flag automatically once requests arrive over HTTPS. HSTS belongs on that proxy; boh does not send it, because doing so would break the plain-HTTP LAN case.
-- **Sign-in attempts are rate limited** to 10 per address every 5 minutes, and both successes and failures are logged with the address they came from. The address is whatever `X-Forwarded-For` says, so the limit is only as trustworthy as the proxy in front — something reaching the container directly can forge it. Passkey sign-ins go through the same limiter.
-- **Passkeys take the domain they are bound to from the `Host` header** unless `BOH_PASSKEY_RP_ID` says otherwise. Behind a proxy that is the proxy's business, and boh trusts its forwarded host and scheme; reached directly, a caller can send whatever host it likes. Set `BOH_PASSKEY_RP_ID` if you want that settled by configuration instead.
-- **boh refuses to be framed.** It sends `frame-ancestors 'none'` and `X-Frame-Options: DENY`, so embedding it in a dashboard like Organizr or Heimdall will show an empty pane. Relax both in `SecurityHeaders.cs` if you want that.
-- **`BOH_AUTH_MODE=none` disables all authentication**, including delete and import. Only use it on a network where you trust everyone who can reach the port.
-- **The import feature makes the server fetch a URL you give it.** It always requires signing in, even with `BOH_PUBLIC_READ=true`, because it can reach hosts the container can reach — including things on your local network. Do not hand accounts to people you would not give that capability.
+- **boh speaks plain HTTP.** [Kestrel can do https by itself, technically])(https://learn.microsoft.com/en-us/aspnet/core/fundamentals/servers/kestrel/endpoints?view=aspnetcore-10.0). Most selfhosters terminate TLS at their reverse proxy, so I didn't include support for this approach.
+- **Sign-in attempts are rate limited** to 10 per address every 5 minutes (based on `X-Forwarded-For`)
+- **`BOH_AUTH_MODE=none` disables all authentication**, including delete and import
+- **The import feature makes the server fetch a URL you give it.** It always requires signing in, even with `BOH_PUBLIC_READ=true`.
 - boh is built for a handful of trusted users. Anyone with an account can delete things.
 
 ## Tag syntax
@@ -221,9 +206,7 @@ url:none                              posts with no source recorded
 -url:none                             posts that have one
 ```
 
-A post with several sources matches on any of them. Matching ignores case, and the text is literal — `%` and `_` are ordinary characters, not wildcards.
-
-The prefix is `url:` rather than the `source:` other boorus use because `source` is already a tag namespace here: an import stores the site it came from as a tag like `source:twitter`, and `source:` in a search still finds those tags. The one address you cannot search for is the literal word `none`.
+A post with several sources matches on any of them. Matching ignores case, and the text is literal. Wildcards are not supported.
 
 ### Searching by appearance
 
@@ -235,9 +218,7 @@ similar:123 -rating:explicit          combines with tags like any other term
 -similar:123                          everything that does not look like it
 ```
 
-The reference post is included in its own results, so the search puts it beside its
-look-alikes for comparison. A post with no perceptual hash — a video, a flat colour, one not
-yet backfilled — has nothing to be similar to, so `similar:` on it matches nothing.
+The reference post is included in its own results, so the search puts it beside its look-alikes for comparison.
 
 ### Aliases and implications
 
@@ -245,58 +226,29 @@ Managed at **Tags → Tag administration**.
 
 An **alias** redirects one tag to another. After aliasing `scenery` to `landscape`, tagging a post with `scenery` stores `landscape`, searching `scenery` finds `landscape` posts, and existing posts are migrated.
 
-An **implication** adds a tag automatically. With `meme:pondering_my_orb` implying `format:reaction_image`, any post tagged with the meme also gains the format, transitively through chains. Implied tags are marked on the post and cannot be removed by hand — remove the tag that caused them. A tag you added yourself is never treated as implied, so it survives even if the implying tag is later removed. Cycles are rejected.
+An **implication** adds a tag automatically. With `meme:pondering_my_orb` implying `format:reaction_image`, any post tagged with the meme also gains the format, transitively through chains. Implied tags are marked on the post and cannot be removed by hand. If you add a tag that would later also be implied, it is static.
 
 ### Moving a tag vs aliasing it
 
-Both consolidate posts onto a single tag, which makes them look interchangeable. What differs is what the old name does afterwards.
-
-A **move** renames the tag in place, keeping its posts, aliases and implications. If the destination already exists the two are merged and the source tag is deleted — so typing the old name later creates a fresh, unrelated tag and the collection splits again.
+A **move** renames the tag in place, keeping its posts, aliases and implications. If the destination already exists the two are merged and the source tag is deleted — so typing the old name later creates a fresh, unrelated tag.
 
 An **alias** leaves the old name in place as a permanent redirect, so it keeps resolving however often it is used.
 
-Move a tag to correct its own identity: a typo nobody should type again, or putting `foo` into a namespace. Alias it for a synonym or spelling that will keep being typed — including by an importer.
-
 ## Duplicates and near-duplicates
 
-Two files with the same bytes are the same post: uploading one twice is refused, and an import
-that lands on stored content records where it found it as another source instead.
+Byte-for-byte identical imports/uploads are rejected. If you are using the importer, it will add an additional source URL if appropriate.
 
-Resizing or re-encoding an image changes every byte, so a repost gets past that. boh also
-stores a **perceptual hash** — a 64-bit fingerprint of what the image looks like, taken from
-the low frequencies of its greyscale DCT — which survives rescaling, re-encoding and mild
-colour shifts. Two posts within 8 differing bits are treated as the same picture.
-
-Near-duplicates are **flagged, never blocked**:
-
-- the post's own page grows a **Possible duplicates** section listing what it resembles
-- an import summary marks each file that looks like something already stored
-- **Maintenance → Scan for possible duplicates** groups look-alikes across the whole archive
-
-Nothing is deleted or refused, because a perceptual match is a suspicion rather than a fact,
-and which copy to keep depends on resolution, crops and watermarks that only you can judge. A
-blocked upload would also make a false positive unpostable, and would silently drop files out
-of a gallery import.
-
-What it does not catch: rotations, mirror images, heavy crops, and video — those hash as
-unrelated pictures. Images with no detail to hash, such as a flat colour or a blank scan, are
-left unhashed rather than made duplicates of one another.
-
-Posts uploaded before this existed have no hash until you run **Maintenance → Compute missing
-perceptual hashes**, which re-reads every original. Like every maintenance task it runs in the
-background with a progress bar, so it can be left to work through a large archive.
+Perceptually-similar posts are shown at import/upload-time.
 
 ## Importing
 
-**Import** in the nav is where posts come in, either as a file uploaded from your machine or as a URL. A URL is handed to gallery-dl, which supports [a long list of sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md). Site metadata is mapped onto namespaced tags where the shape is recognizable — tags, artist, character, copyright and rating — and the origin URL is recorded on each post.
+The import tool uses gallery-dl. To import from sites needing credentials or to fiddle with its behavior in other ways, place a [gallery-dl configuration file](https://github.com/mikf/gallery-dl#configuration) at `/data/gallery-dl.conf`.
 
-To import from sites needing credentials, drop a [gallery-dl configuration file](https://github.com/mikf/gallery-dl#configuration) at `/data/gallery-dl.conf`; boh passes it through when present.
-
-Imports run in the background, one at a time, so you can queue several and leave the page; each shows its progress and then what it created, and stays listed until the server restarts. They are still capped (`BOH_IMPORT_MAX`) and time-limited (`BOH_IMPORT_TIMEOUT_SEC`), because they share one queue — an endless gallery or a hung download would otherwise hold up every import behind it.
+Imports will continue if you navigate away from the page after starting one.
 
 ## API
 
-A small JSON API under `/api/v1`, for scripting etc. Create a token under **Account → API tokens** and send it as `Authorization: Bearer <token>`. The API only accepts tokens, not the sign-in cookie. `BOH_PUBLIC_READ` opens the read endpoints to anonymous callers, and `BOH_AUTH_MODE=none` opens everything.
+A simple REST API is exposed under `/api/v1`, for scripting etc. Create a token under **Account → API tokens** and send it as a header: `Authorization: Bearer <token>`. `BOH_PUBLIC_READ` opens the read endpoints to anonymous callers, and `BOH_AUTH_MODE=none` opens everything.
 
 | Method | Path | |
 |---|---|---|
@@ -319,7 +271,7 @@ curl -H "Authorization: Bearer $BOH_TOKEN" -F file=@cat.jpg -F "tags=cat rating:
 
 ## Development
 
-The repository builds without a local .NET SDK — everything runs in containers.
+I suggest building in a container:
 
 ```sh
 docker build -t boh:dev .
@@ -329,7 +281,7 @@ docker run --rm -p 8080:8080 -v boh_dev:/data -e BOH_ADMIN_PASSWORD=dev boh:dev
 With a local .NET 10 SDK:
 
 ```sh
-dotnet test boh.slnx            # 456 tests
+dotnet test boh.slnx
 dotnet run --project src/Boh.Web
 ```
 
@@ -339,7 +291,7 @@ EF Core migrations, without needing the SDK installed:
 ./scripts/ef.sh migrations add SomeChange
 ```
 
-Migrations are applied automatically at startup, so upgrading the image is enough.
+Migrations are applied automatically at startup.
 
 ### Layout
 
@@ -355,11 +307,13 @@ src/Boh.Web/
 tests/Boh.Tests/
 ```
 
+### Internals
+
 Razor Pages with [htmx](https://htmx.org) for the interactive parts and [Pico CSS](https://picocss.com) for styling.
 
 `wwwroot/css/themes.css` is generated by `scripts/build-themes.py`, which adapts each upstream palette until every text pair it produces meets WCAG AA and refuses to emit anything if a check fails. The output is committed, so the script is only needed when adding or changing a scheme — it is not part of the build.
 
-## Licence
+## License
 
 MIT — see [LICENSE](LICENSE).
 

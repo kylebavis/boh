@@ -139,7 +139,7 @@ public class DetailModel(
                 pt.Source == TagSource.Implied,
                 pt.Tag.PostCount,
                 NamespacePalette.ColorFor(pt.Tag.Namespace, namespaceColors)))
-            // Explicit first, then by namespace so same-coloured tags sit together.
+            // Explicit first, then by namespace so same-colored tags sit together.
             .OrderBy(e => e.Implied)
             .ThenBy(e => e.Namespace.Length == 0)
             .ThenBy(e => e.Namespace, StringComparer.Ordinal)

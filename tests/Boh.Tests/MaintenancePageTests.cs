@@ -111,7 +111,7 @@ public class MaintenancePageTests
     }
 
     [Fact]
-    public async Task A_running_task_can_be_cancelled_from_the_page()
+    public async Task A_running_task_can_be_canceled_from_the_page()
     {
         using var app = new TestApp();
         var client = app.CreateNonRedirectingClient();
@@ -128,7 +128,7 @@ public class MaintenancePageTests
 
         await app.WaitForJobsAsync();
 
-        Assert.Contains("Cancelled before it finished", await app.GetHtmlAsync(client, Url));
+        Assert.Contains("Canceled before it finished", await app.GetHtmlAsync(client, Url));
     }
 
     [Fact]

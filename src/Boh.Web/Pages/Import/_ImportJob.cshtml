@@ -23,10 +23,10 @@
     {
         <partial name="_JobProgress" model="Model" />
     }
-    else if (Model.State == JobState.Cancelled)
+    else if (Model.State == JobState.Canceled)
     {
         <div class="notice" role="status">
-            @(Model.Message ?? "Cancelled.") Anything stored before then was kept.
+            @(Model.Message ?? "Canceled.") Anything stored before then was kept.
         </div>
     }
     else if (result is null)

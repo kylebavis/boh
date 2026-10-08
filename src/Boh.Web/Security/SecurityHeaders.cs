@@ -39,7 +39,7 @@ public static class SecurityHeaders
         });
 
     /// <summary>
-    /// Everything is same-origin. <c>'unsafe-inline'</c> styles for validated tag colour
+    /// Everything is same-origin. <c>'unsafe-inline'</c> styles for validated tag color
     /// attributes; <c>data:</c> images for Pico's inlined icons.
     /// </summary>
     private static string ContentSecurityPolicy(string nonce) =>

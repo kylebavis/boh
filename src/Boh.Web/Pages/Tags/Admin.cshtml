@@ -21,12 +21,12 @@
 
 <section>
     <h2>Namespaces</h2>
-    <p><small class="muted">Colours distinguish namespaces across the gallery, tag lists and autocomplete. Every namespace gets a stable colour automatically; set one here to override it.</small></p>
+    <p><small class="muted">Colors distinguish namespaces across the gallery, tag lists and autocomplete. Every namespace gets a stable color automatically; set one here to override it.</small></p>
 
     <form method="post" asp-page-handler="SetNamespaceColor" class="pair-form">
         <input type="text" name="ns" placeholder="namespace" aria-label="Namespace" required />
-        <input type="color" name="color" value="#a371f7" aria-label="Colour" class="color-input" />
-        <button type="submit">Set colour</button>
+        <input type="color" name="color" value="#a371f7" aria-label="Color" class="color-input" />
+        <button type="submit">Set color</button>
     </form>
 
     @if (Model.Namespaces.Count == 0)
@@ -38,7 +38,7 @@
         <div class="scroll-x">
             <table>
                 <thead>
-                    <tr><th scope="col">Namespace</th><th scope="col">Tags</th><th scope="col">Colour</th><th scope="col"></th></tr>
+                    <tr><th scope="col">Namespace</th><th scope="col">Tags</th><th scope="col">Color</th><th scope="col"></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var ns in Model.Namespaces)

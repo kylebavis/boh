@@ -24,19 +24,19 @@ public static class PerceptualHash
     private static readonly double[,] Basis = BuildBasis();
 
     /// <summary>
-    /// Hashes a <see cref="GridEdge"/>-square greyscale grid. Null when flat. Signed only
+    /// Hashes a <see cref="GridEdge"/>-square grayscale grid. Null when flat. Signed only
     /// to round-trip through SQLite INTEGER.
     /// </summary>
-    public static long? TryCompute(ReadOnlySpan<byte> greyscale)
+    public static long? TryCompute(ReadOnlySpan<byte> grayscale)
     {
-        if (greyscale.Length != GridEdge * GridEdge)
+        if (grayscale.Length != GridEdge * GridEdge)
         {
             throw new ArgumentException(
-                $"Expected a {GridEdge}x{GridEdge} greyscale grid, got {greyscale.Length} bytes.",
-                nameof(greyscale));
+                $"Expected a {GridEdge}x{GridEdge} grayscale grid, got {grayscale.Length} bytes.",
+                nameof(grayscale));
         }
 
-        var coefficients = Transform(greyscale);
+        var coefficients = Transform(grayscale);
 
         // Median rather than mean keeps bits stable under re-encoding.
         var sorted = (double[])coefficients.Clone();
@@ -59,14 +59,14 @@ public static class PerceptualHash
     public static int Distance(long a, long b) => BitOperations.PopCount(unchecked((ulong)(a ^ b)));
 
     /// <summary>Low-frequency coefficients in bit order, DC dropped. Separable: rows then columns.</summary>
-    private static double[] Transform(ReadOnlySpan<byte> greyscale)
+    private static double[] Transform(ReadOnlySpan<byte> grayscale)
     {
         // rows[y, u]: horizontal frequency u of row y.
         var rows = new double[GridEdge, BlockEdge];
 
         for (var y = 0; y < GridEdge; y++)
         {
-            var row = greyscale.Slice(y * GridEdge, GridEdge);
+            var row = grayscale.Slice(y * GridEdge, GridEdge);
 
             for (var u = 0; u < BlockEdge; u++)
             {

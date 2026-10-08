@@ -76,7 +76,7 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
         // Single frame, so animations thumbnail from frame one.
         using var image = new MagickImage(sourcePath);
 
-        image.AutoOrient();     // honour EXIF rotation before resizing
+        image.AutoOrient();     // honor EXIF rotation before resizing
         image.Strip();          // drop EXIF/GPS: thumbnails are public surface
 
         // Shrink only; never upscale.
@@ -110,11 +110,11 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
             var edge = (uint)Media.PerceptualHash.GridEdge;
             image.Resize(new MagickGeometry(edge, edge) { IgnoreAspectRatio = true });
 
-            // Q8 greyscale: the red channel is the luminance.
+            // Q8 grayscale: the red channel is the luminance.
             using var pixels = image.GetPixels();
-            var greyscale = pixels.ToByteArray("R");
+            var grayscale = pixels.ToByteArray("R");
 
-            return Task.FromResult(greyscale is null ? null : Media.PerceptualHash.TryCompute(greyscale));
+            return Task.FromResult(grayscale is null ? null : Media.PerceptualHash.TryCompute(grayscale));
         }
         catch (MagickException ex)
         {

@@ -332,7 +332,7 @@ public class UserServiceTests
     }
 
     /// <summary>
-    /// A dark scheme on the light side would render its own text colours against the wrong
+    /// A dark scheme on the light side would render its own text colors against the wrong
     /// background. The values come from a pair of selects, so a bad one means a stale id or
     /// a hand-edited post — neither worth an error message when falling back to the stock
     /// look is a perfectly good outcome.

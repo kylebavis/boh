@@ -187,7 +187,7 @@ public class SourceSearchTests
     }
 
     [Fact]
-    public async Task A_random_post_honours_a_url_search()
+    public async Task A_random_post_honors_a_url_search()
     {
         using var env = new TestEnvironment();
 

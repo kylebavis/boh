@@ -10,7 +10,7 @@ namespace Boh.Tests;
 
 /// <summary>
 /// A throwaway data directory plus a real SQLite database. Tests run against the actual
-/// provider rather than an in-memory substitute, because several behaviours under test
+/// provider rather than an in-memory substitute, because several behaviors under test
 /// (unique index enforcement, integer timestamp ordering) only exist in real SQLite.
 /// </summary>
 public sealed class TestEnvironment : IDisposable
@@ -105,10 +105,10 @@ public sealed class TestEnvironment : IDisposable
     }
 
     /// <summary>
-    /// A picture with structure to it: a fixed scatter of grey blocks, laid out in fractions
+    /// A picture with structure to it: a fixed scatter of gray blocks, laid out in fractions
     /// of the canvas so the same <paramref name="seed"/> draws the same picture whatever size
     /// or format is asked for. That is what makes it usable for perceptual hashing, where the
-    /// flat colours the other helpers produce have nothing to compare.
+    /// flat colors the other helpers produce have nothing to compare.
     /// </summary>
     public static byte[] MakePattern(
         uint width, uint height, MagickFormat format = MagickFormat.Png, int seed = 1)

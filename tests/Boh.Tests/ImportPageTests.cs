@@ -181,7 +181,7 @@ public class ImportPageTests
     }
 
     [Fact]
-    public async Task A_running_import_polls_for_progress_and_can_be_cancelled()
+    public async Task A_running_import_polls_for_progress_and_can_be_canceled()
     {
         using var app = new TestApp();
         var client = app.CreateNonRedirectingClient();
@@ -202,7 +202,7 @@ public class ImportPageTests
 
         await app.WaitForJobsAsync();
 
-        Assert.Equal(JobState.Cancelled, app.Jobs.Get(job.Id)!.State);
+        Assert.Equal(JobState.Canceled, app.Jobs.Get(job.Id)!.State);
         Assert.Contains("Anything stored before then was kept", await app.GetHtmlAsync(client, Url));
     }
 
@@ -226,7 +226,7 @@ public class ImportPageTests
     }
 
     [Fact]
-    public async Task Someone_elses_import_cannot_be_cancelled()
+    public async Task Someone_elses_import_cannot_be_canceled()
     {
         using var app = new TestApp();
         var client = app.CreateNonRedirectingClient();

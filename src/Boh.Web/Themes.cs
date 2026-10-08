@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Boh.Web;
 
-/// <summary>A packaged colour scheme. <paramref name="Id"/> selects a block in themes.css; each belongs to one mode.</summary>
+/// <summary>A packaged color scheme. <paramref name="Id"/> selects a block in themes.css; each belongs to one mode.</summary>
 public sealed record Theme(string Id, string Label, string Mode);
 
 /// <summary>

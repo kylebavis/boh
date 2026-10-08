@@ -1,9 +1,9 @@
 namespace Boh.Web.Tags;
 
-/// <summary>A colour for every namespace: mid-tones readable in both themes, stable across restarts.</summary>
+/// <summary>A color for every namespace: mid-tones readable in both themes, stable across restarts.</summary>
 public static class NamespacePalette
 {
-    /// <summary>Readable against both the light and dark surface colours Pico uses.</summary>
+    /// <summary>Readable against both the light and dark surface colors Pico uses.</summary>
     public static readonly string[] Palette =
     [
         "#e5534b", // red
@@ -55,7 +55,7 @@ public static class NamespacePalette
         return (int)(hash % (uint)Palette.Length);
     }
 
-    /// <summary>Validates a user-supplied colour: 3- or 6-digit hex with a leading '#'.</summary>
+    /// <summary>Validates a user-supplied color: 3- or 6-digit hex with a leading '#'.</summary>
     public static bool IsValidColor(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return false;

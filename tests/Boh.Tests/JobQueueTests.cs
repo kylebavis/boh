@@ -6,7 +6,7 @@ namespace Boh.Tests;
 
 /// <summary>
 /// The queue and its worker without the web app around them: what runs when, what a failed or
-/// cancelled job leaves behind, and that one busy lane does not stall the other.
+/// canceled job leaves behind, and that one busy lane does not stall the other.
 /// </summary>
 public class JobQueueTests
 {
@@ -102,18 +102,18 @@ public class JobQueueTests
     {
         await using var jobs = await Harness.StartAsync();
 
-        var job = jobs.Queue.Enqueue(JobLane.Maintenance, "test", "Test", null, RunsUntilCancelled);
+        var job = jobs.Queue.Enqueue(JobLane.Maintenance, "test", "Test", null, RunsUntilCanceled);
         await jobs.WaitAsync(job.Id, j => j.State == JobState.Running);
 
         Assert.True(jobs.Queue.Cancel(job.Id));
 
         var stopped = await jobs.WaitAsync(job.Id, j => !j.IsActive);
-        Assert.Equal(JobState.Cancelled, stopped.State);
+        Assert.Equal(JobState.Canceled, stopped.State);
         Assert.Null(stopped.Message);
     }
 
     [Fact]
-    public async Task A_job_cancelled_while_waiting_never_runs()
+    public async Task A_job_canceled_while_waiting_never_runs()
     {
         await using var jobs = await Harness.StartAsync();
         var release = Gate();
@@ -129,11 +129,11 @@ public class JobQueueTests
         });
 
         Assert.True(jobs.Queue.Cancel(waiting.Id));
-        Assert.Equal(JobState.Cancelled, jobs.Queue.Get(waiting.Id)!.State);
+        Assert.Equal(JobState.Canceled, jobs.Queue.Get(waiting.Id)!.State);
 
         release.SetResult();
 
-        // Queued behind the cancelled one, so by the time this finishes the lane has been past it.
+        // Queued behind the canceled one, so by the time this finishes the lane has been past it.
         var behind = jobs.Queue.Enqueue(JobLane.Maintenance, "behind", "Behind", null, Returns(null));
         await jobs.WaitAsync(behind.Id, j => !j.IsActive);
 
@@ -184,13 +184,13 @@ public class JobQueueTests
     {
         await using var jobs = await Harness.StartAsync();
 
-        var job = jobs.Queue.Enqueue(JobLane.Maintenance, "test", "Test", null, RunsUntilCancelled);
+        var job = jobs.Queue.Enqueue(JobLane.Maintenance, "test", "Test", null, RunsUntilCanceled);
         await jobs.WaitAsync(job.Id, j => j.State == JobState.Running);
 
         await jobs.StopAsync();
 
         var stopped = jobs.Queue.Get(job.Id)!;
-        Assert.Equal(JobState.Cancelled, stopped.State);
+        Assert.Equal(JobState.Canceled, stopped.State);
         Assert.Contains("shut down", stopped.Message!);
     }
 
@@ -202,7 +202,7 @@ public class JobQueueTests
         return null;
     };
 
-    private static async Task<object?> RunsUntilCancelled(JobContext job)
+    private static async Task<object?> RunsUntilCanceled(JobContext job)
     {
         await Task.Delay(Timeout.Infinite, job.CancellationToken);
         return null;

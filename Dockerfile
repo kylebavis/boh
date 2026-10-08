@@ -40,7 +40,7 @@ RUN mkdir /app/own \
 # Magick.NET native libraries, and glibc avoids a class of musl packaging problems.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
-# Pinned so an image rebuild cannot silently change importer behaviour, and kept in a
+# Pinned so an image rebuild cannot silently change importer behavior, and kept in a
 # requirements file so Dependabot can see the version and raise the upgrade as a PR.
 COPY requirements.txt /tmp/requirements.txt
 

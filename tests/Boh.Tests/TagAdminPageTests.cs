@@ -3,9 +3,9 @@ using System.Text.RegularExpressions;
 namespace Boh.Tests;
 
 /// <summary>
-/// Checks the contract the tag-admin page's client-side behaviour depends on: which fields
+/// Checks the contract the tag-admin page's client-side behavior depends on: which fields
 /// declare autocomplete, that each points at a panel that exists, and the markup the row
-/// filter reads. The behaviour itself is browser-side and verified there; what these tests
+/// filter reads. The behavior itself is browser-side and verified there; what these tests
 /// prevent is the markup drifting out from under it — a renamed id or a dropped attribute
 /// breaks the page silently, with no server-side symptom at all.
 /// </summary>

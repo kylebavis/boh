@@ -6,7 +6,7 @@ namespace Boh.Tests;
 /// <summary>
 /// Checks the markup contract the theme code depends on. Like the tag-admin page tests, none
 /// of this has a server-side symptom when it breaks: a renamed id or a dropped attribute
-/// leaves the page rendering perfectly well in the wrong colours.
+/// leaves the page rendering perfectly well in the wrong colors.
 /// </summary>
 /// <remarks>
 /// <see cref="TestApp"/> boots with <c>BOH_AUTH_MODE=none</c>, so this covers the variant

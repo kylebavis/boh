@@ -41,7 +41,7 @@ public sealed class JobWorker(JobQueue queue, IServiceScopeFactory scopes, ILogg
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
-            queue.MarkCancelled(job.Id,
+            queue.MarkCanceled(job.Id,
                 stopping.IsCancellationRequested ? "Stopped because the server shut down." : null);
         }
         catch (Exception ex)

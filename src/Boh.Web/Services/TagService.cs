@@ -538,7 +538,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
     // ---- namespaces ----------------------------------------------------
 
-    /// <summary>Explicit colour overrides, keyed by namespace.</summary>
+    /// <summary>Explicit color overrides, keyed by namespace.</summary>
     public async Task<Dictionary<string, string>> GetNamespaceColorsAsync(CancellationToken ct) =>
         await db.TagNamespaces.AsNoTracking().ToDictionaryAsync(n => n.Name, n => n.Color, ct);
 
@@ -549,7 +549,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
 
         var normalized = NamespacePalette.Normalize(color);
         if (normalized is null)
-            return new TagLinkResult.Rejected("Enter a colour as hex, for example #a371f7.");
+            return new TagLinkResult.Rejected("Enter a color as hex, for example #a371f7.");
 
         var existing = await db.TagNamespaces.FirstOrDefaultAsync(n => n.Name == name, ct);
         if (existing is null) db.TagNamespaces.Add(new TagNamespace { Name = name, Color = normalized });
@@ -559,7 +559,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         return new TagLinkResult.Ok();
     }
 
-    /// <summary>Drops an override so the namespace falls back to its palette colour.</summary>
+    /// <summary>Drops an override so the namespace falls back to its palette color.</summary>
     public async Task ResetNamespaceColorAsync(string ns, CancellationToken ct) =>
         await db.TagNamespaces.Where(n => n.Name == ns).ExecuteDeleteAsync(ct);
 

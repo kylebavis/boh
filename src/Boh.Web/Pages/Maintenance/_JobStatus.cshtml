@@ -8,7 +8,7 @@
 
     var ended = job?.State switch
     {
-        JobState.Cancelled => "cancelled",
+        JobState.Canceled => "canceled",
         JobState.Failed => "failed",
         _ => "finished",
     };
@@ -30,9 +30,9 @@
             <small class="muted">Last run @ended @RelativeTime.Since(job.FinishedAt!.Value, DateTimeOffset.UtcNow)</small>
         }
 
-        @if (job.State == JobState.Cancelled)
+        @if (job.State == JobState.Canceled)
         {
-            <div class="notice" role="status">@(job.Message ?? "Cancelled before it finished.")</div>
+            <div class="notice" role="status">@(job.Message ?? "Canceled before it finished.")</div>
         }
         else if (job.State == JobState.Failed)
         {
@@ -66,7 +66,7 @@
                         @if (hashes.Featureless > 0)
                         {
                             <text>
-                                @hashes.Featureless had no detail to hash — a flat colour or a blank
+                                @hashes.Featureless had no detail to hash — a flat color or a blank
                                 scan has no structure to compare, and will not be retried.
                             </text>
                         }

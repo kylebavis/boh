@@ -4,7 +4,7 @@ Derives boh's theme CSS from upstream editor palettes.
 Upstream schemes are designed for syntax highlighting on one background, not for web
 chrome, so almost none of them clear WCAG AA for every pair boh actually renders. This
 script takes the faithful palette, then nudges only the tokens that fail — moving
-lightness in HSL, which preserves hue and saturation so the scheme stays recognisable —
+lightness in HSL, which preserves hue and saturation so the scheme stays recognizable —
 and emits CSS once everything passes.
 """
 import colorsys
@@ -238,8 +238,8 @@ BORDER_CHECKS = [
 # than nudging, since these are fills whose whole job is to carry a label.
 INVERSE_PAIRS = [("accent_fg", "accent"), ("warning_fg", "warning")]
 
-# Saturation is only bought back for colours that are actually chromatic. Across these
-# nine schemes the greys sit at or below 0.18 and every accent at or above 0.42, so the
+# Saturation is only bought back for colors that are actually chromatic. Across these
+# nine schemes the grays sit at or below 0.18 and every accent at or above 0.42, so the
 # split is unambiguous — without it, lifting Dracula's #44475a border turned it purple.
 CHROMATIC = 0.30
 
@@ -260,7 +260,7 @@ def nudge(color, backgrounds, need, lighten):
     """
     Walk lightness until `color` clears `need` against every background.
 
-    Saturation rises with the distance travelled. Moving lightness alone bleeds chroma —
+    Saturation rises with the distance traveled. Moving lightness alone bleeds chroma —
     lifting Nord's #bf616a far enough to make error text legible on nord0 turned it into a
     pale pink — so each step of lightness buys back an equal step of saturation, which
     keeps a red reading as red at the contrast the text actually needs.
@@ -281,8 +281,8 @@ def nudge(color, backgrounds, need, lighten):
 
 def best_inverse(fill, palette):
     """
-    Choose a label colour for a filled swatch. Ordered by preference, not by contrast:
-    the scheme's own background is the intended label colour on an accent fill, so take
+    Choose a label color for a filled swatch. Ordered by preference, not by contrast:
+    the scheme's own background is the intended label color on an accent fill, so take
     the first option that clears AA and only escalate to plain black/white if none do.
     """
     options = [palette["bg"], palette["surface"], palette["fg_strong"], "#000000", "#ffffff"]
@@ -361,7 +361,7 @@ CREDITS = {
 # Everything above this line in themes.css is hand-written — the mapping onto Pico's
 # variables, which is a design decision rather than a derived one. Only what follows is
 # regenerated, so the two can be reviewed separately.
-MARKER = "   Fifteen tokens each. Provenance and licence for every scheme is recorded in NOTICE. */"
+MARKER = "   Fifteen tokens each. Provenance and license for every scheme is recorded in NOTICE. */"
 
 STYLESHEET = "src/Boh.Web/wwwroot/css/themes.css"
 

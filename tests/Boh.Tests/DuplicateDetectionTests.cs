@@ -456,7 +456,7 @@ public class DuplicateDetectionTests
         Assert.Equal([first, second], await SearchAsync(env, "-similar:9999"));
     }
 
-    /// <summary>Random honours the same search, so it must resolve the term too.</summary>
+    /// <summary>Random honors the same search, so it must resolve the term too.</summary>
     [Fact]
     public async Task Random_within_a_similar_search_stays_inside_it()
     {

@@ -15,7 +15,7 @@ public enum JobState
     Running,
     Succeeded,
     Failed,
-    Cancelled
+    Canceled
 }
 
 /// <summary>Null <paramref name="Total"/> means unmeasurable.</summary>
@@ -130,7 +130,7 @@ public sealed class JobQueue
 
             if (entry.State == JobState.Queued)
             {
-                Finish(entry, JobState.Cancelled, null, null);
+                Finish(entry, JobState.Canceled, null, null);
                 return true;
             }
 
@@ -144,7 +144,7 @@ public sealed class JobQueue
 
     internal ChannelReader<Guid> Reader(JobLane lane) => _lanes[lane].Reader;
 
-    /// <summary>Moves a waiting job to running, or returns null when it was cancelled while it waited.</summary>
+    /// <summary>Moves a waiting job to running, or returns null when it was canceled while it waited.</summary>
     internal StartedJob? TryStart(Guid id)
     {
         lock (_gate)
@@ -168,7 +168,7 @@ public sealed class JobQueue
 
     internal void Fail(Guid id, string message) => Finish(id, JobState.Failed, null, message);
 
-    internal void MarkCancelled(Guid id, string? message) => Finish(id, JobState.Cancelled, null, message);
+    internal void MarkCanceled(Guid id, string? message) => Finish(id, JobState.Canceled, null, message);
 
     private void Finish(Guid id, JobState state, object? result, string? message)
     {

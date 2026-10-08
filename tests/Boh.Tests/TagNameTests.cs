@@ -175,7 +175,7 @@ public class TagNameTests
     }
 
     /// <summary>
-    /// The damaging half of the old behaviour was not dropping tags but merging distinct ones.
+    /// The damaging half of the old behavior was not dropping tags but merging distinct ones.
     /// These pairs are different expressions and must stay different tags.
     /// </summary>
     [Theory]
@@ -223,7 +223,7 @@ public class TagNameTests
     }
 
     /// <summary>
-    /// Documents a known limitation rather than a desired behaviour: the project builds with
+    /// Documents a known limitation rather than a desired behavior: the project builds with
     /// InvariantGlobalization, where Unicode normalization silently does nothing, so the two
     /// spellings of "café" remain distinct tags. Verified acceptable because the collection this
     /// was measured against contained no non-NFC names.
