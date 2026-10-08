@@ -3,11 +3,7 @@ using System.Text;
 
 namespace Boh.Web.Tags;
 
-/// <summary>
-/// A normalized tag. Every write path — manual entry, import, search parsing — goes
-/// through <see cref="TryParse"/>, so storage only ever sees canonical forms and two
-/// spellings of the same tag cannot coexist.
-/// </summary>
+/// <summary>A normalized tag. Every write path goes through <see cref="TryParse"/>.</summary>
 public readonly record struct TagName(string Namespace, string Name)
 {
     public const int MaxNamespaceLength = 32;
@@ -18,11 +14,7 @@ public readonly record struct TagName(string Namespace, string Name)
 
     public override string ToString() => Display;
 
-    /// <summary>
-    /// Normalizes a single tag. Accepts internal whitespace (importers emit tags like
-    /// "long hair") and converts it to underscores; returns false for anything that
-    /// normalizes away to nothing.
-    /// </summary>
+    /// <summary>Normalizes one tag; internal whitespace becomes underscores.</summary>
     public static bool TryParse(string? raw, out TagName tag)
     {
         tag = default;
@@ -36,17 +28,7 @@ public readonly record struct TagName(string Namespace, string Name)
         return TryBuild(ns, namePart, out tag);
     }
 
-    /// <summary>
-    /// Normalizes a tag whose namespace the caller already knows, without attempting to
-    /// derive one from the name.
-    /// </summary>
-    /// <remarks>
-    /// Necessary because a name may itself contain a colon — an imported tag like
-    /// <c>nier:automata</c> in the <c>series</c> category. Routing that through
-    /// <see cref="TryParse"/> as <c>"series:nier:automata"</c> happens to work, but passing a
-    /// bare <c>nier:automata</c> would invent the namespace <c>nier</c>. Callers that know the
-    /// namespace should say so rather than rely on where the first colon lands.
-    /// </remarks>
+    /// <summary>Normalizes a tag whose namespace is known, so a colon in the name isn't taken as one.</summary>
     public static bool TryParseInNamespace(string? ns, string? rawName, out TagName tag)
     {
         tag = default;
@@ -55,8 +37,7 @@ public readonly record struct TagName(string Namespace, string Name)
         var name = CollapseWhitespace(CaseFold(rawName));
         if (name.Length == 0) return false;
 
-        // An unusable namespace degrades to an unnamespaced tag rather than failing outright;
-        // losing the grouping is better than losing the tag.
+        // An unusable namespace degrades to none rather than losing the tag.
         var normalizedNs = NormalizeNamespace(ns);
 
         return TryBuild(normalizedNs, name, out tag);
@@ -74,23 +55,15 @@ public readonly record struct TagName(string Namespace, string Name)
         return true;
     }
 
-    /// <summary>
-    /// Trims and case-folds. Deliberately does <b>not</b> attempt Unicode normalization.
-    /// </summary>
-    /// <remarks>
-    /// This project builds with <c>InvariantGlobalization</c>, under which normalization is
-    /// not merely unavailable but actively misreports itself: verified on .NET 10, a decomposed
-    /// string returns <c>true</c> from <c>IsNormalized(FormC)</c> and <c>Normalize(FormC)</c>
-    /// returns it unchanged, with no exception. Calling either would therefore give the false
-    /// impression that composed and decomposed spellings had been unified.
-    /// <para>
-    /// The consequence is that two Unicode spellings of one name are two tags. Accepted rather
-    /// than making ICU load-bearing for the whole application: composed form is what editors
-    /// and web clients emit in practice, and the 18,833-name szurubooru collection this was
-    /// measured against contained zero non-NFC names.
-    /// </para>
-    /// </remarks>
+    /// <summary>Trims and case-folds. No Unicode normalization: it silently no-ops under InvariantGlobalization.</summary>
     private static string CaseFold(string raw) => raw.Trim().ToLowerInvariant();
+
+    /// <summary>Normalizes a bare namespace, reporting failure rather than degrading.</summary>
+    public static bool TryParseNamespace(string? raw, out string ns)
+    {
+        ns = NormalizeNamespace(raw);
+        return ns.Length > 0;
+    }
 
     private static string NormalizeNamespace(string? ns)
     {
@@ -116,10 +89,7 @@ public readonly record struct TagName(string Namespace, string Name)
         return value[..end].TrimEnd('_');
     }
 
-    /// <summary>
-    /// Parses whitespace-separated tag input, dropping anything unparseable and
-    /// de-duplicating while preserving the order the user typed.
-    /// </summary>
+    /// <summary>Parses whitespace-separated tags, deduplicated in typed order.</summary>
     public static List<TagName> ParseMany(string? text)
     {
         var result = new List<TagName>();
@@ -163,8 +133,7 @@ public readonly record struct TagName(string Namespace, string Name)
         var prefix = token[..colon];
         var rest = token[(colon + 1)..];
 
-        // A URL's scheme must not become a namespace: "https://example.com" is one tag,
-        // not namespace "https". The slash immediately after the colon is the tell.
+        // A URL scheme is not a namespace.
         if (rest[0] == '/') return ("", token);
 
         if (prefix.Length > MaxNamespaceLength) return ("", token);
@@ -176,40 +145,12 @@ public readonly record struct TagName(string Namespace, string Name)
         return (prefix, rest);
     }
 
-    /// <summary>
-    /// ASCII punctuation a tag name may contain.
-    /// </summary>
-    /// <remarks>
-    /// Wide enough for the emoticon tags every booru uses — <c>:d</c>, <c>^_^</c>, <c>&gt;_&lt;</c>,
-    /// <c>:|</c>, <c>\m/</c> — which are ordinary expression vocabulary, not junk. Restricting
-    /// this to <c>[a-z0-9_()'.-]</c> silently destroyed them: <c>:d</c> and <c>;d</c> are
-    /// different expressions that both collapsed to <c>d</c>.
-    /// <para>
-    /// Including <c>:</c> is safe because <see cref="SplitNamespace"/> only splits on the first
-    /// colon, only when the prefix is a valid namespace token, and never when a <c>/</c>
-    /// follows — so <c>:d</c> (colon leading) and <c>&gt;:(</c> (prefix not a namespace) survive
-    /// intact, and the URL guard still keeps <c>https://x</c> in one piece.
-    /// </para>
-    /// <para>
-    /// These characters are safe to store because nothing renders a tag unescaped: Razor
-    /// HTML-encodes every tag it prints, and every tag placed in a URL goes through
-    /// <c>Uri.EscapeDataString</c>.
-    /// </para>
-    /// </remarks>
+    /// <summary>Punctuation allowed in names: covers emoticon tags like <c>:d</c> and <c>^_^</c>. Output is always encoded.</summary>
     private static readonly FrozenSet<char> AllowedPunctuation =
         new[] { '_', '(', ')', '\'', '.', '-', ':', ';', '!', '?', '^', '=', '<', '>', '@', '+', '|', '~', '\\', '/' }
             .ToFrozenSet();
 
-    /// <summary>
-    /// Keeps the characters a tag is allowed to contain and replaces the rest with an
-    /// underscore. Substitution can leave doubled or edge underscores behind ("a &amp; b" ->
-    /// "a___b"), so those are tidied afterwards rather than becoming part of the stored name.
-    /// </summary>
-    /// <remarks>
-    /// Iterates runes rather than chars so a character outside the Basic Multilingual Plane is
-    /// judged once, instead of having each half of its surrogate pair independently rejected
-    /// and turned into two underscores.
-    /// </remarks>
+    /// <summary>Replaces disallowed characters with underscores, then tidies them. Per rune, not per char.</summary>
     private static string SanitizeName(string value)
     {
         var builder = new StringBuilder(value.Length);

@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -16,16 +16,7 @@
       Because these are C decoders handling untrusted uploads, ResourceLimits and a
       format allowlist are applied in MagickMediaProcessor.
     -->
-    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.16.0" />
-    <PackageReference Include="BCrypt.Net-Next" Version="4.2.1" />
-
-    <!--
-      EF Core 10.0.10 still resolves SQLitePCLRaw 2.1.11, whose bundled SQLite is
-      affected by CVE-2025-6965 (memory corruption, CVSS 7.2). The 3.x bundle tracks
-      upstream SQLite versions and ships 3.50.3+, which contains the fix.
-      Remove this pin once EF Core's own dependency moves past it.
-    -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.17.2" />
   </ItemGroup>
 
 </Project>

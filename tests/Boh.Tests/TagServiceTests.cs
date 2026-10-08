@@ -482,6 +482,74 @@ public class TagServiceTests
         Assert.Equal("artist:alice", suggestions[0].Display);
     }
 
+    /// <summary>The match is a range comparison, so its edges and non-ASCII text need checking.</summary>
+    [Fact]
+    public async Task Autocomplete_matches_exactly_the_tags_that_start_with_the_prefix()
+    {
+        using var env = new TestEnvironment();
+        var post = await env.CreatePostAsync();
+        await env.Tags.SetPostTagsAsync(post,
+            Names("caf", "café", "café𠀀", "cafe", "cag", "ca", "artist:cafeteria", "cafx:other"), Ct);
+
+        var suggestions = await env.Tags.AutocompleteAsync("CAF", 10, Ct);
+
+        Assert.Equal(
+            ["artist:cafeteria", "caf", "cafe", "cafx:other", "café", "café𠀀"],
+            suggestions.Select(s => s.Display).Order(StringComparer.Ordinal));
+
+        var accented = await env.Tags.AutocompleteAsync("café", 10, Ct);
+        Assert.Equal(["café", "café𠀀"], accented.Select(s => s.Display).Order(StringComparer.Ordinal));
+    }
+
+    private static async Task SetCountsAsync(TestEnvironment env, params (string Name, int Count)[] tags)
+    {
+        var post = await env.CreatePostAsync();
+        await env.Tags.SetPostTagsAsync(post, Names(tags.Select(t => t.Name).ToArray()), Ct);
+
+        foreach (var (name, count) in tags)
+        {
+            Assert.True(TagName.TryParse(name, out var tag));
+            await env.Db.Tags.Where(t => t.Namespace == tag.Namespace && t.Name == tag.Name)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.PostCount, count), Ct);
+        }
+    }
+
+    [Fact]
+    public async Task Autocomplete_ranks_prefix_then_word_start_then_anywhere()
+    {
+        using var env = new TestEnvironment();
+        await SetCountsAsync(env,
+            ("absorb", 100), ("pondering_my_orb", 50), ("glowing-orb", 5), ("orbit", 1), ("lamp", 200));
+
+        var suggestions = await env.Tags.AutocompleteAsync("orb", 10, Ct);
+
+        Assert.Equal(
+            ["orbit", "pondering_my_orb", "glowing-orb", "absorb"],
+            suggestions.Select(s => s.Display));
+    }
+
+    [Fact]
+    public async Task Autocomplete_does_not_look_inside_names_when_prefixes_fill_the_list()
+    {
+        using var env = new TestEnvironment();
+        await SetCountsAsync(env, ("orbit", 1), ("orbs", 2), ("pondering_my_orb", 50));
+
+        var suggestions = await env.Tags.AutocompleteAsync("orb", 2, Ct);
+
+        Assert.Equal(["orbs", "orbit"], suggestions.Select(s => s.Display));
+    }
+
+    [Fact]
+    public async Task Autocomplete_looks_inside_names_within_the_typed_namespace()
+    {
+        using var env = new TestEnvironment();
+        await SetCountsAsync(env, ("meme:pondering_my_orb", 1), ("artist:orb_painter", 1), ("absorb", 1));
+
+        var suggestions = await env.Tags.AutocompleteAsync("meme:orb", 10, Ct);
+
+        Assert.Equal(["meme:pondering_my_orb"], suggestions.Select(s => s.Display));
+    }
+
     [Fact]
     public async Task Autocomplete_reports_where_an_alias_leads()
     {

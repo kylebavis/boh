@@ -1,14 +1,6 @@
 namespace Boh.Web.Tags;
 
-/// <summary>
-/// Supplies a color for every namespace, configured or not.
-/// </summary>
-/// <remarks>
-/// Colors are mid-tone on purpose: the UI renders in both light and dark themes, and a
-/// palette tuned for one is unreadable on the other. Unconfigured namespaces are hashed to
-/// a palette slot rather than left uncolored, so the distinction is useful immediately and
-/// a given namespace keeps the same color across pages and restarts.
-/// </remarks>
+/// <summary>A color for every namespace: mid-tones readable in both themes, stable across restarts.</summary>
 public static class NamespacePalette
 {
     /// <summary>Readable against both the light and dark surface colors Pico uses.</summary>
@@ -24,10 +16,7 @@ public static class NamespacePalette
         "#c9825b", // brown
     ];
 
-    /// <summary>
-    /// Conventional colors for the namespaces boh's own importer produces, so a fresh
-    /// install already looks deliberate. Loosely follows established booru conventions.
-    /// </summary>
+    /// <summary>Defaults for the namespaces the importer produces.</summary>
     private static readonly Dictionary<string, string> Conventional = new(StringComparer.Ordinal)
     {
         ["artist"] = "#e5534b",
@@ -39,11 +28,7 @@ public static class NamespacePalette
         ["meta"] = "#db61a2",
     };
 
-    /// <summary>
-    /// The color for <paramref name="ns"/>, preferring an explicit override, then a
-    /// conventional default, then a stable palette slot. Null for the empty namespace, which
-    /// leaves plain tags on the theme's own link color.
-    /// </summary>
+    /// <summary>Override, then convention, then a stable palette slot. Null for no namespace.</summary>
     public static string? ColorFor(string ns, IReadOnlyDictionary<string, string>? overrides = null)
     {
         if (ns.Length == 0) return null;
@@ -54,10 +39,7 @@ public static class NamespacePalette
         return Palette[StableIndex(ns)];
     }
 
-    /// <summary>
-    /// FNV-1a rather than string.GetHashCode, which is randomized per process — the color
-    /// has to survive a restart or it would change under the user for no reason.
-    /// </summary>
+    /// <summary>FNV-1a: string.GetHashCode changes per process.</summary>
     private static int StableIndex(string value)
     {
         const uint offsetBasis = 2166136261;

@@ -20,13 +20,44 @@
         }
     </div>
 
-    @* Everything sits below the media in one column. Tags are the variable-length part, so
-       they lead; the fixed facts tile underneath. *@
+    @* One column below the media; tags lead, facts tile underneath. *@
     <section class="post-below">
         <div class="tag-section">
             <h2>Tags</h2>
             <partial name="_TagList" model="Model.TagView" />
         </div>
+
+        @* Own section: sources are editable and can be several. *@
+        <div class="source-section">
+            <partial name="_SourceList" model="Model.SourceView" />
+        </div>
+
+        @* Only when there are look-alikes. Informational: nothing was blocked. *@
+        @if (Model.Similar.Count > 0)
+        {
+            <div class="similar-section">
+                <h2>Possible duplicates</h2>
+                <p>
+                    <small class="muted">
+                        The badge counts how many bits of the perceptual hash differ, so lower
+                        is more alike.
+                        <a href="@Model.SimilarSearchUrl">Browse them in the gallery</a>.
+                    </small>
+                </p>
+
+                <div class="gallery">
+                    @foreach (var card in Model.Similar)
+                    {
+                        <a class="gallery-item" href="/Posts/Detail/@card.Post.Id"
+                           title="Post @card.Post.Id — @card.Distance bit@(card.Distance == 1 ? "" : "s") different">
+                            <img src="@PostUrls.Thumb(card.Post)" alt="Post @card.Post.Id" loading="lazy"
+                                 width="@card.Post.Width" height="@card.Post.Height" />
+                            <span class="badge">@card.Distance</span>
+                        </a>
+                    }
+                </div>
+            </div>
+        }
 
         <dl class="post-facts">
             <div>
@@ -55,14 +86,6 @@
                 <dd><time datetime="@post.UploadedAt.ToString("o")">@post.UploadedAt.ToString("yyyy-MM-dd HH:mm") UTC</time></dd>
             </div>
 
-            @if (!string.IsNullOrEmpty(post.SourceUrl))
-            {
-                <div class="fact-wide">
-                    <dt>Source</dt>
-                    <dd><a href="@post.SourceUrl" rel="noreferrer noopener nofollow">@post.SourceUrl</a></dd>
-                </div>
-            }
-
             <div class="fact-wide">
                 <dt>SHA-256</dt>
                 <dd><code>@post.Sha256</code></dd>
@@ -75,8 +98,7 @@
             @if (Model.CanEdit)
             {
                 <form method="post" asp-page-handler="Delete"
-                      onsubmit="return confirm('Delete post @post.Id? This cannot be undone.');">
-                    @* Where to go afterwards: the listing this post was opened from. *@
+                      data-confirm="Delete post @post.Id? This cannot be undone.">
                     <input type="hidden" name="q" value="@Model.Query" />
                     <input type="hidden" name="fromPage" value="@Model.FromPage" />
                     <button type="submit" class="danger">Delete post</button>

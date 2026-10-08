@@ -7,23 +7,22 @@ namespace Boh.Web.Data;
 
 public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(options)
 {
-    /// <summary>
-    /// SQLite cannot ORDER BY a DateTimeOffset — the provider rejects it outright, which
-    /// would break the gallery's "newest first" query. Storing Unix milliseconds gives an
-    /// INTEGER column that sorts and indexes natively. No information is lost because every
-    /// timestamp we write is UTC.
-    /// </summary>
+    /// <summary>SQLite can't ORDER BY DateTimeOffset; store UTC Unix milliseconds.</summary>
     private static readonly ValueConverter<DateTimeOffset, long> UtcMilliseconds = new(
         v => v.ToUnixTimeMilliseconds(),
         v => DateTimeOffset.FromUnixTimeMilliseconds(v));
 
     public DbSet<Post> Posts => Set<Post>();
+    public DbSet<PostSource> PostSources => Set<PostSource>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<PostTag> PostTags => Set<PostTag>();
     public DbSet<TagAlias> TagAliases => Set<TagAlias>();
     public DbSet<TagNamespace> TagNamespaces => Set<TagNamespace>();
+    public DbSet<TagNamespaceAlias> TagNamespaceAliases => Set<TagNamespaceAlias>();
     public DbSet<TagImplication> TagImplications => Set<TagImplication>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<Passkey> Passkeys => Set<Passkey>();
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -35,15 +34,30 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.Property(p => p.UploadedAt).HasConversion(UtcMilliseconds);
             e.HasIndex(p => p.UploadedAt).IsDescending();
 
+            // Covering index for the full hash scan.
+            e.HasIndex(p => p.PerceptualHash);
+
             e.Property(p => p.FileExtension).HasMaxLength(16).IsRequired();
             e.Property(p => p.MimeType).HasMaxLength(128).IsRequired();
-            e.Property(p => p.SourceUrl).HasMaxLength(2048);
             e.Property(p => p.Description).HasMaxLength(8192);
 
             e.HasOne(p => p.UploadedBy)
                 .WithMany()
                 .HasForeignKey(p => p.UploadedById)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<PostSource>(e =>
+        {
+            e.Property(s => s.Url).HasMaxLength(2048).IsRequired();
+
+            // Lets an import re-record a URL without checking first.
+            e.HasIndex(s => new { s.PostId, s.Url }).IsUnique();
+
+            e.HasOne(s => s.Post)
+                .WithMany(p => p.Sources)
+                .HasForeignKey(s => s.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<Tag>(e =>
@@ -53,12 +67,13 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.HasIndex(t => new { t.Namespace, t.Name }).IsUnique();
             e.HasIndex(t => t.PostCount).IsDescending();
 
-            // Computed display form; not a stored column.
+            // Autocomplete's bare-prefix lookup, which the (Namespace, Name) index cannot serve.
+            e.HasIndex(t => t.Name);
+
             e.Ignore(t => t.Display);
         });
 
-        // Many-to-many with a payload. The skip navigations (Post.Tags / Tag.Posts) exist so
-        // search reads naturally; writes always go through PostTag directly so Source is set.
+        // Skip navigations are for search; writes go through PostTag so Source is set.
         b.Entity<Post>()
             .HasMany(p => p.Tags)
             .WithMany(t => t.Posts)
@@ -83,6 +98,15 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.HasIndex(n => n.Name).IsUnique();
             e.Property(n => n.Name).HasMaxLength(TagName.MaxNamespaceLength);
             e.Property(n => n.Color).HasMaxLength(16);
+        });
+
+        // Keyed by the alias namespace: one namespace redirects one way.
+        b.Entity<TagNamespaceAlias>(e =>
+        {
+            e.HasKey(a => a.Alias);
+            e.Property(a => a.Alias).HasMaxLength(TagName.MaxNamespaceLength);
+            e.Property(a => a.Canonical).HasMaxLength(TagName.MaxNamespaceLength).IsRequired();
+            e.HasIndex(a => a.Canonical);
         });
 
         b.Entity<TagAlias>(e =>
@@ -127,6 +151,38 @@ public class BohDbContext(DbContextOptions<BohDbContext> options) : DbContext(op
             e.Property(u => u.CreatedAt).HasConversion(UtcMilliseconds);
             e.Property(u => u.LightTheme).HasMaxLength(32);
             e.Property(u => u.DarkTheme).HasMaxLength(32);
+        });
+
+        b.Entity<Passkey>(e =>
+        {
+            e.Property(p => p.CredentialId).IsRequired();
+            e.Property(p => p.PublicKey).IsRequired();
+            e.Property(p => p.Name).HasMaxLength(64).IsRequired();
+            e.Property(p => p.Transports).HasMaxLength(128).IsRequired();
+            e.Property(p => p.CreatedAt).HasConversion(UtcMilliseconds);
+            e.Property(p => p.LastUsedAt).HasConversion(UtcMilliseconds);
+
+            // Globally unique: sign-in looks credentials up by id alone.
+            e.HasIndex(p => p.CredentialId).IsUnique();
+
+            e.HasOne(p => p.User)
+                .WithMany(u => u.Passkeys)
+                .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ApiToken>(e =>
+        {
+            e.Property(t => t.Name).HasMaxLength(64).IsRequired();
+            e.Property(t => t.Hash).IsRequired();
+            e.HasIndex(t => t.Hash).IsUnique();
+            e.Property(t => t.CreatedAt).HasConversion(UtcMilliseconds);
+            e.Property(t => t.LastUsedAt).HasConversion(UtcMilliseconds);
+
+            e.HasOne(t => t.User)
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

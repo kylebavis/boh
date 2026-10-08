@@ -3,10 +3,7 @@ using System.Text.Json;
 
 namespace Boh.Web.Services;
 
-/// <summary>
-/// Handles video by shelling out to ffprobe and ffmpeg. Registered after the image
-/// processor, so it only sees files ImageMagick declined.
-/// </summary>
+/// <summary>Video via ffprobe and ffmpeg. Registered after the image processor.</summary>
 public sealed class VideoMediaProcessor(
     ProcessRunner runner,
     ILogger<VideoMediaProcessor> logger) : IMediaProcessor
@@ -14,11 +11,7 @@ public sealed class VideoMediaProcessor(
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ThumbnailTimeout = TimeSpan.FromMinutes(2);
 
-    /// <summary>
-    /// Containers we are willing to store, keyed by the format name ffprobe reports.
-    /// ffprobe recognizes far more than this; anything unlisted is refused rather than
-    /// stored in a format browsers cannot play.
-    /// </summary>
+    /// <summary>Storable containers by ffprobe format name; others are refused.</summary>
     private static readonly Dictionary<string, (string Mime, string Extension)> Allowed = new(StringComparer.OrdinalIgnoreCase)
     {
         ["mov,mp4,m4a,3gp,3g2,mj2"] = ("video/mp4", ".mp4"),
@@ -79,13 +72,10 @@ public sealed class VideoMediaProcessor(
     public async Task GenerateThumbnailAsync(
         string sourcePath, string destinationPath, int maxEdge, CancellationToken ct)
     {
-        // Preferred: one second in, which skips the black frame many videos open on. Seeking
-        // before -i lets ffmpeg jump there rather than decoding from the start.
+        // One second in skips opening black frames; seeking before -i is fast.
         var result = await TryExtractFrameAsync(sourcePath, destinationPath, maxEdge, seekSeconds: 1, ct);
 
-        // A clip shorter than the seek point yields no frame at all: ffmpeg exits non-zero
-        // having written an empty stub. Real collections are full of two-second reaction clips,
-        // so fall back to the very first frame rather than leaving them without a thumbnail.
+        // Clips shorter than that yield no frame, so fall back to the first.
         if (!Succeeded(result, destinationPath))
         {
             logger.LogDebug("Seeking 1s into {Path} produced no frame; retrying from the start", sourcePath);
@@ -98,6 +88,10 @@ public sealed class VideoMediaProcessor(
                 $"ffmpeg failed to produce a thumbnail (exit {result.ExitCode}): {result.StandardError.Trim()}");
         }
     }
+
+    /// <summary>Video is not hashed: one frame doesn't represent a clip.</summary>
+    public Task<long?> TryComputePerceptualHashAsync(string sourcePath, CancellationToken ct) =>
+        Task.FromResult<long?>(null);
 
     private Task<ProcessResult> TryExtractFrameAsync(
         string sourcePath, string destinationPath, int maxEdge, int? seekSeconds, CancellationToken ct)
@@ -120,17 +114,13 @@ public sealed class VideoMediaProcessor(
         return runner.RunAsync("ffmpeg", args, ThumbnailTimeout, ct);
     }
 
-    /// <summary>
-    /// A zero exit is not enough on its own — ffmpeg can leave a truncated stub behind, so the
-    /// output has to be inspected before it is treated as a thumbnail.
-    /// </summary>
+    /// <summary>Exit code alone isn't enough; ffmpeg can leave a stub.</summary>
     private static bool Succeeded(ProcessResult result, string destinationPath)
     {
         if (!result.Succeeded) return false;
 
         var file = new FileInfo(destinationPath);
 
-        // Smaller than the shortest possible WEBP header means nothing decodable was written.
         return file.Exists && file.Length > 32;
     }
 

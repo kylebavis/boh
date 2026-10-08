@@ -1,5 +1,6 @@
 using Boh.Web.Data;
 using Boh.Web.Data.Entities;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace Boh.Web.Services;
@@ -18,17 +19,13 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
 {
     public const string AdminUsername = "admin";
 
-    /// <summary>Long enough to be worth having, short enough not to fight a password manager.</summary>
     public const int MinPasswordLength = 8;
 
     private const int MaxUsernameLength = 64;
 
     // ---- authentication ------------------------------------------------
 
-    /// <summary>
-    /// Verifies credentials. Returns null for both an unknown user and a wrong password so
-    /// the caller cannot tell them apart.
-    /// </summary>
+    /// <summary>Null for unknown user and wrong password alike.</summary>
     public async Task<User?> AuthenticateAsync(string? username, string? password, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password)) return null;
@@ -37,7 +34,11 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         var user = await db.Users.FirstOrDefaultAsync(u => u.Username == normalized, ct);
         if (user is null) return null;
 
-        return BCrypt.Net.BCrypt.Verify(password, user.PasswordHash) ? user : null;
+        if (!Verify(user, password)) return null;
+
+        // Verify may have upgraded the stored hash.
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+        return user;
     }
 
     public Task<User?> FindByIdAsync(int id, CancellationToken ct) =>
@@ -72,21 +73,18 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         db.Users.Add(new User
         {
             Username = name,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password!),
+            PasswordHash = Hash(password!),
             IsAdmin = isAdmin,
             CreatedAt = DateTimeOffset.UtcNow
         });
 
         await db.SaveChangesAsync(ct);
-        logger.LogInformation("Created user {Username} (admin: {IsAdmin})", SanitizeForLog(name), isAdmin);
+        logger.LogInformation("Created user {Username} (admin: {IsAdmin})", LogSafe.Value(name), isAdmin);
 
         return new UserResult.Ok();
     }
 
-    /// <remarks>
-    /// Posts survive: Post.UploadedById is ON DELETE SET NULL, so removing whoever uploaded
-    /// something never damages the collection.
-    /// </remarks>
+    /// <remarks>Posts survive: UploadedById is ON DELETE SET NULL.</remarks>
     public async Task<UserResult> DeleteAsync(int userId, CancellationToken ct)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
@@ -123,7 +121,7 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         return new UserResult.Ok();
     }
 
-    /// <summary>Administrative reset — deliberately does not require the current password.</summary>
+    /// <summary>Admin reset; no current password needed.</summary>
     public async Task<UserResult> SetPasswordAsync(int userId, string? password, CancellationToken ct)
     {
         if (ValidatePassword(password) is { } problem) return new UserResult.Rejected(problem);
@@ -131,14 +129,14 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null) return new UserResult.Rejected("That user no longer exists.");
 
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password!);
+        user.PasswordHash = Hash(password!);
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation("Password reset for {Username}", user.Username);
         return new UserResult.Ok();
     }
 
-    /// <summary>Self-service change, which does require proving the current password.</summary>
+    /// <summary>Self-service change; requires the current password.</summary>
     public async Task<UserResult> ChangeOwnPasswordAsync(
         int userId, string? currentPassword, string? newPassword, CancellationToken ct)
     {
@@ -148,27 +146,19 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         if (user is null) return new UserResult.Rejected("That user no longer exists.");
 
         if (string.IsNullOrEmpty(currentPassword)
-            || !BCrypt.Net.BCrypt.Verify(currentPassword, user.PasswordHash))
+            || !Verify(user, currentPassword))
         {
             return new UserResult.Rejected("Your current password is not correct.");
         }
 
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword!);
+        user.PasswordHash = Hash(newPassword!);
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation("User {Username} changed their own password", user.Username);
         return new UserResult.Ok();
     }
 
-    /// <summary>
-    /// Stores the palette to use on each side of the header toggle.
-    /// </summary>
-    /// <remarks>
-    /// Anything that is not a palette belonging to that mode is stored as null — the stock
-    /// look — rather than rejected. The values come from a pair of selects, so a bad one means
-    /// a stale id or a hand-edited post, neither of which is worth an error message; silently
-    /// landing on the default is the better failure.
-    /// </remarks>
+    /// <summary>Stores each mode's palette. Unknown ids store as null rather than erroring.</summary>
     public async Task<UserResult> SetThemesAsync(int userId, string? light, string? dark, CancellationToken ct)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
@@ -183,11 +173,7 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
 
     // ---- seeding -------------------------------------------------------
 
-    /// <summary>
-    /// Brings the admin account in line with <c>BOH_ADMIN_PASSWORD</c> at startup. The hash
-    /// is only rewritten when the configured password actually changed, so an unchanged
-    /// deployment does not churn the row on every boot.
-    /// </summary>
+    /// <summary>Applies <c>BOH_ADMIN_PASSWORD</c> at startup, rewriting only on change.</summary>
     public async Task SeedAdminAsync(string? password, CancellationToken ct)
     {
         var admin = await db.Users.FirstOrDefaultAsync(u => u.Username == AdminUsername, ct);
@@ -209,7 +195,7 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
             db.Users.Add(new User
             {
                 Username = AdminUsername,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+                PasswordHash = Hash(password),
                 IsAdmin = true,
                 CreatedAt = DateTimeOffset.UtcNow
             });
@@ -221,19 +207,16 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
 
         var changed = false;
 
-        // Re-assert the admin flag. This account is the documented way back in, so leaving it
-        // demoted after a mistake would strand the operator outside their own instance.
+        // This account is the way back in; never leave it demoted.
         if (!admin.IsAdmin)
         {
             admin.IsAdmin = true;
             changed = true;
         }
 
-        if (!BCrypt.Net.BCrypt.Verify(password, admin.PasswordHash))
-        {
-            admin.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
-            changed = true;
-        }
+        var previousHash = admin.PasswordHash;
+        if (!Verify(admin, password)) admin.PasswordHash = Hash(password);
+        changed |= admin.PasswordHash != previousHash;
 
         if (changed)
         {
@@ -244,11 +227,23 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
 
     // ---- internals -----------------------------------------------------
 
+    private static readonly PasswordHasher<User> Hasher = new();
+
+    private static string Hash(string password) => Hasher.HashPassword(null!, password);
+
+    /// <summary>Checks a password, upgrading the stored hash when the hasher asks for it.</summary>
+    private static bool Verify(User user, string password)
+    {
+        // Leftover BCrypt hash: no longer verifiable, and not base64, which the hasher throws on.
+        if (user.PasswordHash.StartsWith("$2", StringComparison.Ordinal)) return false;
+
+        var result = Hasher.VerifyHashedPassword(user, user.PasswordHash, password);
+        if (result == PasswordVerificationResult.SuccessRehashNeeded) user.PasswordHash = Hash(password);
+        return result != PasswordVerificationResult.Failed;
+    }
+
     private Task<int> CountOtherAdminsAsync(int excludingUserId, CancellationToken ct) =>
         db.Users.CountAsync(u => u.IsAdmin && u.Id != excludingUserId, ct);
-
-    private static string SanitizeForLog(string? value) =>
-        (value ?? "").Replace("\r", "").Replace("\n", "");
 
     private static string Normalize(string? username) => (username ?? "").Trim().ToLowerInvariant();
 

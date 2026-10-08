@@ -1,10 +1,6 @@
 namespace Boh.Web.Data.Entities;
 
-/// <summary>
-/// Why a tag is attached to a post. Without this distinction there is no way to tell
-/// whether <c>format:reaction_image</c> was typed by a user or derived from <c>meme:pondering_my_orb</c>,
-/// which makes correct removal impossible.
-/// </summary>
+/// <summary>Why a tag is on a post; needed to remove implied tags correctly.</summary>
 public enum TagSource
 {
     /// <summary>Added directly by a user or an importer. Survives implication changes.</summary>

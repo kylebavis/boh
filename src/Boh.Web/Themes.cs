@@ -2,38 +2,13 @@ using System.Text.Json;
 
 namespace Boh.Web;
 
-/// <summary>
-/// One packaged color scheme.
-/// </summary>
-/// <param name="Id">
-/// Written to <c>data-theme-name</c>, which selects a block in themes.css. Also what is
-/// stored against the user row.
-/// </param>
-/// <param name="Label">What the account page shows.</param>
-/// <param name="Mode">
-/// The Pico base the palette is built on. A scheme is inherently light or dark — Monokai has
-/// no light counterpart, and inventing one would not be Monokai — so each belongs to exactly
-/// one side of the toggle.
-/// </param>
+/// <summary>A packaged color scheme. <paramref name="Id"/> selects a block in themes.css; each belongs to one mode.</summary>
 public sealed record Theme(string Id, string Label, string Mode);
 
 /// <summary>
-/// The packaged color schemes, in one place so the account page, the pre-paint script and
-/// themes.css cannot drift apart.
+/// The packaged schemes. Which mode is showing is per device (localStorage); which palette
+/// each mode uses is per user (row).
 /// </summary>
-/// <remarks>
-/// Two independent pieces of state make up "the theme":
-/// <list type="bullet">
-/// <item>
-/// which side of the toggle is showing — auto, light or dark. Per device, held in
-/// <c>localStorage</c>, because it answers "what suits this screen right now".
-/// </item>
-/// <item>
-/// which palette each side uses. Per user, held on the row, because it is a preference that
-/// should follow someone between their phone and their desktop.
-/// </item>
-/// </list>
-/// </remarks>
 public static class Themes
 {
     public const string LightMode = "light";
@@ -42,11 +17,7 @@ public static class Themes
     /// <summary>Holds auto|light|dark. Shared with the inline script in _Layout.</summary>
     public const string ModeStorageKey = "boh:theme";
 
-    /// <summary>
-    /// Holds <c>{"light":id,"dark":id}</c> for visitors with no row to store it on — anonymous
-    /// browsing on a public-read instance, and <c>BOH_AUTH_MODE=none</c>, where there are no
-    /// accounts at all.
-    /// </summary>
+    /// <summary>Palette choice for visitors with no account row.</summary>
     public const string PaletteStorageKey = "boh:palettes";
 
     public const string DefaultMode = "auto";
@@ -73,19 +44,11 @@ public static class Themes
 
     public static IReadOnlyList<Theme> For(string mode) => mode == DarkMode ? Dark : Light;
 
-    /// <summary>
-    /// Reduces anything that is not a palette belonging to <paramref name="mode"/> to null,
-    /// so a stale stored id — or a hand-edited form post — falls back to the stock look rather
-    /// than producing a <c>data-theme-name</c> that matches no CSS block.
-    /// </summary>
+    /// <summary>Null for anything that isn't a palette of <paramref name="mode"/>.</summary>
     public static string? Normalize(string? id, string mode) =>
         !string.IsNullOrEmpty(id) && For(mode).Any(t => t.Id == id) ? id : null;
 
-    /// <summary>
-    /// The mode-to-palette map the pre-paint script applies once it has resolved which side
-    /// of the toggle is showing. Entries with no palette are omitted rather than sent as null,
-    /// so the script's lookup is a plain truthiness test.
-    /// </summary>
+    /// <summary>Mode-to-palette map for the pre-paint script; unset modes omitted.</summary>
     public static string PaletteMapJson(string? light, string? dark)
     {
         var map = new Dictionary<string, string>();

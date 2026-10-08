@@ -125,8 +125,22 @@ public class UserServiceTests
         var stored = (await env.Db.Users.SingleAsync(u => u.Username == "friend", Ct)).PasswordHash;
 
         Assert.DoesNotContain(Password, stored);
-        Assert.StartsWith("$2", stored);
     }
+
+    [Fact]
+    public async Task A_legacy_bcrypt_hash_is_refused_without_throwing()
+    {
+        using var env = new TestEnvironment();
+        await env.Users.CreateAsync("friend", Password, false, Ct);
+        await env.Db.Users.Where(u => u.Username == "friend")
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.PasswordHash, LegacyBcryptHash), Ct);
+        env.Db.ChangeTracker.Clear();
+
+        Assert.Null(await env.Users.AuthenticateAsync("friend", Password, Ct));
+    }
+
+    /// <summary>The shape of hash older releases stored.</summary>
+    private const string LegacyBcryptHash = "$2a$11$abcdefghijklmnopqrstuuJ4Vf7yH9qQ1m2n3o4p5q6r7s8t9u0v1w";
 
     // ---- the lockout guards --------------------------------------------
 

@@ -1,36 +1,30 @@
 :root {
     --boh-thumb-height: 200px;
-    /* Comfortable tap target. Below roughly this size, touch accuracy drops sharply. */
+    /* Comfortable tap target. */
     --boh-tap-target: 2.75rem;
 }
 
 /* Header / nav --------------------------------------------------------- */
 
 header nav {
-    /* Wraps rather than overflowing once search and account links join the bar. */
+    /* Wraps once search and account links join the bar. */
     flex-wrap: wrap;
     gap: 0.25rem 0.5rem;
 }
 
-/*
-   Pico lays every `nav ul` out as a single non-wrapping flex row, so wrapping the nav alone
-   was not enough: the list of links stayed one rigid row and, on a phone, pushed the theme
-   toggle past the right edge and left the whole page scrolling sideways. Letting the lists
-   wrap too spills the links onto as many rows as the width needs.
-*/
+/* Pico's nav ul doesn't wrap; without this the toggle overflows on phones. */
 header nav > ul {
     flex-wrap: wrap;
     min-width: 0;
 }
 
-/* Rows break between links, never inside one: "Sign out" was splitting across two lines. */
+/* Break between links, never inside one. */
 header nav > ul > li > a,
 header nav .link-button {
     white-space: nowrap;
 }
 
-/* The one nav label that is not a fixed word and so could still outgrow a phone row. The
-   anchor already carries the full name as its title. */
+/* The one variable-width nav label; the anchor's title has the full name. */
 header nav .nav-user {
     display: inline-block;
     max-width: 12rem;
@@ -63,14 +57,12 @@ header nav .brand {
     height: 1.25rem;
 }
 
-/* The selected state drives which glyph shows, so no JS touches the icons. */
 [data-theme-choice="auto"] #theme-toggle .icon-auto,
 [data-theme-choice="light"] #theme-toggle .icon-light,
 [data-theme-choice="dark"] #theme-toggle .icon-dark {
     display: block;
 }
 
-/* Without a stored choice the markup still renders a sensible default icon. */
 html:not([data-theme-choice]) #theme-toggle .icon-auto {
     display: block;
 }
@@ -113,7 +105,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     transform: scale(1.03);
 }
 
-/* Hover scaling is meaningless on touch and leaves the sticky-hover state behind. */
+/* No hover scaling on touch. */
 @media (hover: none) {
     .gallery-item:hover img {
         transform: none;
@@ -162,11 +154,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
 
 /* Post detail ---------------------------------------------------------- */
 
-/*
-   One column at every width: media on top, everything else beneath it. A side column put
-   the tags in a narrow strip that was mostly empty on a wide screen while leaving the area
-   under the image unused.
-*/
+/* One column: media on top, everything else beneath. */
 .post-view {
     display: flex;
     flex-direction: column;
@@ -183,8 +171,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
 .post-media img,
 .post-media video {
     max-width: 100%;
-    /* Keeps a portrait image from filling the viewport and pushing everything below it
-       off-screen. */
+    /* Keeps a portrait image from pushing everything off-screen. */
     max-height: 75vh;
     width: auto;
     height: auto;
@@ -197,7 +184,6 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     gap: 1.5rem;
 }
 
-/* Facts tile into however much width the media leaves, instead of stacking one per row. */
 .post-facts {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -209,7 +195,6 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     min-width: 0;
 }
 
-/* Long values get the full row rather than forcing every column wide. */
 .post-facts .fact-wide {
     grid-column: 1 / -1;
 }
@@ -227,14 +212,13 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     overflow-wrap: break-word;
 }
 
-/* A 64-character digest has no break opportunities and would push the page wide. */
+/* A digest has no break points. */
 .post-facts code {
     word-break: break-all;
     font-size: 0.75rem;
 }
 
-/* A row now that it is no longer in a narrow column; wraps to stacked full-width buttons
-   on a phone via the breakpoint below. */
+/* Stacks on phones via the breakpoint below. */
 .post-actions {
     display: flex;
     flex-wrap: wrap;
@@ -270,26 +254,20 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     border-color: var(--pico-del-color);
 }
 
-/* Wrapper for anything that legitimately exceeds the viewport (wide tables,
-   future tag-admin listings). The element scrolls; the page never does. */
+/* Scrolls itself so the page never does. */
 .scroll-x {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
 }
 
-/*
-   Caps a listing's height so one section cannot bury the next. The tag admin page stacks
-   four of them, and after the szurubooru import its ~80 aliases pushed the implications
-   form entirely below the fold — the feature looked missing.
-*/
+/* Caps a listing so one section can't bury the next. */
 .scroll-y {
     max-height: min(60vh, 26rem);
     overflow-y: auto;
     overscroll-behavior-y: contain;
 }
 
-/* Keeps the column headers in view while the body scrolls under them. The border cannot
-   travel with a sticky cell in every browser, so an inset shadow draws the divider. */
+/* Keeps headers in view; an inset shadow draws the border, which sticky cells lose. */
 .scroll-y thead th {
     position: sticky;
     top: 0;
@@ -298,7 +276,6 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     box-shadow: inset 0 -1px var(--pico-muted-border-color);
 }
 
-/* Filter box above a capped table, with its result count beside it. */
 .table-tools {
     display: flex;
     align-items: center;
@@ -314,9 +291,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     min-width: 0;
 }
 
-/* Pico treats a <small> directly after an input as helper text and gives it
-   `display: block; width: 100%`, which as a flex item pushed the row count onto its own
-   line. Reset it back to sitting beside the box. */
+/* Undo Pico's helper-text styling on a <small> after an input. */
 .table-tools small {
     display: inline;
     width: auto;
@@ -329,13 +304,49 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     color: var(--pico-muted-color);
 }
 
-.tag-section h2 {
+.tag-section h2,
+.source-section h2,
+.similar-section h2 {
     font-size: 1rem;
     margin-bottom: 0.5rem;
 }
 
-/* Wrapping pills rather than one tag per line: a stacked list turned a dozen tags into a
-   long thin column and wasted the full width available under the image. */
+.similar-section {
+    margin-top: 1.25rem;
+}
+
+/* Same grid as the gallery, so look-alikes compare at the same size. */
+.similar-section .gallery {
+    margin-block: 0.5rem 0;
+}
+
+.source-section {
+    margin-top: 1.25rem;
+}
+
+/* One URL per row. */
+.source-list {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+}
+
+.source-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.source-list li + li {
+    margin-top: 0.25rem;
+}
+
+.source-list a {
+    min-width: 0;
+    overflow-wrap: break-word;
+}
+
+/* Wrapping pills use the full width. */
 .tag-chips {
     list-style: none;
     margin: 0 0 0.75rem;
@@ -357,30 +368,18 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     border-radius: 5rem;
 }
 
-/* No remove control, so the right padding has nothing to sit against. */
 .tag-implied {
     padding-right: 0.6rem;
 }
 
-/*
-   overflow-wrap: break-word, not anywhere or word-break. Only `break-word` leaves the
-   element's min-content size intact, so an ordinary tag keeps its width and a genuinely
-   over-long one still breaks instead of overflowing. The other two shrink min-content to
-   a single character, which collapses the anchor inside this flex row.
-*/
-/*
-   min-width: 0 lets this shrink below its longest word so a long tag wraps instead of
-   shoving the count and remove button out past the sidebar edge. It is safe to pair with
-   break-word — unlike `anywhere` or `word-break`, break-word leaves the intrinsic
-   min-content size alone, so ordinary tags still lay out on one line.
-*/
+/* break-word keeps min-content intact; anywhere/word-break collapse the anchor. */
+/* min-width: 0 lets a long tag wrap instead of overflowing. */
 .tag-chip a,
 .tag-link {
     text-decoration: none;
     min-width: 0;
     overflow-wrap: break-word;
-    /* --tag-color is set per element from the tag's namespace; plain tags fall through to
-       the theme's link color so they still track light/dark. */
+    /* Per-namespace color; plain tags use the link color. */
     color: var(--tag-color, var(--pico-primary));
 }
 
@@ -394,9 +393,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     border: 1px solid var(--pico-muted-border-color);
 }
 
-/* A native color input is a fixed-size control, not a text field that should stretch.
-   Scoped to .pair-form so it outranks that rule's `.pair-form input`, which is more
-   specific than a bare class would be. */
+/* Fixed-size control; scoped to outrank .pair-form input. */
 .pair-form .color-input {
     flex: 0 0 auto;
     width: 4rem;
@@ -404,8 +401,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     min-height: var(--boh-tap-target);
 }
 
-/* Derived tags read as secondary so it is obvious they were not typed by hand — dimmed
-   rather than recolored, so the namespace is still legible. */
+/* Implied tags dimmed, not recolored. */
 .tag-implied {
     opacity: 0.7;
 }
@@ -420,7 +416,8 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     flex-shrink: 0;
 }
 
-.tag-remove {
+.tag-remove,
+.source-remove {
     all: unset;
     cursor: pointer;
     flex-shrink: 0;
@@ -435,28 +432,33 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
 }
 
 .tag-remove:hover,
-.tag-remove:focus-visible {
+.tag-remove:focus-visible,
+.source-remove:hover,
+.source-remove:focus-visible {
     color: var(--pico-del-color);
     background: var(--pico-secondary-background);
 }
 
-.tag-error {
+.tag-error,
+.source-error {
     color: var(--pico-del-color);
 }
 
-.tag-add {
+.tag-add,
+.source-add {
     display: flex;
     gap: 0.4rem;
     margin: 0;
-    /* An add-a-tag box does not need the whole page width. */
     max-width: 28rem;
 }
 
-.tag-add input {
+.tag-add input,
+.source-add input {
     margin: 0;
 }
 
-.tag-add button {
+.tag-add button,
+.source-add button {
     margin: 0;
     width: auto;
     flex-shrink: 0;
@@ -468,11 +470,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     position: relative;
 }
 
-/*
-   Wraps a single completing input and its dropdown so the panel has a full-width box to
-   align to. It takes the flex sizing the input would otherwise get, because inside
-   .pair-form the wrapper is the flex item now, not the input.
-*/
+/* Takes the input's flex sizing inside .pair-form. */
 .suggest-field {
     display: block;
     position: relative;
@@ -485,12 +483,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     width: 100%;
 }
 
-/*
-   display and the li resets are load-bearing, not tidiness. The search box lives inside
-   <nav>, and Pico styles `nav ul { display: flex }` with `nav li { display: inline-block }`
-   — which this dropdown inherits simply by being nested there. That laid the suggestions out
-   as columns, each collapsed to one character wide, rendering the names vertically.
-*/
+/* Undo Pico's nav ul/li layout, which this inherits inside <nav>. */
 .suggestion-list {
     display: block;
     position: absolute;
@@ -503,7 +496,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     border: 1px solid var(--pico-muted-border-color);
     border-radius: var(--pico-border-radius);
     box-shadow: var(--pico-card-box-shadow);
-    /* Roughly eight rows; beyond that the list scrolls rather than covering the page. */
+    /* About eight rows, then scroll. */
     max-height: 21rem;
     overflow-y: auto;
 }
@@ -522,19 +515,19 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    /* Comfortable for a thumb, not just a mouse. */
     min-height: 2.5rem;
     padding: 0.35rem 0.5rem;
     border-radius: var(--pico-border-radius);
 }
 
+/* Marks, not focuses: focus stays in the input (aria-activedescendant). */
 .suggestion:hover,
-.suggestion:focus-visible {
+.suggestion:focus-visible,
+.suggestion.is-active {
     background: var(--pico-secondary-background);
 }
 
-/* One tag per line: a long name is truncated rather than wrapped, so every row stays the
-   same height and the list can be scanned down. */
+/* Truncated, so rows stay one line. */
 .suggestion-name {
     flex: 1 1 auto;
     min-width: 0;
@@ -563,24 +556,20 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     margin: 0;
 }
 
-.head-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-/* The page heading is a flex row, so the following section's h2 would otherwise butt
-   straight up against it. */
+/* Spacing below the flex heading row. */
 .page-head {
     margin-bottom: 1.5rem;
+}
+
+h1 + section {
+    margin-top: 1.5rem;
 }
 
 section + section {
     margin-top: 2rem;
 }
 
-/* Pico stretches form buttons to full width, which reads as a banner rather than an
-   action for a single standalone control. */
+/* Pico makes form buttons full width. */
 .action-form {
     margin: 0;
 }
@@ -600,7 +589,6 @@ section + section {
     margin-bottom: 1rem;
 }
 
-/* A filter box does not need the full width of a desktop monitor. */
 .filter-form {
     max-width: 32rem;
 }
@@ -639,38 +627,16 @@ section + section {
     font-size: 0.8rem;
 }
 
-.maintenance-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-.maintenance-actions form {
-    margin: 0;
-}
-
-.maintenance-actions button {
-    margin: 0;
-    width: auto;
-}
-
 /* Nav search ----------------------------------------------------------- */
 
 .nav-search {
     flex: 1 1 12rem;
     min-width: 0;
-    /* Stops the field stretching across an ultrawide monitor. Wider than any phone, so
-       it never constrains the full-width mobile layout below. */
+    /* Caps width on wide screens; never constrains mobile. */
     max-width: 32rem;
 }
 
-/*
-   Pico makes `nav ul` a flex container, so this `li` is a flex item and defaults to
-   flex: 0 1 auto — sized to the input's intrinsic ~20-character width no matter how much
-   room the row has. Without this it stops well short of the right edge and the form's
-   width: 100% just inherits the shortfall. The padding reset aligns the field with the
-   brand and the gallery below rather than insetting it by Pico's nav spacing.
-*/
+/* Pico's nav li is flex: 0 1 auto; let the search field fill the row. */
 .nav-search li {
     flex: 1 1 auto;
     min-width: 0;
@@ -699,7 +665,6 @@ section + section {
     display: inline;
 }
 
-/* A button that has to sit inside a nav list without looking like a button. */
 .link-button {
     all: unset;
     cursor: pointer;
@@ -713,6 +678,18 @@ section + section {
 .link-button:hover,
 .link-button:focus-visible {
     text-decoration: underline;
+}
+
+/* Passkeys ------------------------------------------------------------- */
+
+/* Set apart from the password form. */
+.passkey-signin {
+    margin-top: 1.5rem;
+}
+
+.passkey-signin button {
+    width: 100%;
+    margin: 0;
 }
 
 /* Import --------------------------------------------------------------- */
@@ -775,16 +752,65 @@ section + section {
     overflow-wrap: break-word;
 }
 
+.import-job {
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    padding: 0.75rem;
+    margin-block: 0.75rem;
+}
+
+.import-job-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    flex-wrap: wrap;
+}
+
+/* Long URLs have no break points. */
+.import-job-head a {
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+.import-job .notice {
+    margin-block: 0.5rem;
+}
+
+.import-job h4 {
+    margin: 0.75rem 0 0.5rem;
+    font-size: 1rem;
+}
+
+/* Background jobs ------------------------------------------------------ */
+
+.job-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    flex-wrap: wrap;
+}
+
+.job-line form {
+    margin: 0;
+}
+
+.job-line button {
+    margin: 0;
+    width: auto;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.8rem;
+}
+
+.job-running progress {
+    margin: 0.5rem 0 0;
+}
+
 /* Responsive ----------------------------------------------------------- */
 
 @media (max-width: 768px) {
-    /*
-       Pico's 1rem of vertical padding on a nav item reads as breathing room around a
-       single row; once the links wrap it stacks into a 2rem trench between every pair of
-       rows. Tightened to a 44px row pitch: enough that the links' own padded hit areas
-       (40px tall, drawn outside the list item by Pico's negative margins) still clear one
-       another, and no more than the tap target the rest of the app uses.
-    */
+    /* Tighter wrapped-nav rows, still clearing Pico's 40px hit areas. */
     header nav > ul > li {
         padding-block: 0.5rem;
     }
@@ -793,7 +819,6 @@ section + section {
         row-gap: 0.25rem;
     }
 
-    /* Full-width stacked buttons are easier to hit than a wrapped row. */
     .post-actions a[role="button"],
     .post-actions button,
     .post-actions form {
@@ -806,7 +831,7 @@ section + section {
         --boh-thumb-height: 150px;
     }
 
-    /* Keeps two columns on a phone instead of collapsing to one oversized tile. */
+    /* Two columns on a phone. */
     .gallery {
         grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
         gap: 0.5rem;
@@ -816,14 +841,13 @@ section + section {
         font-size: 1.1rem;
     }
 
-    /* The search field gets its own row rather than squeezing the nav links. */
+    /* Search gets its own row. */
     .nav-search {
         order: 3;
         flex-basis: 100%;
     }
 
-    /* One field per row. .suggest-field is included because it, not the input it wraps, is
-       the flex item once a field carries autocomplete. */
+    /* .suggest-field is the flex item when a field has autocomplete. */
     .pair-form input,
     .pair-form .suggest-field,
     .filter-form input {
@@ -850,7 +874,6 @@ section + section {
     margin: 0;
 }
 
-/* Compact forms living inside a table cell. */
 .row-form {
     display: flex;
     gap: 0.35rem;
@@ -872,9 +895,45 @@ section + section {
     margin: 0;
 }
 
-/* Destructive, but an outline button rather than a filled one — these sit in a dense table
-   where a row of solid red would dominate the page. */
+/* Outline, not filled, in a dense table. */
 .danger-text {
     --pico-color: var(--pico-del-color);
     --pico-border-color: var(--pico-del-color);
+}
+
+/* A stored file that looks like an existing post: highlighted, not an error. */
+.hint-duplicate {
+    align-self: flex-start;
+    background: var(--pico-mark-background-color);
+    color: var(--pico-mark-color);
+    padding: 0.1rem 0.35rem;
+    border-radius: var(--pico-border-radius);
+}
+
+/* Thumbnails scroll sideways inside the card. */
+.dup-cluster {
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    padding: 0.75rem;
+    margin-block: 0.75rem;
+}
+
+.dup-posts {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: 0.5rem;
+}
+
+.dup-posts a {
+    flex: 0 0 auto;
+    line-height: 0;
+}
+
+.dup-posts img {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: var(--pico-border-radius);
 }

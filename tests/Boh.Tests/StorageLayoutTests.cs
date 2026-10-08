@@ -99,9 +99,9 @@ public class StorageLayoutTests
 
     [Theory]
     [InlineData("cifs")]
-    [InlineData("smb3")]
+    [InlineData("smb2")]
     [InlineData("nfs4")]
-    [InlineData("fuse.sshfs")]
+    [InlineData("fuse")]
     public void Network_filesystems_are_recognized(string fsType)
     {
         Assert.True(FilesystemProbe.IsNetworkFilesystem(fsType));
@@ -125,7 +125,7 @@ public class StorageLayoutTests
         // rather than guessing, and that is an acceptable answer.
         var fsType = FilesystemProbe.GetFilesystemType(Path.GetTempPath());
 
-        if (OperatingSystem.IsLinux() && File.Exists("/proc/self/mountinfo"))
+        if (OperatingSystem.IsLinux())
         {
             Assert.False(string.IsNullOrWhiteSpace(fsType));
         }

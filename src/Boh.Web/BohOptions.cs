@@ -1,11 +1,6 @@
 namespace Boh.Web;
 
-/// <summary>
-/// Runtime configuration, read from <c>BOH_*</c> environment variables.
-/// Names are read literally rather than bound by convention, because the documented
-/// names use single underscores (<c>BOH_DATA_PATH</c>) which the configuration binder
-/// would otherwise not match against PascalCase properties.
-/// </summary>
+/// <summary>Runtime configuration from <c>BOH_*</c> environment variables, read by literal name.</summary>
 public sealed class BohOptions
 {
     public string DataPath { get; init; } = "/data";
@@ -18,10 +13,7 @@ public sealed class BohOptions
     public int PageSize { get; init; } = 40;
     public int ThumbnailMaxEdge { get; init; } = 400;
 
-    // Each location can be pointed somewhere else so the three kinds of state can live on
-    // different storage — the usual reason being bulk media on a NAS while the database
-    // stays on local disk. Unset means "under DataPath", which is what single-volume
-    // deployments have always had, so existing installs are unaffected.
+    // Unset means under DataPath.
     public string? DatabasePathOverride { get; init; }
     public string? OriginalsPathOverride { get; init; }
     public string? ThumbsPathOverride { get; init; }
@@ -33,20 +25,22 @@ public sealed class BohOptions
     public string ThumbsDir => ThumbsPathOverride ?? Path.Combine(DataPath, "thumbs");
     public string KeysDir => KeysPathOverride ?? Path.Combine(DataPath, "keys");
 
-    /// <summary>
-    /// Scratch space for gallery-dl downloads. Its contents are read and rewritten into
-    /// the blob store regardless, so it gains nothing from sharing a volume with originals
-    /// and defaults to local storage where it is likely to be faster.
-    /// </summary>
+    /// <summary>gallery-dl scratch space. Defaults to local storage.</summary>
     public string ImportTempDir => ImportTempPathOverride ?? Path.Combine(DataPath, "tmp");
 
-    /// <summary>
-    /// Upload staging, deliberately not configurable and always inside the originals root.
-    /// Committing a blob is a <c>File.Move</c>; if this sat on another volume every upload
-    /// would silently become a cross-device copy — slower, and no longer atomic. Keeping it
-    /// here guarantees the commit is a rename within one filesystem.
-    /// </summary>
+    /// <summary>Always inside the originals root, so committing a blob is an atomic rename.</summary>
     public string UploadStagingDir => Path.Combine(OriginalsDir, ".staging");
+
+    /// <summary>WebAuthn relying party id. Unset, each request uses its own host. Changing it invalidates passkeys.</summary>
+    public string? PasskeyRpIdOverride { get; init; }
+
+    /// <summary>Comma-separated origins, scheme and port included. Unset, only the request's own origin.</summary>
+    public string? PasskeyOriginsOverride { get; init; }
+
+    /// <summary>Parsed form of <see cref="PasskeyOriginsOverride"/>; empty when unset.</summary>
+    public IReadOnlyList<string> PasskeyOrigins =>
+        (PasskeyOriginsOverride ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     public string GalleryDlConfigPath => Path.Combine(DataPath, "gallery-dl.conf");
 
@@ -54,11 +48,7 @@ public sealed class BohOptions
 
     public bool AuthDisabled => string.Equals(AuthMode, "none", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Foreign key enforcement is off by default in SQLite and must be requested per
-    /// connection; Default Timeout becomes the busy timeout, which matters once the
-    /// WAL writer and a reader overlap.
-    /// </summary>
+    /// <summary>Foreign keys must be enabled per connection; Default Timeout is the busy timeout.</summary>
     public string ConnectionString =>
         $"Data Source={DatabasePath};Foreign Keys=True;Default Timeout=30;Pooling=True";
 
@@ -74,6 +64,8 @@ public sealed class BohOptions
             KeysPathOverride = Optional(c, "BOH_KEYS_PATH"),
             ImportTempPathOverride = Optional(c, "BOH_TEMP_PATH"),
             AuthMode = Str(c, "BOH_AUTH_MODE", defaults.AuthMode),
+            PasskeyRpIdOverride = Optional(c, "BOH_PASSKEY_RP_ID"),
+            PasskeyOriginsOverride = Optional(c, "BOH_PASSKEY_ORIGINS"),
             AdminPassword = c["BOH_ADMIN_PASSWORD"],
             PublicRead = Bool(c, "BOH_PUBLIC_READ", defaults.PublicRead),
             MaxUploadMb = Int(c, "BOH_MAX_UPLOAD_MB", defaults.MaxUploadMb),
@@ -87,7 +79,6 @@ public sealed class BohOptions
     private static string Str(IConfiguration c, string key, string fallback)
         => string.IsNullOrWhiteSpace(c[key]) ? fallback : c[key]!;
 
-    /// <summary>Null when unset, so the caller can fall back to a DataPath-relative default.</summary>
     private static string? Optional(IConfiguration c, string key)
         => string.IsNullOrWhiteSpace(c[key]) ? null : c[key]!.Trim();
 

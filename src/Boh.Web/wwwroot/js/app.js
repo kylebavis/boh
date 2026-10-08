@@ -1,18 +1,8 @@
-// Theme toggle, and the theme preference form on the account page.
-//
-// Three attributes on <html> carry the state, all set before first paint by the inline
-// script in <head>:
-//
-//   data-theme-choice  auto | light | dark — which side of the toggle is showing, and what
-//                      drives the button's icon
-//   data-theme         light | dark, the Pico base. Always present: "auto" is resolved
-//                      against the OS rather than left to prefers-color-scheme, so that a
-//                      palette can be looked up by a definite mode
-//   data-theme-name    the packaged palette keying a block in themes.css, absent when that
-//                      side is set to Pico's stock look
-//
-// That inline script also exposes window.bohTheme so the resolve-and-apply logic lives in
-// exactly one place. This file only wires events to it.
+// Theme toggle and the account page's theme form.
+// State lives on <html>, set before paint by the inline script in <head>:
+// data-theme-choice (auto|light|dark), data-theme (resolved Pico base) and
+// data-theme-name (palette, absent for stock). That script exposes window.bohTheme;
+// this file only wires events to it.
 (function () {
     'use strict';
 
@@ -28,8 +18,7 @@
         try {
             localStorage.setItem(key, value);
         } catch (e) {
-            // Storage unavailable (private mode, cookies blocked). The change still applies
-            // for this page view; it just will not persist.
+            // Storage unavailable: applies for this page view only.
         }
     }
 
@@ -55,14 +44,11 @@
         });
     }
 
-    // Following the OS only means anything if it keeps following it.
     theme.media.addEventListener('change', function () {
         if (theme.choice() === 'auto') theme.apply('auto');
     });
 
-    // The account page's palette form. Signed in it posts to the server and this only
-    // previews the change; with no account to store it against — BOH_AUTH_MODE=none —
-    // localStorage is the whole of the persistence.
+    // Signed in, the form posts and this only previews; with auth off, localStorage is the persistence.
     var form = document.getElementById('theme-form');
     if (!form) return;
 
@@ -77,8 +63,7 @@
         return map;
     }
 
-    // Without an account the server renders both selects as "Default", because it has
-    // nothing to render them from. Fill them in from where the choice actually lives.
+    // With no account the server can't prefill the selects; fill them from localStorage.
     if (local) {
         var stored = {};
         try {
@@ -90,9 +75,7 @@
         });
     }
 
-    // Live preview. Only the side currently showing can change on screen — picking a dark
-    // scheme while in light mode does nothing visible until the toggle is used, which is
-    // honest about what was actually selected.
+    // Live preview of the side currently showing.
     Array.prototype.forEach.call(selects, function (select) {
         select.addEventListener('change', function () {
             var map = palettes();
@@ -112,48 +95,57 @@
     }
 })();
 
-// Tag autocomplete: clicking a suggestion replaces the token being typed rather than the
-// whole field, so a partly-written multi-tag query survives.
-//
-// Fields marked data-suggest-single hold exactly one tag (the tag-admin forms), so there a
-// suggestion replaces the whole value.
+// Tag autocomplete: a suggestion replaces the token being typed (or the whole value for
+// data-suggest-single). Keyboard: Up/Down walk, Enter takes, Escape/Tab dismiss. Nothing is
+// highlighted until an arrow key, so Enter still submits.
 (function () {
     'use strict';
+
+    var ACTIVE = 'is-active';
 
     function inputFor(panel) {
         return document.querySelector('[data-suggest-for="#' + panel.id + '"]');
     }
 
-    /*
-       Every completing input sends its term as `q`, whatever the field is actually named.
-       htmx would otherwise send the field's own name — `from`, `canonical`, `child` — and the
-       endpoint would find no term and return nothing. Normalizing here rather than teaching
-       the endpoint six field names keeps the two ends from having to agree on form details.
-    */
-    document.addEventListener('htmx:configRequest', function (event) {
-        var input = event.detail.elt;
+    function panelFor(input) {
+        var selector = input.getAttribute('data-suggest-for');
+        return selector ? document.querySelector(selector) : null;
+    }
+
+    function options(panel) {
+        return Array.prototype.slice.call(panel.querySelectorAll('.suggestion'));
+    }
+
+    function highlighted(panel) {
+        return panel.querySelector('.suggestion.' + ACTIVE);
+    }
+
+    // Every completing input sends its term as `q`, whatever the field is named.
+    document.addEventListener('htmx:config:request', function (event) {
+        var input = event.detail.ctx.sourceElement;
         if (!input || !input.matches || !input.matches('[data-suggest-for]')) return;
 
-        var params = event.detail.parameters;
+        var params = event.detail.ctx.request.body;
         var name = input.getAttribute('name');
-
-        // htmx 2 hands over a FormData; earlier versions a plain object.
-        if (params && typeof params.set === 'function') {
-            if (name) params.delete(name);
-            params.set('q', input.value);
-        } else if (params) {
-            if (name) delete params[name];
-            params.q = input.value;
-        }
+        if (name) params.delete(name);
+        params.set('q', input.value);
     });
 
-    // Reflects dropdown state for screen readers on the fields that declare a combobox role.
-    document.addEventListener('htmx:afterSwap', function (event) {
-        var panel = event.target;
+    // ARIA state and row ids, made unique per panel here. Fires on the source, not the target.
+    document.addEventListener('htmx:after:swap', function (event) {
+        var panel = event.detail.ctx.target;
         if (!panel || !panel.classList || !panel.classList.contains('suggestions')) return;
 
+        options(panel).forEach(function (option, index) {
+            option.id = panel.id + '-option-' + index;
+        });
+
         var input = inputFor(panel);
-        if (input && input.hasAttribute('aria-expanded')) {
+        if (!input) return;
+
+        input.removeAttribute('aria-activedescendant');
+
+        if (input.hasAttribute('aria-expanded')) {
             input.setAttribute('aria-expanded', panel.childElementCount > 0 ? 'true' : 'false');
         }
     });
@@ -162,44 +154,79 @@
         panel.innerHTML = '';
 
         var input = inputFor(panel);
-        if (input && input.hasAttribute('aria-expanded')) {
+        if (!input) return;
+
+        input.removeAttribute('aria-activedescendant');
+
+        if (input.hasAttribute('aria-expanded')) {
             input.setAttribute('aria-expanded', 'false');
         }
+    }
+
+    function highlight(panel, option) {
+        options(panel).forEach(function (candidate) {
+            var on = candidate === option;
+            candidate.classList.toggle(ACTIVE, on);
+            candidate.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+
+        var input = inputFor(panel);
+        if (!input) return;
+
+        if (option) {
+            input.setAttribute('aria-activedescendant', option.id);
+            if (option.scrollIntoView) option.scrollIntoView({ block: 'nearest' });
+        } else {
+            input.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function move(panel, delta) {
+        var list = options(panel);
+        if (list.length === 0) return;
+
+        var current = list.indexOf(highlighted(panel));
+
+        // Wraps at both ends.
+        var next = current === -1
+            ? (delta > 0 ? 0 : list.length - 1)
+            : (current + delta + list.length) % list.length;
+
+        highlight(panel, list[next]);
     }
 
     function replaceLastToken(value, replacement) {
         var trailing = /\s$/.test(value);
         var tokens = value.split(/\s+/).filter(function (t) { return t.length > 0; });
 
-        // A trailing space means the caret is on a fresh token, so nothing gets replaced.
+        // Trailing space: nothing to replace.
         if (!trailing && tokens.length > 0) tokens.pop();
 
         tokens.push(replacement);
         return tokens.join(' ') + ' ';
     }
 
-    // Delegated so it keeps working after HTMX swaps the suggestion list.
+    function take(panel, option) {
+        var input = inputFor(panel);
+        if (!input) return;
+
+        var tag = option.dataset.tag || '';
+
+        // Single-tag fields take the whole value, no trailing space.
+        input.value = input.hasAttribute('data-suggest-single') ? tag : replaceLastToken(input.value, tag);
+
+        close(panel);
+        input.focus();
+    }
+
     document.addEventListener('click', function (event) {
         var button = event.target.closest('.suggestion');
         if (!button) return;
 
         var panel = button.closest('.suggestions');
-        if (!panel) return;
-
-        var input = inputFor(panel);
-        if (!input) return;
-
-        var tag = button.dataset.tag || '';
-
-        // A single-tag field takes the whole value, and with no trailing space: it is submitted
-        // as-is to a handler that parses one tag name, not a list.
-        input.value = input.hasAttribute('data-suggest-single') ? tag : replaceLastToken(input.value, tag);
-
-        close(panel);
-        input.focus();
+        if (panel) take(panel, button);
     });
 
-    // Dismiss suggestions when focus moves elsewhere.
     document.addEventListener('click', function (event) {
         document.querySelectorAll('.suggestions').forEach(function (panel) {
             if (panel.contains(event.target)) return;
@@ -212,19 +239,48 @@
     });
 
     document.addEventListener('keydown', function (event) {
-        if (event.key !== 'Escape') return;
-        document.querySelectorAll('.suggestions').forEach(close);
+        if (event.key === 'Escape') {
+            document.querySelectorAll('.suggestions').forEach(close);
+            return;
+        }
+
+        var input = event.target;
+        if (!input || !input.matches || !input.matches('[data-suggest-for]')) return;
+
+        var panel = panelFor(input);
+        if (!panel) return;
+
+        // Tab dismisses and lets focus move.
+        if (event.key === 'Tab') {
+            close(panel);
+            return;
+        }
+
+        if (options(panel).length === 0) return;
+
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            // Keeps the caret in place.
+            event.preventDefault();
+            move(panel, event.key === 'ArrowDown' ? 1 : -1);
+            return;
+        }
+
+        if (event.key === 'Enter') {
+            var option = highlighted(panel);
+            if (!option) return;
+
+            event.preventDefault();
+            take(panel, option);
+        }
     });
 })();
 
-// Live row filter for the tag-admin tables. Client-side because every row is already in the
-// document: a round trip per keystroke would be slower and no more accurate.
+// Client-side row filter for the tag-admin tables.
 (function () {
     'use strict';
 
     function rowText(row) {
-        // The actions cell is excluded deliberately — every row contains the word "Remove",
-        // so including it would make that term match everything.
+        // Skip the actions cell: every row says "Remove".
         return Array.prototype.filter
             .call(row.cells, function (cell) { return !cell.classList.contains('row-actions'); })
             .map(function (cell) { return cell.textContent; })
@@ -268,14 +324,13 @@
         document.querySelectorAll('[data-filter-table]').forEach(function (input) {
             input.addEventListener('input', function () { apply(input); });
 
-            // Escape clears rather than only closing something, since there is no dropdown here.
             input.addEventListener('keydown', function (event) {
                 if (event.key !== 'Escape' || input.value === '') return;
                 input.value = '';
                 apply(input);
             });
 
-            // A value restored by the browser on reload must take effect without a keystroke.
+            // Apply a value the browser restored on reload.
             if (input.value !== '') apply(input);
         });
     }
@@ -285,4 +340,73 @@
     } else {
         init();
     }
+})();
+
+// Clears a form after its own successful submit. Replaces hx-on attributes, which the
+// CSP blocks; delegated because htmx swaps the forms.
+(function () {
+    'use strict';
+
+    document.addEventListener('htmx:after:request', function (event) {
+        var form = event.target;
+
+        // Only the form itself: its autocomplete input issues requests on every keystroke.
+        if (!(form instanceof HTMLFormElement)) return;
+        if (!form.hasAttribute('data-reset-on-success')) return;
+        if (event.detail.ctx.response.status >= 400) return;
+
+        form.reset();
+    });
+})();
+
+// Error responses aren't swapped (see the htmx-config meta), so say so above the target.
+// One notice per target, cleared by its next successful swap.
+(function () {
+    'use strict';
+
+    // Keyed by id: an outerHTML swap detaches the old target.
+    function existing(target) {
+        return target.id ? document.querySelector('[data-error-for="' + CSS.escape(target.id) + '"]') : null;
+    }
+
+    function show(event) {
+        var ctx = event.detail.ctx;
+        var target = ctx && ctx.target;
+        if (!target || !target.isConnected || existing(target)) return;
+        if (event.detail.error && event.detail.error.name === 'AbortError') return;
+        // Failed suggestions aren't worth interrupting typing for.
+        if (ctx.sourceElement && ctx.sourceElement.matches('[data-suggest-for]')) return;
+
+        var notice = document.createElement('div');
+        notice.className = 'notice notice-error';
+        notice.setAttribute('role', 'alert');
+        if (target.id) notice.setAttribute('data-error-for', target.id);
+        notice.textContent = "That didn't work. Reload the page and try again.";
+        target.parentNode.insertBefore(notice, target);
+    }
+
+    document.addEventListener('htmx:response:error', show);
+    document.addEventListener('htmx:error', show);
+
+    // Also fires for the skipped swap of an error response, which must keep its notice.
+    document.addEventListener('htmx:after:swap', function (event) {
+        var ctx = event.detail.ctx;
+        if (ctx.response && ctx.response.status >= 400) return;
+
+        var notice = ctx.target && existing(ctx.target);
+        if (notice) notice.remove();
+    });
+})();
+
+// Confirms destructive submits; inline onsubmit is blocked by the CSP.
+(function () {
+    'use strict';
+
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement)) return;
+
+        var message = form.getAttribute('data-confirm');
+        if (message && !window.confirm(message)) event.preventDefault();
+    });
 })();

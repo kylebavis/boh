@@ -1,6 +1,7 @@
 using Boh.Web.Data.Entities;
 using Boh.Web.Services;
 using Boh.Web.Tags;
+using Boh.Web.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -8,7 +9,7 @@ namespace Boh.Web.Pages;
 
 public class IndexModel(PostService posts, TagService tags, BohOptions options) : PageModel
 {
-    public IReadOnlyList<Post> Posts { get; private set; } = [];
+    public IReadOnlyList<GalleryPost> Posts { get; private set; } = [];
     public int CurrentPage { get; private set; } = 1;
     public int TotalPages { get; private set; } = 1;
     public int TotalCount { get; private set; }
@@ -17,12 +18,7 @@ public class IndexModel(PostService posts, TagService tags, BohOptions options) 
     /// <summary>Gates the empty-state call to action, which is useless to a visitor who cannot upload.</summary>
     public bool CanUpload => options.AuthDisabled || User.Identity?.IsAuthenticated == true;
 
-    /// <summary>
-    /// <c>page</c> must be bound explicitly from the query string. Razor Pages reserves a
-    /// route value of that exact name for the page's own path, and route values win over the
-    /// query string — so a plain <c>int page</c> parameter received "/Index", failed to parse,
-    /// and silently arrived as 0, pinning the gallery to page one however you navigated.
-    /// </summary>
+    /// <summary><c>page</c> bound from the query explicitly: Razor Pages reserves that route value.</summary>
     public async Task OnGetAsync([FromQuery(Name = "page")] int page, string? q, CancellationToken ct)
     {
         Query = q;

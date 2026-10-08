@@ -28,13 +28,21 @@ RUN dotnet publish src/Boh.Web/Boh.Web.csproj \
         --no-restore \
         -o /app/publish
 
+# Split boh's own files from its dependencies so a code change ships ~1 MB rather than
+# re-sending Magick's native library and the rest in the same layer.
+RUN mkdir /app/own \
+    && cd /app/publish \
+    && mv Boh.Web.* appsettings*.json wwwroot /app/own/ \
+    && if [ -e web.config ]; then mv web.config /app/own/; fi
+
 # ---- runtime --------------------------------------------------------------
 # Debian rather than Alpine: this image also carries Python (gallery-dl) and the
 # Magick.NET native libraries, and glibc avoids a class of musl packaging problems.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
-# Pinned so an image rebuild cannot silently change importer behavior.
-ARG GALLERY_DL_VERSION=1.32.7
+# Pinned so an image rebuild cannot silently change importer behavior, and kept in a
+# requirements file so Dependabot can see the version and raise the upgrade as a PR.
+COPY requirements.txt /tmp/requirements.txt
 
 # libgomp1: OpenMP runtime the Magick.NET native library links against.
 # ffmpeg:   video probing (ffprobe) and thumbnail extraction.
@@ -51,8 +59,11 @@ RUN apt-get update \
     # environment externally managed (PEP 668), and --break-system-packages is exactly
     # the kind of override that later bites during a base image upgrade.
     && python3 -m venv /opt/gallery-dl \
-    && /opt/gallery-dl/bin/pip install --no-cache-dir "gallery-dl==${GALLERY_DL_VERSION}" \
-    && rm -rf /var/lib/apt/lists/* \
+    && /opt/gallery-dl/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
+    # Only needed to install; 16 MB otherwise.
+    && /opt/gallery-dl/bin/pip uninstall -y pip \
+    && apt-get purge -y --auto-remove python3-venv \
+    && rm -rf /var/lib/apt/lists/* /tmp/requirements.txt \
     # ffmpeg depends on libavdevice, which links the GL stack, which drags in Mesa's
     # software renderer and LLVM — about 180 MB of GPU driver in a container that only
     # ever decodes one frame to a file. The packages cannot be purged without taking
@@ -66,14 +77,18 @@ RUN apt-get update \
 
 ENV PATH="/opt/gallery-dl/bin:${PATH}"
 
+# Created and owned up front so the non-root user can write to a fresh volume. /app stays
+# root-owned: it is only read, and chowning it would duplicate every file into a new layer.
+# Above the copies so it stays cached across releases.
+RUN mkdir -p /data && chown $APP_UID:$APP_UID /data
+
 WORKDIR /app
 COPY --from=build /app/publish .
+COPY --from=build /app/own .
 
 ENV BOH_DATA_PATH=/data \
     ASPNETCORE_URLS=http://+:8080
 
-# Created and owned up front so the non-root user can write to a fresh volume.
-RUN mkdir -p /data && chown -R $APP_UID:$APP_UID /data /app
 VOLUME /data
 EXPOSE 8080
 

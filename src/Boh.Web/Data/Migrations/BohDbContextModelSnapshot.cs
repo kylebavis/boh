@@ -14,7 +14,104 @@ namespace Boh.Web.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
+
+            modelBuilder.Entity("Boh.Web.Data.Entities.ApiToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("Hash")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<long?>("LastUsedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Hash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ApiTokens");
+                });
+
+            modelBuilder.Entity("Boh.Web.Data.Entities.Passkey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("AttestationObject")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<byte[]>("ClientDataJson")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("CredentialId")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<bool>("IsBackedUp")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsBackupEligible")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsUserVerified")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("LastUsedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<uint>("SignCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Transports")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CredentialId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Passkeys");
+                });
 
             modelBuilder.Entity("Boh.Web.Data.Entities.Post", b =>
                 {
@@ -49,14 +146,15 @@ namespace Boh.Web.Data.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("PerceptualHash")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("PerceptualHashTried")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SourceUrl")
-                        .IsRequired()
-                        .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
                     b.Property<long>("UploadedAt")
@@ -70,6 +168,8 @@ namespace Boh.Web.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PerceptualHash");
+
                     b.HasIndex("Sha256")
                         .IsUnique();
 
@@ -79,6 +179,28 @@ namespace Boh.Web.Data.Migrations
                     b.HasIndex("UploadedById");
 
                     b.ToTable("Posts");
+                });
+
+            modelBuilder.Entity("Boh.Web.Data.Entities.PostSource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PostId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PostId", "Url")
+                        .IsUnique();
+
+                    b.ToTable("PostSources");
                 });
 
             modelBuilder.Entity("Boh.Web.Data.Entities.PostTag", b =>
@@ -119,6 +241,8 @@ namespace Boh.Web.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Name");
 
                     b.HasIndex("PostCount")
                         .IsDescending();
@@ -183,6 +307,24 @@ namespace Boh.Web.Data.Migrations
                     b.ToTable("TagNamespaces");
                 });
 
+            modelBuilder.Entity("Boh.Web.Data.Entities.TagNamespaceAlias", b =>
+                {
+                    b.Property<string>("Alias")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Alias");
+
+                    b.HasIndex("Canonical");
+
+                    b.ToTable("TagNamespaceAliases");
+                });
+
             modelBuilder.Entity("Boh.Web.Data.Entities.User", b =>
                 {
                     b.Property<int>("Id")
@@ -221,6 +363,28 @@ namespace Boh.Web.Data.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("Boh.Web.Data.Entities.ApiToken", b =>
+                {
+                    b.HasOne("Boh.Web.Data.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Boh.Web.Data.Entities.Passkey", b =>
+                {
+                    b.HasOne("Boh.Web.Data.Entities.User", "User")
+                        .WithMany("Passkeys")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Boh.Web.Data.Entities.Post", b =>
                 {
                     b.HasOne("Boh.Web.Data.Entities.User", "UploadedBy")
@@ -229,6 +393,17 @@ namespace Boh.Web.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("UploadedBy");
+                });
+
+            modelBuilder.Entity("Boh.Web.Data.Entities.PostSource", b =>
+                {
+                    b.HasOne("Boh.Web.Data.Entities.Post", "Post")
+                        .WithMany("Sources")
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Post");
                 });
 
             modelBuilder.Entity("Boh.Web.Data.Entities.PostTag", b =>
@@ -291,11 +466,18 @@ namespace Boh.Web.Data.Migrations
             modelBuilder.Entity("Boh.Web.Data.Entities.Post", b =>
                 {
                     b.Navigation("PostTags");
+
+                    b.Navigation("Sources");
                 });
 
             modelBuilder.Entity("Boh.Web.Data.Entities.Tag", b =>
                 {
                     b.Navigation("PostTags");
+                });
+
+            modelBuilder.Entity("Boh.Web.Data.Entities.User", b =>
+                {
+                    b.Navigation("Passkeys");
                 });
 #pragma warning restore 612, 618
         }

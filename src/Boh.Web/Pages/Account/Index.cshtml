@@ -59,6 +59,152 @@ else
     </section>
 }
 
+@if (!Model.AuthDisabled)
+{
+    <section id="passkeys">
+        <h2>Passkeys</h2>
+
+        <p>
+            <small class="muted">
+                Sign in with whatever unlocks your device — fingerprint, face, screen lock — or with a
+                hardware key, instead of typing a password. A passkey is bound to the address boh is
+                reached at, so one registered here will not work through a different hostname.
+            </small>
+        </p>
+
+        @if (!Model.PasskeysUsable)
+        {
+            <div class="notice" role="status">
+                Passkeys need HTTPS. This page arrived over plain HTTP, so adding one will not work
+                until there is TLS in front of boh — or, for local development, until
+                <code>BOH_PASSKEY_ORIGINS</code> names this address.
+            </div>
+        }
+
+        @if (Model.Passkeys.Count > 0)
+        {
+            var now = DateTimeOffset.UtcNow;
+
+            <div class="scroll-x">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Name</th>
+                            <th scope="col">Added</th>
+                            <th scope="col">Last used</th>
+                            <th scope="col"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var passkey in Model.Passkeys)
+                        {
+                            <tr>
+                                <td>
+                                    <form method="post" asp-page-handler="PasskeyRename" class="inline-form">
+                                        <input type="hidden" name="passkeyId" value="@passkey.Id" />
+                                        <input type="text" name="name" value="@passkey.Name"
+                                               maxlength="64" required aria-label="Name for this passkey" />
+                                        <button type="submit" class="link-button">Rename</button>
+                                    </form>
+                                    <small class="muted">
+                                        @(passkey.IsBackedUp ? "synced to your account" : "this device only")
+                                    </small>
+                                </td>
+                                <td>@RelativeTime.Since(passkey.CreatedAt, now)</td>
+                                <td>@(passkey.LastUsedAt is { } used ? RelativeTime.Since(used, now) : "never")</td>
+                                <td>
+                                    <form method="post" asp-page-handler="PasskeyDelete" class="inline-form">
+                                        <input type="hidden" name="passkeyId" value="@passkey.Id" />
+                                        <button type="submit" class="link-button">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p><small class="muted">This account has no passkeys yet.</small></p>
+        }
+
+        @* No method or action: passkeys.js owns the submit and reveals the button when supported. *@
+        <form class="import-form" id="passkey-form"
+              data-passkey-options="/Account?handler=PasskeyOptions"
+              data-passkey-register="/Account?handler=Passkey">
+            <input type="text" name="name" maxlength="64" placeholder="Name this passkey…"
+                   aria-label="Name for the new passkey" />
+            <button type="submit" hidden>Add a passkey</button>
+        </form>
+
+        <div class="notice notice-error" role="alert" id="passkey-error" hidden></div>
+    </section>
+
+    <section id="tokens">
+        <h2>API tokens</h2>
+
+        <p>
+            <small class="muted">
+                For scripts and shortcuts calling <code>/api/v1</code>. A token acts as this account,
+                sent as <code>Authorization: Bearer &lt;token&gt;</code>.
+            </small>
+        </p>
+
+        @if (Model.NewToken is not null)
+        {
+            <div class="notice" role="status">
+                Copy this token now. It will not be shown again.
+                <input type="text" id="new-token" value="@Model.NewToken" readonly aria-label="New API token" />
+            </div>
+        }
+
+        @if (Model.Tokens.Count > 0)
+        {
+            var now = DateTimeOffset.UtcNow;
+
+            <div class="scroll-x">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Name</th>
+                            <th scope="col">Added</th>
+                            <th scope="col">Last used</th>
+                            <th scope="col"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var token in Model.Tokens)
+                        {
+                            <tr>
+                                <td>@token.Name</td>
+                                <td>@RelativeTime.Since(token.CreatedAt, now)</td>
+                                <td>@(token.LastUsedAt is { } used ? RelativeTime.Since(used, now) : "never")</td>
+                                <td>
+                                    <form method="post" asp-page-handler="TokenDelete" class="inline-form">
+                                        <input type="hidden" name="tokenId" value="@token.Id" />
+                                        <button type="submit" class="link-button">Revoke</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p><small class="muted">This account has no API tokens.</small></p>
+        }
+
+        <form method="post" asp-page-handler="TokenCreate" class="import-form">
+            <input type="text" name="name" maxlength="64" placeholder="Name this token…" required
+                   aria-label="Name for the new token" />
+            <button type="submit">Create token</button>
+        </form>
+    </section>
+}
+
 <section>
     <h2>Theme</h2>
 
@@ -67,10 +213,8 @@ else
         These choose which color scheme each side uses.
     </p>
 
-    @* Where the choice gets stored. With no account to store against, app.js intercepts the
-       submit and writes to localStorage instead. Spelled out as a value rather than a bare
-       marker attribute: Razor renders a null attribute value as data-theme-local="", which
-       hasAttribute() reads as present, so the account case would have taken the wrong path. *@
+    @* With no account, app.js stores the choice in localStorage. A value, not a bare attribute:
+       Razor renders null as "", which hasAttribute() reads as present. *@
     <form method="post" asp-page-handler="Theme" id="theme-form"
           data-theme-store="@(Model.AuthDisabled ? "local" : "account")">
         <div class="theme-fields">
@@ -98,3 +242,7 @@ else
         <button type="submit">Save theme</button>
     </form>
 </section>
+
+@section Scripts {
+    <script src="~/js/passkeys.js" asp-append-version="true" defer></script>
+}

@@ -3,12 +3,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Boh.Web.Data;
 
-/// <summary>
-/// Applies SQLite pragmas on every connection. EF Core sets none of these itself.
-/// <c>journal_mode</c> is persisted in the database file so it only really takes effect
-/// once, but <c>synchronous</c> is per-connection and would silently revert to FULL
-/// on each new pooled connection without this.
-/// </summary>
+/// <summary>Applies SQLite pragmas per connection; <c>synchronous</c> would otherwise revert.</summary>
 public sealed class SqlitePragmaInterceptor : DbConnectionInterceptor
 {
     private const string Pragmas = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";

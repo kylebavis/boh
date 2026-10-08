@@ -1,14 +1,11 @@
 using Boh.Web.Services;
+using Boh.Web.Tags;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Boh.Web.Pages.Tags;
 
-/// <summary>
-/// Returns an HTML fragment of tag suggestions for the token currently being typed.
-/// HTMX sends the whole input value, so the last whitespace-separated token is extracted
-/// here rather than in the browser.
-/// </summary>
+/// <summary>Suggestions for the last token of the input, as an HTML fragment.</summary>
 public class AutocompleteModel(TagService tags) : PageModel
 {
     private const int SuggestionLimit = 10;
@@ -18,9 +15,18 @@ public class AutocompleteModel(TagService tags) : PageModel
     public async Task<IActionResult> OnGetAsync(string? q, CancellationToken ct)
     {
         // The control being completed may be named `q` (search) or `tags` (post editor).
-        var raw = !string.IsNullOrWhiteSpace(q) ? q : Request.Query["tags"].ToString();
+        var searching = !string.IsNullOrWhiteSpace(q);
+        var raw = searching ? q : Request.Query["tags"].ToString();
 
-        Suggestions = await tags.AutocompleteAsync(LastToken(raw), SuggestionLimit, ct);
+        var token = LastToken(raw);
+
+        // In a search, <c>url:</c> is a predicate, not a namespace.
+        if (searching && token.StartsWith(SearchQuery.SourcePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return Partial("_TagAutocomplete", Suggestions);
+        }
+
+        Suggestions = await tags.AutocompleteAsync(token, SuggestionLimit, ct);
         return Partial("_TagAutocomplete", Suggestions);
     }
 

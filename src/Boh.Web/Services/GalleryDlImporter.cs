@@ -1,10 +1,19 @@
 using System.Text.Json;
+using Boh.Web.Jobs;
 using Boh.Web.Tags;
 
 namespace Boh.Web.Services;
 
-public sealed record ImportedItem(int PostId, string Sha256, string FileName, IReadOnlyList<string> Tags);
-public sealed record SkippedItem(string FileName, string Reason);
+/// <summary>A stored file. <paramref name="Similar"/>: existing look-alikes, for a person to judge.</summary>
+public sealed record ImportedItem(
+    int PostId,
+    string Sha256,
+    string FileName,
+    IReadOnlyList<string> Tags,
+    IReadOnlyList<SimilarPost> Similar);
+
+/// <summary>A skipped file. <paramref name="DuplicateOfPostId"/> is set when it's already a post.</summary>
+public sealed record SkippedItem(string FileName, string Reason, int? DuplicateOfPostId = null);
 
 public sealed record ImportResult(
     IReadOnlyList<ImportedItem> Created,
@@ -15,14 +24,9 @@ public sealed record ImportResult(
 }
 
 /// <summary>
-/// Imports posts from a third-party URL by driving the bundled gallery-dl binary.
+/// Imports from a URL via gallery-dl. Fetches a user-chosen URL, so always authenticated;
+/// capped by <c>--range</c> and a timeout since imports share one lane.
 /// </summary>
-/// <remarks>
-/// This fetches a URL chosen by the user from inside the container, so it is gated behind
-/// authentication regardless of BOH_PUBLIC_READ. The run is bounded on both axes —
-/// <c>--range</c> caps how many files a single gallery can produce, and the process is
-/// killed after a timeout — because the whole thing happens inside one HTTP request.
-/// </remarks>
 public sealed class GalleryDlImporter(
     ProcessRunner runner,
     PostService posts,
@@ -30,16 +34,27 @@ public sealed class GalleryDlImporter(
     BohOptions options,
     ILogger<GalleryDlImporter> logger)
 {
+    /// <summary>The <see cref="JobSnapshot.Kind"/> an import is queued under.</summary>
+    public const string JobKind = "import";
+
+    /// <summary>Queues an import of an already canonicalized URL.</summary>
+    public static JobSnapshot Enqueue(JobQueue jobs, string url, int? userId) =>
+        jobs.Enqueue(JobLane.Import, JobKind, url, userId, async job =>
+            await job.Services.GetRequiredService<GalleryDlImporter>()
+                .ImportAsync(url, userId, job, job.CancellationToken));
+
     private static readonly HashSet<string> MetadataExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".json"
     };
 
-    public async Task<ImportResult> ImportAsync(string url, int? uploadedById, CancellationToken ct)
+    public async Task<ImportResult> ImportAsync(
+        string url, int? uploadedById, IProgress<JobProgress>? progress, CancellationToken ct)
     {
-        if (!IsAcceptableUrl(url))
+        // Canonical from here on; the raw input may carry control characters.
+        if (!SourceUrls.TryCanonicalize(url, out var galleryUrl))
         {
-            return new ImportResult([], [], "Enter an absolute http:// or https:// URL.");
+            return new ImportResult([], [], SourceUrls.Requirement);
         }
 
         Directory.CreateDirectory(options.ImportTempDir);
@@ -48,7 +63,9 @@ public sealed class GalleryDlImporter(
 
         try
         {
-            var result = await runner.RunAsync("gallery-dl", BuildArguments(url, workingDirectory),
+            progress?.Report(new JobProgress("Downloading with gallery-dl"));
+
+            var result = await runner.RunAsync("gallery-dl", BuildArguments(galleryUrl, workingDirectory),
                 TimeSpan.FromSeconds(options.ImportTimeoutSec), ct);
 
             if (result.TimedOut)
@@ -65,7 +82,7 @@ public sealed class GalleryDlImporter(
 
             if (mediaFiles.Count == 0)
             {
-                // A non-zero exit with no files is the informative case; surface what it said.
+                // Non-zero exit and no files: surface what it said.
                 var detail = FirstMeaningfulLine(result.StandardError) ?? FirstMeaningfulLine(result.StandardOutput);
                 return new ImportResult([], [],
                     detail is null
@@ -73,11 +90,11 @@ public sealed class GalleryDlImporter(
                         : $"gallery-dl downloaded nothing from that URL: {detail}");
             }
 
-            return await IngestAsync(mediaFiles, url, uploadedById, ct);
+            return await IngestAsync(mediaFiles, galleryUrl, uploadedById, progress, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Import of {Url} failed", url);
+            logger.LogError(ex, "Import of {Url} failed", galleryUrl);
             return new ImportResult([], [], "The import failed. The server log has the details.");
         }
         finally
@@ -109,18 +126,30 @@ public sealed class GalleryDlImporter(
     }
 
     private async Task<ImportResult> IngestAsync(
-        List<string> mediaFiles, string sourceUrl, int? uploadedById, CancellationToken ct)
+        List<string> mediaFiles,
+        string galleryUrl,
+        int? uploadedById,
+        IProgress<JobProgress>? progress,
+        CancellationToken ct)
     {
         var created = new List<ImportedItem>();
         var skipped = new List<SkippedItem>();
 
-        foreach (var path in mediaFiles)
+        for (var i = 0; i < mediaFiles.Count; i++)
         {
+            // Between files, so cancelling keeps stored posts whole.
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(new JobProgress("Storing files", i, mediaFiles.Count));
+
+            var path = mediaFiles[i];
             var fileName = Path.GetFileName(path);
             var metadata = ReadSidecar(path);
 
+            // Prefer the file's own page; the typed URL is a fallback.
+            var source = GalleryDlSourceMapper.PageUrl(metadata) ?? galleryUrl;
+
             await using var stream = File.OpenRead(path);
-            var result = await posts.CreateAsync(stream, uploadedById, sourceUrl, ct);
+            var result = await posts.CreateAsync(stream, uploadedById, source, ct);
 
             switch (result)
             {
@@ -132,9 +161,7 @@ public sealed class GalleryDlImporter(
                     {
                         await tags.AddPostTagsAsync(createdPost.Post.Id, mapped, ct);
 
-                        // Read the tags back rather than reporting what the mapper produced:
-                        // an aliased name is stored as its canonical form, and the summary
-                        // showing the alias makes it look as though the alias was ignored.
+                        // Read back, so aliased names show as stored.
                         stored = (await tags.GetExplicitTagNamesAsync(createdPost.Post.Id, ct))
                             .Select(t => t.Display)
                             .OrderBy(t => t, StringComparer.Ordinal)
@@ -145,11 +172,18 @@ public sealed class GalleryDlImporter(
                         createdPost.Post.Id,
                         createdPost.Post.Sha256,
                         fileName,
-                        stored));
+                        stored,
+                        createdPost.Similar));
                     break;
 
+                // Still records this URL on the existing post.
                 case PostCreateResult.Duplicate duplicate:
-                    skipped.Add(new SkippedItem(fileName, $"already stored as post {duplicate.ExistingPostId}"));
+                    skipped.Add(new SkippedItem(
+                        fileName,
+                        duplicate.SourceAdded
+                            ? "added this URL as another source; already stored as"
+                            : "already stored as",
+                        duplicate.ExistingPostId));
                     break;
 
                 case PostCreateResult.Rejected rejected:
@@ -159,15 +193,12 @@ public sealed class GalleryDlImporter(
         }
 
         logger.LogInformation("Imported {Created} file(s) from {Url}, skipped {Skipped}",
-            created.Count, sourceUrl, skipped.Count);
+            created.Count, galleryUrl, skipped.Count);
 
         return new ImportResult(created, skipped, null);
     }
 
-    /// <summary>
-    /// gallery-dl writes metadata beside each file as <c>{filename}.json</c>.
-    /// A missing sidecar is normal for some extractors and simply means no tags.
-    /// </summary>
+    /// <summary>Reads gallery-dl's <c>{filename}.json</c> sidecar; missing is normal.</summary>
     private JsonElement? ReadSidecar(string mediaPath)
     {
         var sidecar = mediaPath + ".json";
@@ -184,10 +215,6 @@ public sealed class GalleryDlImporter(
             return null;
         }
     }
-
-    private static bool IsAcceptableUrl(string? url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var parsed)
-        && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps);
 
     private static string? FirstMeaningfulLine(string output)
     {

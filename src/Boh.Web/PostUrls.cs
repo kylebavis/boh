@@ -5,7 +5,9 @@ namespace Boh.Web;
 /// <summary>Builds the blob URLs served by <c>FileEndpoints</c>.</summary>
 public static class PostUrls
 {
-    public static string Thumb(Post post) => $"/files/t/{post.Sha256}.webp";
+    public static string Thumb(Post post) => Thumb(post.Sha256);
+
+    public static string Thumb(string sha256) => $"/files/t/{sha256}.webp";
 
     public static string Original(Post post) => $"/files/o/{post.Sha256}{post.FileExtension}";
 

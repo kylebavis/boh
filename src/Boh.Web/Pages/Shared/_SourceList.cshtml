@@ -1,0 +1,50 @@
+@model Boh.Web.ViewModels.PostSourceView
+
+@* The heading is inside the swap because it changes with the count. *@
+<div id="source-list">
+    <h2>@(Model.Sources.Count == 1 ? "Source" : "Sources")</h2>
+
+    @if (Model.Error is not null)
+    {
+        <p class="source-error" role="alert"><small>@Model.Error</small></p>
+    }
+
+    @if (Model.Sources.Count == 0)
+    {
+        <p><small class="muted">No sources recorded.</small></p>
+    }
+    else
+    {
+        <ul class="source-list">
+            @foreach (var source in Model.Sources)
+            {
+                <li>
+                    <a href="@source.Url" rel="noreferrer noopener nofollow">@source.Url</a>
+                    @if (Model.CanEdit)
+                    {
+                        <button type="button" class="source-remove"
+                                aria-label="Remove source @source.Url"
+                                hx-post="/Posts/Detail/@Model.PostId?handler=RemoveSource&sourceId=@source.Id"
+                                hx-target="#source-list"
+                                hx-swap="outerHTML">&times;</button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+
+    @if (Model.CanEdit)
+    {
+        @* Not hx-on, which the CSP blocks; app.js handles it. *@
+        <form class="source-add"
+              hx-post="/Posts/Detail/@Model.PostId?handler=AddSource"
+              hx-target="#source-list"
+              hx-swap="outerHTML"
+              data-reset-on-success
+              autocomplete="off">
+            @* type="url" for the phone keyboard and native validation; not required. The server validates too. *@
+            <input type="url" name="url" placeholder="add a source URL…" aria-label="Add a source URL" />
+            <button type="submit">Add</button>
+        </form>
+    }
+</div>

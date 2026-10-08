@@ -1,10 +1,6 @@
 namespace Boh.Web.Data.Entities;
 
-/// <summary>
-/// A single stored media item. <see cref="Sha256"/> doubles as the storage key for
-/// both the original blob and its thumbnail, so a post's files can be located
-/// without consulting anything but the hash.
-/// </summary>
+/// <summary>A stored media item. <see cref="Sha256"/> is the storage key for the original and thumbnail.</summary>
 public class Post
 {
     public int Id { get; set; }
@@ -12,7 +8,7 @@ public class Post
     /// <summary>Lowercase hex SHA-256 of the original file. Unique: one post per distinct file.</summary>
     public string Sha256 { get; set; } = "";
 
-    /// <summary>Canonical extension including the dot, derived from sniffed content rather than the upload's filename.</summary>
+    /// <summary>Canonical extension with the dot, from sniffed content.</summary>
     public string FileExtension { get; set; } = "";
 
     public string MimeType { get; set; } = "";
@@ -25,8 +21,14 @@ public class Post
 
     public bool IsVideo { get; set; }
 
-    /// <summary>Origin URL when the post arrived via gallery-dl import; empty for direct uploads.</summary>
-    public string SourceUrl { get; set; } = "";
+    /// <summary>See <see cref="Media.PerceptualHash"/>. Null for video, featureless images, or not yet hashed.</summary>
+    public long? PerceptualHash { get; set; }
+
+    /// <summary>Hashing was attempted, so the backfill skips hopeless images.</summary>
+    public bool PerceptualHashTried { get; set; }
+
+    /// <summary>Origins in recorded order. Empty for a direct upload.</summary>
+    public List<PostSource> Sources { get; } = [];
 
     public string Description { get; set; } = "";
 
@@ -37,6 +39,6 @@ public class Post
 
     public List<PostTag> PostTags { get; } = [];
 
-    /// <summary>Skip navigation over <see cref="PostTags"/>; lets search express itself as <c>p.Tags.Any(...)</c>.</summary>
+    /// <summary>Skip navigation over <see cref="PostTags"/>, for search.</summary>
     public List<Tag> Tags { get; } = [];
 }

@@ -3,13 +3,14 @@ using System.Security.Cryptography;
 
 namespace Boh.Web.Services;
 
+/// <summary>An upload written to scratch space, with its content hash already known.</summary>
+public sealed record StagedFile(string TempPath, string Sha256, long Length);
+
 /// <summary>
-/// Stores blobs at <c>{root}/{aa}/{bb}/{sha256}{ext}</c>. The two shard levels keep any
-/// single directory to a few thousand entries at collection sizes this project targets,
-/// which matters for filesystems that degrade on very wide directories.
+/// Blob storage keyed by content hash at <c>{root}/{aa}/{bb}/{sha256}{ext}</c>, so writes
+/// need no row and are repeatable.
 /// </summary>
 public sealed class ContentAddressedFileStore(BohOptions options, ILogger<ContentAddressedFileStore> logger)
-    : IFileStore
 {
     private const int BufferSize = 81920;
 
@@ -23,6 +24,7 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
         Directory.CreateDirectory(options.UploadStagingDir);
     }
 
+    /// <summary>Streams <paramref name="source"/> to scratch space, hashing as it goes.</summary>
     public async Task<StagedFile> StageAsync(Stream source, CancellationToken ct)
     {
         Directory.CreateDirectory(options.UploadStagingDir);
@@ -60,13 +62,14 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
         }
     }
 
+    /// <summary>Moves a staged file to its permanent location. A no-op if the blob already exists.</summary>
     public void CommitOriginal(StagedFile staged, string extension)
     {
         var destination = OriginalPath(staged.Sha256, extension);
 
         if (File.Exists(destination))
         {
-            // Identical content already stored — the staged copy adds nothing.
+            // Already stored.
             Discard(staged);
             return;
         }
@@ -79,11 +82,12 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
         }
         catch (IOException) when (File.Exists(destination))
         {
-            // A concurrent upload of the same content won the race; its copy is equivalent.
+            // A concurrent upload won; its copy is identical.
             Discard(staged);
         }
     }
 
+    /// <summary>Removes a staged file that will not be committed. Safe to call twice.</summary>
     public void Discard(StagedFile staged) => TryDelete(staged.TempPath);
 
     public string OriginalPath(string sha256, string extension) =>
@@ -95,19 +99,11 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
     public bool OriginalExists(string sha256, string extension) =>
         File.Exists(OriginalPath(sha256, extension));
 
-    /// <summary>
-    /// Whether a *usable* thumbnail exists, not merely a file at the path.
-    /// </summary>
-    /// <remarks>
-    /// A failed encode can leave a truncated stub behind — a real migration produced 8-byte
-    /// files where ffmpeg had been asked for a frame past the end of a short clip. Treating
-    /// those as present made the regeneration pass skip precisely the posts it existed to fix.
-    /// </remarks>
+    /// <summary>A usable thumbnail exists, not a truncated stub from a failed encode.</summary>
     public bool ThumbExists(string sha256)
     {
         var file = new FileInfo(ThumbPath(sha256));
 
-        // A WEBP header alone is 12 bytes; anything at or under that decodes to nothing.
         return file.Exists && file.Length > MinimumUsableThumbnailBytes;
     }
 
@@ -120,13 +116,12 @@ public sealed class ContentAddressedFileStore(BohOptions options, ILogger<Conten
         TryDelete(ThumbPath(sha256));
     }
 
+    /// <summary>Removes stale scratch files left behind by interrupted uploads.</summary>
     public void CleanTemp(TimeSpan olderThan)
     {
         var cutoff = DateTime.UtcNow - olderThan;
 
-        // The import scratch directory is swept too because staging used to live there.
-        // Upgrading an existing install would otherwise strand any .part files an
-        // interrupted upload left behind, with nothing looking at that path again.
+        // Also sweeps the import directory, where staging used to live.
         foreach (var directory in new[] { options.UploadStagingDir, options.ImportTempDir })
         {
             if (!Directory.Exists(directory)) continue;

@@ -1,16 +1,6 @@
 namespace Boh.Web.Storage;
 
-/// <summary>
-/// Verifies every configured storage location exists and is writable before the
-/// application starts.
-/// </summary>
-/// <remarks>
-/// Splitting storage across mounts makes permissions the most likely thing to go wrong:
-/// the container runs as a non-root user, and Docker creates a fresh named volume — or a
-/// bind mount pointing at a new host directory — owned by root. Without this the first
-/// symptom is an unhandled exception with no indication of which path or which uid, so
-/// each problem is reported with the command that fixes it.
-/// </remarks>
+/// <summary>Checks every storage location is writable at startup, naming the fix (usually chown).</summary>
 public static class StoragePreflight
 {
     public sealed record Problem(string Path, string Purpose, string Reason);
@@ -37,10 +27,7 @@ public static class StoragePreflight
         return problems;
     }
 
-    /// <summary>
-    /// Returns null when the directory is usable, otherwise why it is not. Existence alone
-    /// is not enough — a share can be mounted read-only, which only shows up on write.
-    /// </summary>
+    /// <summary>Null when usable. Writes a probe, since a share can be read-only.</summary>
     private static string? Probe(string path)
     {
         try
@@ -74,7 +61,6 @@ public static class StoragePreflight
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            // Nothing useful to do; the caller is already reporting a failure.
         }
     }
 
@@ -84,10 +70,7 @@ public static class StoragePreflight
         return string.IsNullOrEmpty(directory) ? "/" : directory;
     }
 
-    /// <summary>
-    /// The uid the process is running as, for the chown hint. Read from /proc because .NET
-    /// exposes no portable way to ask.
-    /// </summary>
+    /// <summary>The process uid, from /proc.</summary>
     public static string CurrentUserId()
     {
         try
@@ -102,7 +85,6 @@ public static class StoragePreflight
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Fall through to the generic answer below.
         }
 
         return "the container user";

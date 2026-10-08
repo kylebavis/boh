@@ -17,12 +17,11 @@ public class ThumbnailRepairTests
         File.Delete(thumbPath);
         Assert.False(env.Store.ThumbExists(post.Sha256));
 
-        var result = await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
+        var result = await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
 
         Assert.Equal(1, result.Missing);
         Assert.Equal(1, result.Regenerated);
         Assert.Equal(0, result.Failed);
-        Assert.True(result.Complete);
         Assert.True(File.Exists(thumbPath));
     }
 
@@ -35,7 +34,7 @@ public class ThumbnailRepairTests
         var thumbPath = env.Store.ThumbPath(post.Sha256);
 
         File.Delete(thumbPath);
-        await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
+        await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
 
         // RIFF....WEBP — proves an encoder actually ran rather than a file being touched.
         var header = File.ReadAllBytes(thumbPath).AsSpan(0, 12);
@@ -50,11 +49,10 @@ public class ThumbnailRepairTests
         await env.CreatePostAsync(30);
         await env.CreatePostAsync(31);
 
-        var result = await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
+        var result = await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
 
         Assert.Equal(0, result.Missing);
         Assert.Equal(0, result.Regenerated);
-        Assert.True(result.Complete);
     }
 
     [Fact]
@@ -67,7 +65,7 @@ public class ThumbnailRepairTests
         var post = (await env.Posts.GetAsync(first, Ct))!;
         File.Delete(env.Store.ThumbPath(post.Sha256));
 
-        var result = await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
+        var result = await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
 
         Assert.Equal(1, result.Missing);
         Assert.Equal(1, result.Regenerated);
@@ -87,7 +85,7 @@ public class ThumbnailRepairTests
         File.Delete(env.Store.ThumbPath(post.Sha256));
         File.Delete(env.Store.OriginalPath(post.Sha256, post.FileExtension));
 
-        var result = await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
+        var result = await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
 
         Assert.Equal(1, result.Missing);
         Assert.Equal(0, result.Regenerated);
@@ -106,7 +104,7 @@ public class ThumbnailRepairTests
         // Replace the original with bytes no processor will recognize.
         File.WriteAllText(env.Store.OriginalPath(post.Sha256, post.FileExtension), "not an image");
 
-        var result = await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
+        var result = await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
 
         Assert.Equal(1, result.Failed);
         Assert.Equal(0, result.Regenerated);
@@ -120,8 +118,8 @@ public class ThumbnailRepairTests
         var post = (await env.Posts.GetAsync(postId, Ct))!;
         File.Delete(env.Store.ThumbPath(post.Sha256));
 
-        await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
-        var second = await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
+        await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
+        var second = await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
 
         Assert.Equal(0, second.Missing);
         Assert.Equal(0, second.Regenerated);
@@ -144,7 +142,7 @@ public class ThumbnailRepairTests
         await File.WriteAllBytesAsync(thumbPath, new byte[8]);
         Assert.False(env.Store.ThumbExists(post.Sha256));
 
-        var result = await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
+        var result = await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
 
         Assert.Equal(1, result.Missing);
         Assert.Equal(1, result.Regenerated);
@@ -156,9 +154,27 @@ public class ThumbnailRepairTests
     {
         using var env = new TestEnvironment();
 
-        var result = await env.Posts.RegenerateMissingThumbnailsAsync(Ct);
+        var result = await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
 
         Assert.Equal(0, result.Missing);
-        Assert.True(result.Complete);
+    }
+
+    /// <summary>
+    /// Progress counts posts checked, not thumbnails rebuilt: how many are missing is only known
+    /// by the end, while how many there are to check is known from the start.
+    /// </summary>
+    [Fact]
+    public async Task Progress_counts_through_every_post_and_ends_complete()
+    {
+        using var env = new TestEnvironment();
+        await env.CreatePostAsync(30);
+        await env.CreatePostAsync(31);
+        var progress = new ProgressRecorder();
+
+        await env.Posts.RegenerateMissingThumbnailsAsync(progress, Ct);
+
+        var last = progress.Reports[^1];
+        Assert.Equal(2L, last.Done);
+        Assert.Equal((long?)2, last.Total);
     }
 }

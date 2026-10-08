@@ -10,12 +10,10 @@ using Microsoft.EntityFrameworkCore;
 namespace Boh.Web.Pages.Tags;
 
 public sealed record AliasRow(int AliasTagId, string Alias, string Canonical);
+public sealed record NamespaceAliasRow(string Alias, string Canonical);
 public sealed record ImplicationRow(int ChildTagId, int ParentTagId, string Child, string Parent);
 
-/// <summary>
-/// <paramref name="IsDefault"/> distinguishes a color picked from the palette from one the
-/// operator set, so the UI can offer to reset only what was actually overridden.
-/// </summary>
+/// <summary><paramref name="IsDefault"/>: palette color, not an override.</summary>
 public sealed record NamespaceRow(string Name, string Color, bool IsDefault, int TagCount);
 
 /// <summary>Authorized explicitly so it stays private even when browsing is public.</summary>
@@ -25,6 +23,7 @@ public class AdminModel(BohDbContext db, TagService tags) : PageModel
     public IReadOnlyList<AliasRow> Aliases { get; private set; } = [];
     public IReadOnlyList<ImplicationRow> Implications { get; private set; } = [];
     public IReadOnlyList<NamespaceRow> Namespaces { get; private set; } = [];
+    public IReadOnlyList<NamespaceAliasRow> NamespaceAliases { get; private set; } = [];
 
     [TempData] public string? Message { get; set; }
     [TempData] public string? Error { get; set; }
@@ -49,6 +48,27 @@ public class AdminModel(BohDbContext db, TagService tags) : PageModel
     {
         await tags.RemoveAliasAsync(aliasTagId, ct);
         Message = "Alias removed.";
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostAddNamespaceAliasAsync(string? alias, string? canonical, CancellationToken ct)
+    {
+        var result = await tags.AddNamespaceAliasAsync(alias, canonical, ct);
+
+        // Reported in the form that was actually stored rather than as typed, so a namespace
+        // entered as "Copyright" is not confirmed back under a spelling that does not exist.
+        TagName.TryParseNamespace(alias, out var aliasNs);
+        TagName.TryParseNamespace(canonical, out var canonicalNs);
+
+        Apply(result, $"'{aliasNs}:' now redirects to '{canonicalNs}:', and existing tags were moved across.");
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostRemoveNamespaceAliasAsync(string alias, CancellationToken ct)
+    {
+        await tags.RemoveNamespaceAliasAsync(alias, ct);
+        Message = $"'{alias}:' no longer redirects. Tags already moved stay where they are.";
         return RedirectToPage();
     }
 
@@ -100,31 +120,13 @@ public class AdminModel(BohDbContext db, TagService tags) : PageModel
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostRebuildAsync(CancellationToken ct)
-    {
-        var changes = await tags.RebuildAllImpliedAsync(ct);
-        Message = $"Rebuilt implied tags — {changes} link(s) changed.";
-        return RedirectToPage();
-    }
-
-    public async Task<IActionResult> OnPostRecountAsync(CancellationToken ct)
-    {
-        await tags.RecountTagsAsync(ct);
-        Message = "Tag post counts recomputed.";
-        return RedirectToPage();
-    }
-
     private void Apply(TagLinkResult result, string successMessage)
     {
         if (result is TagLinkResult.Rejected rejected) Error = rejected.Reason;
         else Message = successMessage;
     }
 
-    /// <summary>
-    /// Projects plain columns and assembles the display strings in memory. Building
-    /// "namespace:name" inside the query and then ordering by that computed value is not
-    /// translatable, and these tables are small enough that shaping client-side costs nothing.
-    /// </summary>
+    /// <summary>Display strings built in memory; the computed ordering isn't translatable.</summary>
     private async Task LoadNamespacesAsync(CancellationToken ct)
     {
         var overrides = await tags.GetNamespaceColorsAsync(ct);
@@ -151,6 +153,11 @@ public class AdminModel(BohDbContext db, TagService tags) : PageModel
     private async Task LoadAsync(CancellationToken ct)
     {
         await LoadNamespacesAsync(ct);
+
+        NamespaceAliases = (await tags.GetNamespaceAliasesAsync(ct))
+            .Select(a => new NamespaceAliasRow(a.Key, a.Value))
+            .OrderBy(a => a.Alias, StringComparer.Ordinal)
+            .ToList();
 
         var aliases = await db.TagAliases.AsNoTracking()
             .Select(a => new

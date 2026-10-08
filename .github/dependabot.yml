@@ -25,3 +25,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # gallery-dl, pinned in /requirements.txt and installed into a virtualenv by the
+  # Dockerfile. Dependabot only reads requirements files, never a `pip install` inside
+  # a RUN layer, which is why the pin lives outside the Dockerfile at all.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
