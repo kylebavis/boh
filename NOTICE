@@ -55,7 +55,7 @@ SQLitePCLRaw — Apache-2.0, bundling SQLite (public domain)
     SQLite release containing the fix for CVE-2025-6965.
 
 
-Colour schemes
+Color schemes
 --------------
 
 The packaged themes in src/Boh.Web/wwwroot/css/themes.css are adapted from the

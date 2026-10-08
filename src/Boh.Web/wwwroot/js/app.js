@@ -127,7 +127,7 @@
     /*
        Every completing input sends its term as `q`, whatever the field is actually named.
        htmx would otherwise send the field's own name — `from`, `canonical`, `child` — and the
-       endpoint would find no term and return nothing. Normalising here rather than teaching
+       endpoint would find no term and return nothing. Normalizing here rather than teaching
        the endpoint six field names keeps the two ends from having to agree on form details.
     */
     document.addEventListener('htmx:configRequest', function (event) {

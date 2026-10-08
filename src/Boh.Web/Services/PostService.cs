@@ -254,7 +254,7 @@ public sealed class PostService(
     }
 
     /// <summary>
-    /// Picks a post at random, honouring the active search so "random" stays within whatever
+    /// Picks a post at random, honoring the active search so "random" stays within whatever
     /// the user is currently looking at. Returns null only when nothing matches.
     /// </summary>
     /// <remarks>

@@ -1,7 +1,7 @@
 namespace Boh.Web.Tags;
 
 /// <summary>
-/// One clause of a search. Modelled as a closed hierarchy rather than a bare tag list so
+/// One clause of a search. Modeled as a closed hierarchy rather than a bare tag list so
 /// that metadata predicates (<c>width:&gt;1000</c>) and sorting (<c>order:score</c>) can be
 /// added later without reshaping every caller.
 /// </summary>

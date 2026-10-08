@@ -3,7 +3,7 @@ using System.Net;
 namespace Boh.Tests;
 
 /// <summary>
-/// Exercises the gallery through real HTTP requests. Both behaviours here failed in the
+/// Exercises the gallery through real HTTP requests. Both behaviors here failed in the
 /// running application while every unit test passed: the page number never bound, and
 /// deleting a post threw away the search it had been found with.
 /// </summary>

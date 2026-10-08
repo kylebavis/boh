@@ -90,8 +90,8 @@ public class DetailModel(PostService posts, TagService tags, BohOptions options)
                 pt.Source == TagSource.Implied,
                 pt.Tag.PostCount,
                 NamespacePalette.ColorFor(pt.Tag.Namespace, namespaceColors)))
-            // Explicit first, then grouped by namespace so same-coloured tags sit together —
-            // which is what makes the colour legible now that the prefix is not printed.
+            // Explicit first, then grouped by namespace so same-colored tags sit together —
+            // which is what makes the color legible now that the prefix is not printed.
             .OrderBy(e => e.Implied)
             .ThenBy(e => e.Namespace.Length == 0)
             .ThenBy(e => e.Namespace, StringComparer.Ordinal)

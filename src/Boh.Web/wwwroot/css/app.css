@@ -380,7 +380,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     min-width: 0;
     overflow-wrap: break-word;
     /* --tag-color is set per element from the tag's namespace; plain tags fall through to
-       the theme's link colour so they still track light/dark. */
+       the theme's link color so they still track light/dark. */
     color: var(--tag-color, var(--pico-primary));
 }
 
@@ -394,7 +394,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     border: 1px solid var(--pico-muted-border-color);
 }
 
-/* A native colour input is a fixed-size control, not a text field that should stretch.
+/* A native color input is a fixed-size control, not a text field that should stretch.
    Scoped to .pair-form so it outranks that rule's `.pair-form input`, which is more
    specific than a bare class would be. */
 .pair-form .color-input {
@@ -405,7 +405,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
 }
 
 /* Derived tags read as secondary so it is obvious they were not typed by hand — dimmed
-   rather than recoloured, so the namespace is still legible. */
+   rather than recolored, so the namespace is still legible. */
 .tag-implied {
     opacity: 0.7;
 }

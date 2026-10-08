@@ -1,5 +1,5 @@
 /*
-   Packaged colour schemes.
+   Packaged color schemes.
    =========================================================================
    Each theme is a flat entry in the picker: it owns its light/dark polarity rather than
    varying with one. Selecting a theme sets three attributes on <html> (see Themes.cs):
@@ -8,7 +8,7 @@
        data-theme          light | dark  — the Pico base the palette is built on
        data-theme-name     the palette below
 
-   data-theme still lands on the element because Pico bakes stroke colours into its icon
+   data-theme still lands on the element because Pico bakes stroke colors into its icon
    data URIs per mode: a dark palette without data-theme="dark" gets dark chevrons and
    checkmarks on its own dark surfaces, and no amount of variable overriding reaches them.
    Sitting on the correct base also means any Pico variable this file misses falls back to
@@ -31,7 +31,7 @@
 :root[data-theme-name] {
     /* Hover moves the accent toward the theme's own foreground, which lightens it on a
        dark palette and darkens it on a light one — so one rule serves both polarities and
-       contrast against the accent's label colour can only improve. */
+       contrast against the accent's label color can only improve. */
     --boh-accent-hover: color-mix(in oklab, var(--boh-accent), var(--boh-fg) 25%);
 
     --pico-background-color: var(--boh-bg);
@@ -149,14 +149,14 @@
 /*
    The sticky table headers in app.css paint over scrolling rows, so they need an opaque
    fill. --pico-background-color is opaque in every palette, but the header sits inside a
-   card in the tag admin, where the page colour is the wrong one.
+   card in the tag admin, where the page color is the wrong one.
 */
 :root[data-theme-name] .scroll-y thead th {
     background: var(--boh-surface);
 }
 
 /* Palettes --------------------------------------------------------------
-   Fifteen tokens each. Provenance and licence for every scheme is recorded in NOTICE. */
+   Fifteen tokens each. Provenance and license for every scheme is recorded in NOTICE. */
 
 /* Nord — arcticicestudio/nord, MIT */
 :root[data-theme-name="nord"] {

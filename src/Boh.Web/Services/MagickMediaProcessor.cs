@@ -88,7 +88,7 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
         // MagickImage reads a single frame, so animated sources thumbnail from frame one.
         using var image = new MagickImage(sourcePath);
 
-        image.AutoOrient();     // honour EXIF rotation before resizing
+        image.AutoOrient();     // honor EXIF rotation before resizing
         image.Strip();          // drop EXIF/GPS: thumbnails are public surface
 
         // The '>' geometry flag shrinks oversized images and leaves smaller ones alone,

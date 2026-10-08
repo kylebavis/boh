@@ -13,7 +13,7 @@ public sealed record AliasRow(int AliasTagId, string Alias, string Canonical);
 public sealed record ImplicationRow(int ChildTagId, int ParentTagId, string Child, string Parent);
 
 /// <summary>
-/// <paramref name="IsDefault"/> distinguishes a colour picked from the palette from one the
+/// <paramref name="IsDefault"/> distinguishes a color picked from the palette from one the
 /// operator set, so the UI can offer to reset only what was actually overridden.
 /// </summary>
 public sealed record NamespaceRow(string Name, string Color, bool IsDefault, int TagCount);
@@ -75,14 +75,14 @@ public class AdminModel(BohDbContext db, TagService tags) : PageModel
 
     public async Task<IActionResult> OnPostSetNamespaceColorAsync(string? ns, string? color, CancellationToken ct)
     {
-        Apply(await tags.SetNamespaceColorAsync(ns, color, ct), $"Colour set for '{ns}'.");
+        Apply(await tags.SetNamespaceColorAsync(ns, color, ct), $"Color set for '{ns}'.");
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostResetNamespaceColorAsync(string ns, CancellationToken ct)
     {
         await tags.ResetNamespaceColorAsync(ns, ct);
-        Message = $"'{ns}' is back to its default colour.";
+        Message = $"'{ns}' is back to its default color.";
         return RedirectToPage();
     }
 
@@ -135,7 +135,7 @@ public class AdminModel(BohDbContext db, TagService tags) : PageModel
             .Select(g => new { Namespace = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Namespace, x => x.Count, ct);
 
-        // Namespaces in use, plus any styled but currently unused, so a colour set ahead of
+        // Namespaces in use, plus any styled but currently unused, so a color set ahead of
         // time does not vanish from the list.
         var names = counts.Keys.Concat(overrides.Keys).Distinct().OrderBy(n => n, StringComparer.Ordinal);
 

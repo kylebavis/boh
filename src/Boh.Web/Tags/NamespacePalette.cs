@@ -1,17 +1,17 @@
 namespace Boh.Web.Tags;
 
 /// <summary>
-/// Supplies a colour for every namespace, configured or not.
+/// Supplies a color for every namespace, configured or not.
 /// </summary>
 /// <remarks>
-/// Colours are mid-tone on purpose: the UI renders in both light and dark themes, and a
+/// Colors are mid-tone on purpose: the UI renders in both light and dark themes, and a
 /// palette tuned for one is unreadable on the other. Unconfigured namespaces are hashed to
-/// a palette slot rather than left uncoloured, so the distinction is useful immediately and
-/// a given namespace keeps the same colour across pages and restarts.
+/// a palette slot rather than left uncolored, so the distinction is useful immediately and
+/// a given namespace keeps the same color across pages and restarts.
 /// </remarks>
 public static class NamespacePalette
 {
-    /// <summary>Readable against both the light and dark surface colours Pico uses.</summary>
+    /// <summary>Readable against both the light and dark surface colors Pico uses.</summary>
     public static readonly string[] Palette =
     [
         "#e5534b", // red
@@ -25,7 +25,7 @@ public static class NamespacePalette
     ];
 
     /// <summary>
-    /// Conventional colours for the namespaces boh's own importer produces, so a fresh
+    /// Conventional colors for the namespaces boh's own importer produces, so a fresh
     /// install already looks deliberate. Loosely follows established booru conventions.
     /// </summary>
     private static readonly Dictionary<string, string> Conventional = new(StringComparer.Ordinal)
@@ -40,9 +40,9 @@ public static class NamespacePalette
     };
 
     /// <summary>
-    /// The colour for <paramref name="ns"/>, preferring an explicit override, then a
+    /// The color for <paramref name="ns"/>, preferring an explicit override, then a
     /// conventional default, then a stable palette slot. Null for the empty namespace, which
-    /// leaves plain tags on the theme's own link colour.
+    /// leaves plain tags on the theme's own link color.
     /// </summary>
     public static string? ColorFor(string ns, IReadOnlyDictionary<string, string>? overrides = null)
     {
@@ -55,7 +55,7 @@ public static class NamespacePalette
     }
 
     /// <summary>
-    /// FNV-1a rather than string.GetHashCode, which is randomized per process — the colour
+    /// FNV-1a rather than string.GetHashCode, which is randomized per process — the color
     /// has to survive a restart or it would change under the user for no reason.
     /// </summary>
     private static int StableIndex(string value)
@@ -73,7 +73,7 @@ public static class NamespacePalette
         return (int)(hash % (uint)Palette.Length);
     }
 
-    /// <summary>Validates a user-supplied colour: 3- or 6-digit hex with a leading '#'.</summary>
+    /// <summary>Validates a user-supplied color: 3- or 6-digit hex with a leading '#'.</summary>
     public static bool IsValidColor(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return false;

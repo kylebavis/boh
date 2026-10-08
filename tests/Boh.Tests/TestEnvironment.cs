@@ -9,7 +9,7 @@ namespace Boh.Tests;
 
 /// <summary>
 /// A throwaway data directory plus a real SQLite database. Tests run against the actual
-/// provider rather than an in-memory substitute, because several behaviours under test
+/// provider rather than an in-memory substitute, because several behaviors under test
 /// (unique index enforcement, integer timestamp ordering) only exist in real SQLite.
 /// </summary>
 public sealed class TestEnvironment : IDisposable

@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Boh.Web;
 
 /// <summary>
-/// One packaged colour scheme.
+/// One packaged color scheme.
 /// </summary>
 /// <param name="Id">
 /// Written to <c>data-theme-name</c>, which selects a block in themes.css. Also what is
@@ -18,7 +18,7 @@ namespace Boh.Web;
 public sealed record Theme(string Id, string Label, string Mode);
 
 /// <summary>
-/// The packaged colour schemes, in one place so the account page, the pre-paint script and
+/// The packaged color schemes, in one place so the account page, the pre-paint script and
 /// themes.css cannot drift apart.
 /// </summary>
 /// <remarks>

@@ -33,7 +33,7 @@ RUN dotnet publish src/Boh.Web/Boh.Web.csproj \
 # Magick.NET native libraries, and glibc avoids a class of musl packaging problems.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
-# Pinned so an image rebuild cannot silently change importer behaviour.
+# Pinned so an image rebuild cannot silently change importer behavior.
 ARG GALLERY_DL_VERSION=1.32.7
 
 # libgomp1: OpenMP runtime the Magick.NET native library links against.

@@ -70,7 +70,7 @@ public class RandomPostTests
     }
 
     [Fact]
-    public async Task Honours_the_active_search()
+    public async Task Honors_the_active_search()
     {
         using var env = new TestEnvironment();
         var wanted = await env.CreatePostAsync(46);

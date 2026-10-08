@@ -5,20 +5,20 @@ namespace Boh.Tests;
 public class NamespacePaletteTests
 {
     [Fact]
-    public void A_plain_tag_has_no_namespace_colour()
+    public void A_plain_tag_has_no_namespace_color()
     {
         Assert.Null(NamespacePalette.ColorFor(""));
     }
 
     [Fact]
-    public void Known_namespaces_get_their_conventional_colour()
+    public void Known_namespaces_get_their_conventional_color()
     {
         Assert.Equal("#e5534b", NamespacePalette.ColorFor("artist"));
         Assert.Equal("#3fb950", NamespacePalette.ColorFor("character"));
     }
 
     [Fact]
-    public void An_unknown_namespace_still_gets_a_colour_from_the_palette()
+    public void An_unknown_namespace_still_gets_a_color_from_the_palette()
     {
         var color = NamespacePalette.ColorFor("something_nobody_configured");
 
@@ -27,11 +27,11 @@ public class NamespacePaletteTests
     }
 
     /// <summary>
-    /// String.GetHashCode is randomized per process, so a colour derived from it would change
+    /// String.GetHashCode is randomized per process, so a color derived from it would change
     /// on every restart. The assignment has to be stable across runs.
     /// </summary>
     [Fact]
-    public void The_derived_colour_is_stable_for_the_same_name()
+    public void The_derived_color_is_stable_for_the_same_name()
     {
         var first = NamespacePalette.ColorFor("studio");
         var second = NamespacePalette.ColorFor("studio");
@@ -40,7 +40,7 @@ public class NamespacePaletteTests
     }
 
     [Fact]
-    public void Different_namespaces_generally_get_different_colours()
+    public void Different_namespaces_generally_get_different_colors()
     {
         var names = new[] { "studio", "medium", "event", "location", "series_alt" };
         var colors = names.Select(n => NamespacePalette.ColorFor(n)).ToList();
@@ -71,7 +71,7 @@ public class NamespacePaletteTests
     [InlineData("#fff")]
     [InlineData("#ffffff")]
     [InlineData("#A371F7")]
-    public void Valid_hex_colours_are_accepted(string value)
+    public void Valid_hex_colors_are_accepted(string value)
     {
         Assert.True(NamespacePalette.IsValidColor(value));
     }
@@ -85,7 +85,7 @@ public class NamespacePaletteTests
     [InlineData("#gggggg")]
     [InlineData("a371f7")]
     [InlineData("#a371f7; background: url(x)")]
-    public void Anything_that_is_not_a_hex_colour_is_rejected(string? value)
+    public void Anything_that_is_not_a_hex_color_is_rejected(string? value)
     {
         Assert.False(NamespacePalette.IsValidColor(value));
         Assert.Null(NamespacePalette.Normalize(value));

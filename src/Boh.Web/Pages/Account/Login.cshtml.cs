@@ -45,7 +45,7 @@ public class LoginModel(UserService users, BohOptions options) : PageModel
     }
 
     /// <summary>
-    /// Only local paths are honoured, so a crafted <c>returnUrl</c> cannot bounce someone
+    /// Only local paths are honored, so a crafted <c>returnUrl</c> cannot bounce someone
     /// to another site after they sign in.
     /// </summary>
     private string SafeReturnUrl(string? returnUrl) =>
