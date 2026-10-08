@@ -1,10 +1,8 @@
 namespace Boh.Web.Tags;
 
 /// <summary>One clause of a search.</summary>
-public abstract record QueryTerm
+public closed record QueryTerm
 {
-    private QueryTerm() { }
-
     /// <summary>Requires (or, when <paramref name="Exclude"/>, forbids) a tag on the post.</summary>
     public sealed record TagMatch(TagName Tag, bool Exclude) : QueryTerm;
 

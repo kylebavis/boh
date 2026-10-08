@@ -4,7 +4,7 @@
 # Runs on the builder's native architecture and cross-compiles to $TARGETARCH.
 # QEMU-emulated .NET builds take 20-40 minutes; this takes the same time as a
 # native build regardless of which architecture is being produced.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0@sha256:212fe4cb74627d5adf9817a4088906ae3edff1bd853bb27565d4b46731efe61e AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0@sha256:65f3c7c6a25a239ab3e6719f2896147e7b68242ff2d8818dd70498bde6ef8bea AS build
 ARG TARGETARCH
 WORKDIR /src
 
@@ -36,7 +36,7 @@ RUN mkdir /app/own \
     && if [ -e web.config ]; then mv web.config /app/own/; fi
 
 # ---- runtime --------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine@sha256:486297ae006e95ee2ee3112a2c03e3d26e41fbbc64b7a29e28e7a18cc36b12bb AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:11.0-alpine@sha256:d39b72ad1534fa0faf52b488bffb0762df7ba269d120f0338713d4dda2a41bf5 AS runtime
 
 # Pinned so an image rebuild cannot silently change importer behavior, and kept in a
 # requirements file so Dependabot can see the version and raise the upgrade as a PR.

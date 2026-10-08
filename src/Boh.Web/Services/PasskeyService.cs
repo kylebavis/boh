@@ -13,10 +13,8 @@ public sealed record PasskeyRow(
 public sealed record PasskeyCeremony(string OptionsJson, string State);
 
 /// <summary>A refusal carries no reason, so failures are indistinguishable from outside.</summary>
-public abstract record PasskeySignIn
+public closed record PasskeySignIn
 {
-    private PasskeySignIn() { }
-
     public sealed record Ok(User User) : PasskeySignIn;
     public sealed record Rejected : PasskeySignIn;
 }

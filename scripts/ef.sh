@@ -24,14 +24,16 @@ docker run --rm \
   -e NUGET_PACKAGES=/cache/packages \
   -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
   -e DOTNET_NOLOGO=1 \
-  mcr.microsoft.com/dotnet/sdk:10.0 \
+  mcr.microsoft.com/dotnet/sdk:11.0 \
   bash -c '
     set -e
     export PATH="$PATH:/cache/.dotnet/tools"
-    if ! command -v dotnet-ef >/dev/null 2>&1; then
-      dotnet tool install --global dotnet-ef --version "10.*" >/dev/null
+    # The cache outlives SDK upgrades, so match the tool to the EF Core major.
+    if ! dotnet tool list --global | grep -qE "^dotnet-ef +11."; then
+      dotnet tool update --global dotnet-ef --version "11.*" >/dev/null
     fi
     # dotnet ef does not restore, and a fresh clone has no assets file for it to read.
     dotnet restore src/Boh.Web/Boh.Web.csproj >/dev/null
-    dotnet ef "$@" --project src/Boh.Web/Boh.Web.csproj
+    # The project comes from .config/dotnet-ef.json.
+    dotnet ef "$@"
   ' -- "$@"

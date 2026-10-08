@@ -7,10 +7,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Boh.Web.Services;
 
-public abstract record PostCreateResult
+public closed record PostCreateResult
 {
-    private PostCreateResult() { }
-
     /// <summary>The file was stored. <paramref name="Similar"/> lists look-alikes, informational only.</summary>
     public sealed record Created(Post Post, IReadOnlyList<SimilarPost> Similar) : PostCreateResult;
 
