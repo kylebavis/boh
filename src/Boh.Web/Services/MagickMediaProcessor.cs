@@ -102,7 +102,7 @@ public sealed class MagickMediaProcessor(ILogger<MagickMediaProcessor> logger) :
 
             // Flatten alpha onto white so a PNG and its JPEG agree.
             image.BackgroundColor = MagickColors.White;
-            image.Alpha(AlphaOption.Remove);
+            image.Alpha(AlphaAction.Remove);
 
             image.Grayscale();
 
