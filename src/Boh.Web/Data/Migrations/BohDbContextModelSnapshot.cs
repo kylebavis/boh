@@ -345,6 +345,10 @@ namespace Boh.Web.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OidcSubject")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -356,6 +360,9 @@ namespace Boh.Web.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OidcSubject")
+                        .IsUnique();
 
                     b.HasIndex("Username")
                         .IsUnique();

@@ -23,9 +23,10 @@ public sealed class RevalidateUserEvents : CookieAuthenticationEvents
         var user = await services.GetRequiredService<ActiveUserCache>().GetAsync(userId.Value, () =>
             services.GetRequiredService<UserService>().FindByIdAsync(userId.Value, context.HttpContext.RequestAborted));
 
-        if (user is null)
+        // Deleted while signed in, or a password session after local auth was turned off.
+        if (user is null
+            || (user.OidcSubject is null && !services.GetRequiredService<BohOptions>().LocalAuthEnabled))
         {
-            // Deleted while signed in.
             await RejectAsync(context);
             return;
         }

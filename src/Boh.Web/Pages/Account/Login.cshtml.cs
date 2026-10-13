@@ -35,16 +35,42 @@ public class LoginModel(
     /// <summary>When false the passkey button is omitted.</summary>
     public bool PasskeysUsable => PasskeyRelyingParty.IsUsable(Request, options);
 
-    public IActionResult OnGet(string? returnUrl)
+    public bool LocalAuthEnabled => options.LocalAuthEnabled;
+    public bool OidcEnabled => options.OidcEnabled;
+    public string OidcName => options.OidcDisplayName;
+
+    /// <summary>Starts the OIDC flow, carrying the return URL.</summary>
+    public string OidcUrl => Url.Page("/Account/Login", "Oidc", new { returnUrl = ViewData["ReturnUrl"] })!;
+
+    public IActionResult OnGet(string? returnUrl, string? error)
     {
         if (options.AuthDisabled) return Redirect("/");
 
-        ViewData["ReturnUrl"] = SafeReturnUrl(returnUrl);
+        var target = SafeReturnUrl(returnUrl);
+        ViewData["ReturnUrl"] = target;
+
+        if (error == OidcAuthentication.FailedError)
+        {
+            Error = $"Signing in with {options.OidcDisplayName} did not work. Ask an administrator if it keeps happening.";
+        }
+
         return Page();
+    }
+
+    /// <summary>GET, so the browser follows the redirect to the provider as a navigation.</summary>
+    public IActionResult OnGetOidc(string? returnUrl)
+    {
+        if (!options.OidcEnabled) return NotFound();
+
+        return Challenge(
+            new AuthenticationProperties { RedirectUri = SafeReturnUrl(returnUrl), IsPersistent = true },
+            OidcAuthentication.SchemeName);
     }
 
     public async Task<IActionResult> OnPostAsync(string? returnUrl, CancellationToken ct)
     {
+        if (!options.LocalAuthEnabled) return NotFound();
+
         var target = SafeReturnUrl(returnUrl);
         ViewData["ReturnUrl"] = target;
 
@@ -76,7 +102,7 @@ public class LoginModel(
     /// <summary>A challenge naming no credential; the chosen passkey identifies the account.</summary>
     public async Task<IActionResult> OnPostPasskeyOptionsAsync()
     {
-        if (options.AuthDisabled) return PasskeyProblem("This instance has no accounts to sign in to.");
+        if (!options.LocalAuthEnabled) return PasskeyProblem("Passkey sign-in is not available on this instance.");
 
         var ceremony = await passkeys.BeginAssertionAsync(HttpContext);
         if (ceremony is null) return PasskeyProblem("Could not start a passkey sign-in.");
@@ -91,7 +117,7 @@ public class LoginModel(
     /// </summary>
     public async Task<IActionResult> OnPostPasskeyAsync(CancellationToken ct)
     {
-        if (options.AuthDisabled) return PasskeyProblem("This instance has no accounts to sign in to.");
+        if (!options.LocalAuthEnabled) return PasskeyProblem("Passkey sign-in is not available on this instance.");
 
         var state = challenges.Take(HttpContext, PasskeyChallenge.AssertionPurpose);
         if (state is null) return PasskeyProblem("That took too long. Try again.");

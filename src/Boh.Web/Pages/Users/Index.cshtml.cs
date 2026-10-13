@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace Boh.Web.Pages.Users;
 
 [Authorize(Policy = BohPolicies.IsAdmin)]
-public class IndexModel(UserService users) : PageModel
+public class IndexModel(UserService users, BohOptions options) : PageModel
 {
     public IReadOnlyList<UserRow> Users { get; private set; } = [];
 
@@ -16,6 +16,8 @@ public class IndexModel(UserService users) : PageModel
 
     public int MinPasswordLength => UserService.MinPasswordLength;
     public string SeededAdminUsername => UserService.AdminUsername;
+    public bool LocalAuthEnabled => options.LocalAuthEnabled;
+    public bool OidcAdminManaged => options.OidcAdminGroup is not null;
 
     [TempData] public string? Message { get; set; }
     [TempData] public string? Error { get; set; }
@@ -25,6 +27,8 @@ public class IndexModel(UserService users) : PageModel
     public async Task<IActionResult> OnPostCreateAsync(
         string? username, string? password, bool isAdmin, CancellationToken ct)
     {
+        if (!options.LocalAuthEnabled) return NotFound();
+
         Apply(await users.CreateAsync(username, password, isAdmin, ct),
             $"Created '{username?.Trim().ToLowerInvariant()}'.");
 
@@ -53,6 +57,8 @@ public class IndexModel(UserService users) : PageModel
 
     public async Task<IActionResult> OnPostResetPasswordAsync(int userId, string? password, CancellationToken ct)
     {
+        if (!options.LocalAuthEnabled) return NotFound();
+
         Apply(await users.SetPasswordAsync(userId, password, ct), "Password reset.");
         return RedirectToPage();
     }

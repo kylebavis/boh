@@ -692,6 +692,15 @@ section + section {
     margin: 0;
 }
 
+.oidc-signin {
+    display: block;
+    width: 100%;
+}
+
+form + .oidc-signin {
+    margin-top: 1.5rem;
+}
+
 /* Import --------------------------------------------------------------- */
 
 .import-form {

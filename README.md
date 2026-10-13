@@ -20,6 +20,7 @@ Think danbooru, minus everything needed to serve thousands of strangers. It shou
 - Optional public browsing with private writes
 - Multi-user: ordinary accounts plus administrators who manage them
 - **Passkeys** — sign in with a fingerprint, face unlock or a hardware key instead of a password
+- **Single sign-on** through any OpenID Connect provider, optionally with password sign-in turned off
 - REST [API](#api) with per-user tokens
 
 ## Quick start
@@ -57,6 +58,16 @@ All settings are environment variables.
 |---|---|---|
 | `BOH_ADMIN_PASSWORD` | — | Password for the seeded `admin` account. Reapplied on every start, along with its administrator rights. |
 | `BOH_AUTH_MODE` | `single` | `single` for password auth, `none` to disable auth entirely. |
+| `BOH_OIDC_AUTHORITY` | — | OpenID Connect issuer URL. Set with `BOH_OIDC_CLIENT_ID` to enable [single sign-on](#single-sign-on-oidc). |
+| `BOH_OIDC_CLIENT_ID` | — | Client ID registered with the provider. |
+| `BOH_OIDC_CLIENT_SECRET` | — | Client secret. Leave unset for a public client; PKCE is always used. |
+| `BOH_OIDC_NAME` | `single sign-on` | Provider name on the sign-in button. |
+| `BOH_OIDC_SCOPES` | `openid profile email` | Space-separated scopes to request. Add `groups` if your provider needs it for the group settings below. |
+| `BOH_OIDC_USERNAME_CLAIM` | `preferred_username` | Claim used as the boh username. `email` works too. |
+| `BOH_OIDC_GROUPS_CLAIM` | `groups` | Claim listing the user's groups. |
+| `BOH_OIDC_ADMIN_GROUP` | — | When set, members are made administrators, and non-members demoted, on every OIDC sign-in. |
+| `BOH_OIDC_USER_GROUP` | — | When set, only members (and admin group members) may sign in through OIDC. |
+| `BOH_LOCAL_AUTH` | `true` | `false` turns off passwords and passkeys, leaving OIDC as the only way in. Requires OIDC to be configured. |
 | `BOH_PASSKEY_RP_ID` | the request's host | The domain passkeys are bound to. Only needed when the instance answers on several hostnames — see [Passkeys](#passkeys). |
 | `BOH_PASSKEY_ORIGINS` | HTTPS origins of the request's domain | Comma-separated origins a passkey may be used from, scheme and port included. Set it alongside `BOH_PASSKEY_RP_ID`, or to allow a plain-HTTP origin for local development. |
 | `BOH_PUBLIC_READ` | `false` | When `true`, anyone can browse and view; uploading, tagging, deleting and importing still require signing in. |
@@ -148,13 +159,33 @@ boh checks every configured location is writable before it starts, and names the
 A few behaviors worth knowing:
 
 - **The last administrator cannot be deleted or demoted**, and you cannot delete the account you are currently signed in with.
-- **Deleting a user keeps their posts.** The uploader field is cleared; nothing in the collection is removed.
+- **Deleting a user keeps their posts.** The uploader field is cleared.
 - **The seeded `admin` account is reapplied on every start** while `BOH_ADMIN_PASSWORD` is set. You can clear this variable after first startup to manage the admin account's creds in-app.
 - `BOH_AUTH_MODE=none` removes accounts altogether; the app is anonymously-writable in this configuration.
 
+### Single sign-on (OIDC)
+
+boh can sign people in through any OpenID Connect provider (Authentik, Authelia, Keycloak, Pocket ID, Google, ...). Register boh as a client using the authorization code flow, with the redirect URI `https://<your boh host>/signin-oidc`, then:
+
+```yaml
+environment:
+  BOH_OIDC_AUTHORITY: https://auth.example.com/application/o/boh/
+  BOH_OIDC_CLIENT_ID: boh
+  BOH_OIDC_CLIENT_SECRET: change-me
+  BOH_OIDC_NAME: Authentik
+  BOH_OIDC_ADMIN_GROUP: boh-admins
+  # BOH_LOCAL_AUTH: "false"
+```
+
+The login page gains a "Sign in with ..." button. On someone's first OIDC sign-in, boh links an existing, unlinked account with the same username, or creates a new one with no password. From then on the account follows the provider identity (the `sub` claim), even if the username changes at the provider.
+
+- **Anyone the provider will authenticate can get an account**, unless `BOH_OIDC_USER_GROUP` is set or the provider restricts who can use the application.
+- **Group changes apply at the next sign-in.** Sessions last up to 30 days.
+- `BOH_LOCAL_AUTH=false` hides password and passkey sign-in, stops seeding `admin` from `BOH_ADMIN_PASSWORD`, and removes adding users and resetting passwords from **Users**. API tokens keep working.
+
 ### Passkeys
 
-This app supports passkeys. I probably won't remove password auth entirely for usability reasons.
+This app supports passkeys.
 
 **Passkeys require HTTPS.** Browsers refuse passkeys outside a secure context. To develop against a local instance over HTTP, name it in `BOH_PASSKEY_ORIGINS` (`http://localhost:8080`). Don't do this on a real deployment (duh).
 

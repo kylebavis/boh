@@ -42,6 +42,34 @@ public sealed class BohOptions
         (PasskeyOriginsOverride ?? "")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+    /// <summary>OIDC issuer URL. Unset, OIDC is off.</summary>
+    public string? OidcAuthority { get; init; }
+    public string? OidcClientId { get; init; }
+    public string? OidcClientSecret { get; init; }
+
+    /// <summary>The provider's name on the sign-in button.</summary>
+    public string OidcDisplayName { get; init; } = "single sign-on";
+
+    public string OidcScopes { get; init; } = "openid profile email";
+    public string OidcUsernameClaim { get; init; } = "preferred_username";
+    public string OidcGroupsClaim { get; init; } = "groups";
+
+    /// <summary>Set, membership decides admin on every OIDC sign-in.</summary>
+    public string? OidcAdminGroup { get; init; }
+
+    /// <summary>Set, only its members (or admins) may sign in through OIDC.</summary>
+    public string? OidcUserGroup { get; init; }
+
+    /// <summary>Passwords and passkeys. Only switchable off when OIDC is configured.</summary>
+    public bool LocalAuth { get; init; } = true;
+
+    public bool OidcEnabled => !AuthDisabled && OidcAuthority is not null && OidcClientId is not null;
+
+    public bool LocalAuthEnabled => !AuthDisabled && (LocalAuth || !OidcEnabled);
+
+    public IReadOnlyList<string> OidcScopeList =>
+        OidcScopes.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
     public string GalleryDlConfigPath => Path.Combine(DataPath, "gallery-dl.conf");
 
     public long MaxUploadBytes => MaxUploadMb * 1024L * 1024L;
@@ -66,6 +94,16 @@ public sealed class BohOptions
             AuthMode = Str(c, "BOH_AUTH_MODE", defaults.AuthMode),
             PasskeyRpIdOverride = Optional(c, "BOH_PASSKEY_RP_ID"),
             PasskeyOriginsOverride = Optional(c, "BOH_PASSKEY_ORIGINS"),
+            OidcAuthority = Optional(c, "BOH_OIDC_AUTHORITY"),
+            OidcClientId = Optional(c, "BOH_OIDC_CLIENT_ID"),
+            OidcClientSecret = Optional(c, "BOH_OIDC_CLIENT_SECRET"),
+            OidcDisplayName = Str(c, "BOH_OIDC_NAME", defaults.OidcDisplayName),
+            OidcScopes = Str(c, "BOH_OIDC_SCOPES", defaults.OidcScopes),
+            OidcUsernameClaim = Str(c, "BOH_OIDC_USERNAME_CLAIM", defaults.OidcUsernameClaim),
+            OidcGroupsClaim = Str(c, "BOH_OIDC_GROUPS_CLAIM", defaults.OidcGroupsClaim),
+            OidcAdminGroup = Optional(c, "BOH_OIDC_ADMIN_GROUP"),
+            OidcUserGroup = Optional(c, "BOH_OIDC_USER_GROUP"),
+            LocalAuth = Bool(c, "BOH_LOCAL_AUTH", defaults.LocalAuth),
             AdminPassword = c["BOH_ADMIN_PASSWORD"],
             PublicRead = Bool(c, "BOH_PUBLIC_READ", defaults.PublicRead),
             MaxUploadMb = Int(c, "BOH_MAX_UPLOAD_MB", defaults.MaxUploadMb),

@@ -29,7 +29,11 @@ else
     <div class="notice notice-error" role="alert">@Model.Error</div>
 }
 
-@if (!Model.AuthDisabled)
+@if (Model.LocalAuthEnabled && !Model.HasPassword)
+{
+    <p><small class="muted">This account signs in with @Model.OidcName and has no password.</small></p>
+}
+else if (Model.LocalAuthEnabled)
 {
     <section>
         <h2>Change password</h2>
@@ -59,7 +63,7 @@ else
     </section>
 }
 
-@if (!Model.AuthDisabled)
+@if (Model.LocalAuthEnabled)
 {
     <section id="passkeys">
         <h2>Passkeys</h2>
@@ -140,7 +144,10 @@ else
 
         <div class="notice notice-error" role="alert" id="passkey-error" hidden></div>
     </section>
+}
 
+@if (!Model.AuthDisabled)
+{
     <section id="tokens">
         <h2>API tokens</h2>
 
@@ -244,5 +251,8 @@ else
 </section>
 
 @section Scripts {
-    <script src="~/js/passkeys.js" asp-append-version="true" defer></script>
+    @if (Model.LocalAuthEnabled)
+    {
+        <script src="~/js/passkeys.js" asp-append-version="true" defer></script>
+    }
 }

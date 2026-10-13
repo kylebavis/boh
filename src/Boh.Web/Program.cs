@@ -79,7 +79,13 @@ builder.Services.AddHostedService<JobWorker>();
 
 builder.Services.AddScoped<RevalidateUserEvents>();
 
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+var authentication = builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme);
+if (options.OidcEnabled)
+{
+    authentication.AddOpenIdConnect(OidcAuthentication.SchemeName, o => OidcAuthentication.Configure(o, options));
+}
+
+authentication
     .AddCookie(o =>
     {
         // Deletion or demotion applies immediately.
@@ -222,6 +228,13 @@ static async Task InitializeAsync(WebApplication app)
     var options = app.Services.GetRequiredService<BohOptions>();
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Boh.Startup");
 
+    if (!options.LocalAuth && !options.AuthDisabled && !options.OidcEnabled)
+    {
+        throw new InvalidOperationException(
+            "BOH_LOCAL_AUTH=false needs OIDC configured (BOH_OIDC_AUTHORITY and BOH_OIDC_CLIENT_ID), " +
+            "or nobody could sign in.");
+    }
+
     // Each path may be its own mount; fail early naming the path.
     var problems = StoragePreflight.Check(options);
     if (problems.Count > 0)
@@ -257,10 +270,29 @@ static async Task InitializeAsync(WebApplication app)
             "BOH_AUTH_MODE=none — every page, including upload, delete and import, is open " +
             "to anyone who can reach this port.");
     }
+    else if (options.LocalAuthEnabled)
+    {
+        // With OIDC, an unset password just means admins come from the provider.
+        if (!options.OidcEnabled || !string.IsNullOrEmpty(options.AdminPassword))
+        {
+            await scope.ServiceProvider.GetRequiredService<UserService>()
+                .SeedAdminAsync(options.AdminPassword, CancellationToken.None);
+        }
+    }
     else
     {
-        await scope.ServiceProvider.GetRequiredService<UserService>()
-            .SeedAdminAsync(options.AdminPassword, CancellationToken.None);
+        if (!string.IsNullOrEmpty(options.AdminPassword))
+        {
+            logger.LogWarning("BOH_ADMIN_PASSWORD is ignored: BOH_LOCAL_AUTH=false turns off password sign-in.");
+        }
+
+        var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
+        if (options.OidcAdminGroup is null && !await db.Users.AnyAsync(u => u.IsAdmin && u.OidcSubject != null))
+        {
+            logger.LogWarning(
+                "No administrator has signed in through OIDC yet. Without BOH_OIDC_ADMIN_GROUP, the only " +
+                "way to get one is an OIDC username matching an existing administrator account.");
+        }
     }
 
     logger.LogInformation(

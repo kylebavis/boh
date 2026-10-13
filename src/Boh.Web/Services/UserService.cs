@@ -13,7 +13,16 @@ public abstract record UserResult
     public sealed record Rejected(string Reason) : UserResult;
 }
 
-public sealed record UserRow(int Id, string Username, bool IsAdmin, DateTimeOffset CreatedAt, int PostCount);
+public abstract record OidcSignIn
+{
+    private OidcSignIn() { }
+
+    public sealed record Ok(User User) : OidcSignIn;
+    public sealed record Rejected(string Reason) : OidcSignIn;
+}
+
+public sealed record UserRow(
+    int Id, string Username, bool IsAdmin, DateTimeOffset CreatedAt, int PostCount, bool IsOidcLinked);
 
 public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
 {
@@ -55,7 +64,8 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
                 u.Username,
                 u.IsAdmin,
                 u.CreatedAt,
-                db.Posts.Count(p => p.UploadedById == u.Id)))
+                db.Posts.Count(p => p.UploadedById == u.Id),
+                u.OidcSubject != null))
             .ToListAsync(ct);
 
     // ---- management ----------------------------------------------------
@@ -171,6 +181,47 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
         return new UserResult.Ok();
     }
 
+    // ---- OIDC ----------------------------------------------------------
+
+    /// <summary>
+    /// The account behind an OIDC identity: linked by subject, else an unlinked account with the
+    /// same username, else a new one. <paramref name="isAdmin"/> null leaves admin to boh.
+    /// </summary>
+    public async Task<OidcSignIn> SignInWithOidcAsync(
+        string subject, string? username, bool? isAdmin, CancellationToken ct)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.OidcSubject == subject, ct);
+
+        if (user is null)
+        {
+            var name = Normalize(username);
+            if (ValidateUsername(name) is { } problem)
+                return new OidcSignIn.Rejected($"The identity provider sent an unusable username. {problem}");
+
+            user = await db.Users.FirstOrDefaultAsync(u => u.Username == name, ct);
+            if (user is { OidcSubject: not null })
+                return new OidcSignIn.Rejected($"'{name}' is already linked to a different identity.");
+
+            if (user is null)
+            {
+                user = new User { Username = name, CreatedAt = DateTimeOffset.UtcNow };
+                db.Users.Add(user);
+                logger.LogInformation("Created user {Username} from OIDC", LogSafe.Value(name));
+            }
+            else
+            {
+                logger.LogInformation("Linked user {Username} to OIDC", user.Username);
+            }
+
+            user.OidcSubject = subject;
+        }
+
+        if (isAdmin is { } admin) user.IsAdmin = admin;
+
+        await db.SaveChangesAsync(ct);
+        return new OidcSignIn.Ok(user);
+    }
+
     // ---- seeding -------------------------------------------------------
 
     /// <summary>Applies <c>BOH_ADMIN_PASSWORD</c> at startup, rewriting only on change.</summary>
@@ -234,8 +285,8 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
     /// <summary>Checks a password, upgrading the stored hash when the hasher asks for it.</summary>
     private static bool Verify(User user, string password)
     {
-        // Leftover BCrypt hash: no longer verifiable, and not base64, which the hasher throws on.
-        if (user.PasswordHash.StartsWith("$2", StringComparison.Ordinal)) return false;
+        // OIDC-only account, or a leftover BCrypt hash the hasher would throw on.
+        if (user.PasswordHash.Length == 0 || user.PasswordHash.StartsWith("$2", StringComparison.Ordinal)) return false;
 
         var result = Hasher.VerifyHashedPassword(user, user.PasswordHash, password);
         if (result == PasswordVerificationResult.SuccessRehashNeeded) user.PasswordHash = Hash(password);
@@ -255,9 +306,10 @@ public sealed class UserService(BohDbContext db, ILogger<UserService> logger)
 
         foreach (var c in name)
         {
-            if (!char.IsAsciiLetterOrDigit(c) && c is not ('_' or '-' or '.'))
+            // @ so an email address can serve as an OIDC username.
+            if (!char.IsAsciiLetterOrDigit(c) && c is not ('_' or '-' or '.' or '@'))
             {
-                return "Usernames may contain letters, digits, underscore, hyphen and dot only.";
+                return "Usernames may contain letters, digits, underscore, hyphen, dot and @ only.";
             }
         }
 
