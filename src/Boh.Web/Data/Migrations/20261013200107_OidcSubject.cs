@@ -14,7 +14,7 @@ namespace Boh.Web.Data.Migrations
                 name: "OidcSubject",
                 table: "Users",
                 type: "TEXT",
-                maxLength: 255,
+                maxLength: 512,
                 nullable: true);
 
             migrationBuilder.CreateIndex(

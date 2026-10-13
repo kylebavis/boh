@@ -349,7 +349,7 @@ namespace Boh.Web.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OidcSubject")
-                        .HasMaxLength(255)
+                        .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("PasswordHash")

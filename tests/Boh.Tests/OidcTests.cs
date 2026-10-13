@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Claims;
 using System.Web;
 using Boh.Web.Data;
 using Boh.Web.Services;
@@ -64,7 +65,7 @@ public class OidcTests
 
         var user = await FindAsync(app, "kim");
         Assert.NotNull(user);
-        Assert.Equal("sub-1", user!.OidcSubject);
+        Assert.Equal($"{FakeOidcProvider.Issuer} sub-1", user!.OidcSubject);
         Assert.Equal("", user.PasswordHash);
         Assert.False(user.IsAdmin);
 
@@ -100,7 +101,7 @@ public class OidcTests
 
         Assert.Equal("/", response.Headers.Location!.OriginalString);
         var admin = await FindAsync(app, UserService.AdminUsername);
-        Assert.Equal("sub-admin", admin!.OidcSubject);
+        Assert.Equal($"{FakeOidcProvider.Issuer} sub-admin", admin!.OidcSubject);
         Assert.True(admin.IsAdmin);
     }
 
@@ -133,6 +134,20 @@ public class OidcTests
         var html = await app.GetHtmlAsync(Client(app), "/Account/Login?error=oidc");
 
         Assert.Contains("did not work", html);
+    }
+
+    [Fact]
+    public async Task An_unverified_email_is_refused_as_a_username()
+    {
+        var idp = new FakeOidcProvider();
+        using var app = App(idp, new() { ["BOH_OIDC_USERNAME_CLAIM"] = "email" });
+
+        idp.ExtraClaims = [new("email", "admin"), new("email_verified", "false", ClaimValueTypes.Boolean)];
+        AssertRefused(await idp.SignInAsync(Client(app), "sub-1", null));
+        Assert.Null((await FindAsync(app, UserService.AdminUsername))!.OidcSubject);
+
+        idp.ExtraClaims = [new("email", "kim@example.com"), new("email_verified", "true", ClaimValueTypes.Boolean)];
+        Assert.Equal("/", (await idp.SignInAsync(Client(app), "sub-2", null)).Headers.Location!.OriginalString);
     }
 
     // ---- groups --------------------------------------------------------
@@ -253,6 +268,52 @@ public class OidcTests
             ["password"] = "long-enough-password",
         });
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Turning_local_auth_off_ends_password_sessions()
+    {
+        var idp = new FakeOidcProvider();
+        string cookie;
+
+        using (var on = App(idp))
+        {
+            var client = on.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false, AllowAutoRedirect = false });
+            var form = await client.GetAsync("/Account/Login");
+            var page = await form.Content.ReadAsStringAsync();
+
+            var request = new HttpRequestMessage(HttpMethod.Post, "/Account/Login")
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["Username"] = UserService.AdminUsername,
+                    ["Password"] = TestApp.AdminPassword,
+                    ["__RequestVerificationToken"] = TestApp.FormValue(TestApp.FormWithField(page, "Password"), "__RequestVerificationToken"),
+                }),
+            };
+            request.Headers.Add("Cookie", string.Join("; ", form.Headers.GetValues("Set-Cookie").Select(c => c.Split(';')[0])));
+
+            var signIn = await client.SendAsync(request);
+            cookie = signIn.Headers.GetValues("Set-Cookie").Select(c => c.Split(';')[0]).Single(c => c.StartsWith("boh.auth="));
+
+            Assert.Equal(HttpStatusCode.OK, (await Get(client, "/Account", cookie)).StatusCode);
+
+            // Same data directory, so the same keys read the cookie.
+            using var off = new TestApp(authMode: "password", oidc: idp, settings: LocalOff, dataPath: on.DataPath);
+            var response = await Get(
+                off.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false, AllowAutoRedirect = false }),
+                "/Account", cookie);
+
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.StartsWith("/Account/Login", response.Headers.Location!.PathAndQuery);
+        }
+    }
+
+    private static Task<HttpResponseMessage> Get(HttpClient client, string url, string cookie)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("Cookie", cookie);
+        return client.SendAsync(request);
     }
 
     [Fact]

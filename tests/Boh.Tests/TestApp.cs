@@ -18,8 +18,10 @@ namespace Boh.Tests;
 /// </summary>
 public sealed class TestApp : WebApplicationFactory<Program>
 {
-    private readonly string _root =
-        Path.Combine(Path.GetTempPath(), "boh-web-tests", Guid.NewGuid().ToString("N"));
+    private readonly string _root;
+
+    /// <summary>The data directory, for a second app to start on the same data.</summary>
+    public string DataPath => _root;
 
     private readonly int _pageSize;
     private readonly string _authMode;
@@ -46,7 +48,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
     /// <param name="settings">Further <c>BOH_*</c> values, applied last.</param>
     public TestApp(
         int pageSize = 2, string authMode = "none", bool publicRead = false, string? passkeyOrigins = null,
-        FakeOidcProvider? oidc = null, Dictionary<string, string?>? settings = null)
+        FakeOidcProvider? oidc = null, Dictionary<string, string?>? settings = null, string? dataPath = null)
     {
         _pageSize = pageSize;
         _authMode = authMode;
@@ -54,6 +56,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         _passkeyOrigins = passkeyOrigins;
         _oidc = oidc;
         _settings = settings;
+        _root = dataPath ?? Path.Combine(Path.GetTempPath(), "boh-web-tests", Guid.NewGuid().ToString("N"));
     }
 
     private readonly FakeOidcProvider? _oidc;

@@ -40,7 +40,7 @@ public class LoginModel(
     public string OidcName => options.OidcDisplayName;
 
     /// <summary>Starts the OIDC flow, carrying the return URL.</summary>
-    public string OidcUrl { get; private set; } = "";
+    public string OidcUrl => Url.Page("/Account/Login", "Oidc", new { returnUrl = ViewData["ReturnUrl"] })!;
 
     public IActionResult OnGet(string? returnUrl, string? error)
     {
@@ -48,7 +48,6 @@ public class LoginModel(
 
         var target = SafeReturnUrl(returnUrl);
         ViewData["ReturnUrl"] = target;
-        OidcUrl = Url.Page("/Account/Login", "Oidc", new { returnUrl = target })!;
 
         if (error == OidcAuthentication.FailedError)
         {
@@ -74,7 +73,6 @@ public class LoginModel(
 
         var target = SafeReturnUrl(returnUrl);
         ViewData["ReturnUrl"] = target;
-        OidcUrl = Url.Page("/Account/Login", "Oidc", new { returnUrl = target })!;
 
         var user = await users.AuthenticateAsync(Username, Password, ct);
         if (user is null)

@@ -29,6 +29,9 @@ public sealed class FakeOidcProvider
 
     private string? nonce;
 
+    /// <summary>Added to every token from here on.</summary>
+    public Claim[] ExtraClaims { get; set; } = [];
+
     public void Install(IServiceCollection services) =>
         services.PostConfigure<OpenIdConnectOptions>(OidcAuthentication.SchemeName, o =>
         {
@@ -53,7 +56,7 @@ public sealed class FakeOidcProvider
     public async Task<HttpResponseMessage> SignInAsync(
         HttpClient client, string subject, string? username, params string[] groups)
     {
-        next = [new Claim("sub", subject)];
+        next = [new Claim("sub", subject), .. ExtraClaims];
         if (username is not null) next.Add(new Claim("preferred_username", username));
         foreach (var group in groups) next.Add(new Claim("groups", group));
 

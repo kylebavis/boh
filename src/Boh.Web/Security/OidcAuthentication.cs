@@ -57,10 +57,20 @@ public static class OidcAuthentication
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(OidcAuthentication));
         var identity = context.Principal!;
 
-        var subject = identity.FindFirst("sub")?.Value;
-        if (string.IsNullOrEmpty(subject))
+        var sub = identity.FindFirst("sub");
+        if (string.IsNullOrEmpty(sub?.Value))
         {
             Deny(context, logger, "the token carried no subject");
+            return;
+        }
+
+        // A sub is only unique within its issuer.
+        var subject = $"{sub.Issuer} {sub.Value}";
+
+        // Otherwise a self-registered address could claim someone's account.
+        if (options.OidcUsernameClaim == "email" && identity.FindFirst("email_verified")?.Value == "false")
+        {
+            Deny(context, logger, $"subject {subject} has an unverified email");
             return;
         }
 
