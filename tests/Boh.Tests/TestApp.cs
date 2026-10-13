@@ -42,22 +42,28 @@ public sealed class TestApp : WebApplicationFactory<Program>
     /// test that wants a signature checked has to say which origin is expected, exactly as a
     /// developer running boh on localhost would.
     /// </param>
+    /// <param name="oidc">Set to configure OIDC against this in-process provider.</param>
+    /// <param name="settings">Further <c>BOH_*</c> values, applied last.</param>
     public TestApp(
-        int pageSize = 2, string authMode = "none", bool publicRead = false, string? passkeyOrigins = null)
+        int pageSize = 2, string authMode = "none", bool publicRead = false, string? passkeyOrigins = null,
+        FakeOidcProvider? oidc = null, Dictionary<string, string?>? settings = null)
     {
         _pageSize = pageSize;
         _authMode = authMode;
         _publicRead = publicRead;
         _passkeyOrigins = passkeyOrigins;
+        _oidc = oidc;
+        _settings = settings;
     }
+
+    private readonly FakeOidcProvider? _oidc;
+    private readonly Dictionary<string, string?>? _settings;
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
         Directory.CreateDirectory(_root);
 
-        // In-memory configuration rather than environment variables: env vars are
-        // process-wide and xunit runs test classes in parallel.
-        builder.ConfigureHostConfiguration(c => c.AddInMemoryCollection(new Dictionary<string, string?>
+        var values = new Dictionary<string, string?>
         {
             ["BOH_DATA_PATH"] = _root,
             ["BOH_PAGE_SIZE"] = _pageSize.ToString(),
@@ -65,7 +71,20 @@ public sealed class TestApp : WebApplicationFactory<Program>
             ["BOH_PUBLIC_READ"] = _publicRead.ToString(),
             ["BOH_ADMIN_PASSWORD"] = AdminPassword,
             ["BOH_PASSKEY_ORIGINS"] = _passkeyOrigins,
-        }));
+        };
+
+        if (_oidc is not null)
+        {
+            values["BOH_OIDC_AUTHORITY"] = FakeOidcProvider.Issuer;
+            values["BOH_OIDC_CLIENT_ID"] = FakeOidcProvider.ClientId;
+            builder.ConfigureServices(_oidc.Install);
+        }
+
+        foreach (var (key, value) in _settings ?? []) values[key] = value;
+
+        // In-memory configuration rather than environment variables: env vars are
+        // process-wide and xunit runs test classes in parallel.
+        builder.ConfigureHostConfiguration(c => c.AddInMemoryCollection(values));
 
         return base.CreateHost(builder);
     }

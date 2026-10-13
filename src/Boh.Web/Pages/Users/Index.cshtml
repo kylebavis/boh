@@ -18,6 +18,17 @@
     <div class="notice notice-error" role="alert">@Model.Error</div>
 }
 
+@if (!Model.LocalAuthEnabled)
+{
+    <p>
+        <small class="muted">
+            Password sign-in is off, so accounts are created the first time someone signs in
+            through the identity provider.
+        </small>
+    </p>
+}
+else
+{
 <section>
     <h2>Add a user</h2>
     <p>
@@ -41,6 +52,7 @@
         <button type="submit">Add user</button>
     </form>
 </section>
+}
 
 <section>
     <h2>Existing users</h2>
@@ -53,7 +65,10 @@
                     <th scope="col">Role</th>
                     <th scope="col">Posts</th>
                     <th scope="col">Created</th>
-                    <th scope="col">Reset password</th>
+                    @if (Model.LocalAuthEnabled)
+                    {
+                        <th scope="col">Reset password</th>
+                    }
                     <th scope="col"></th>
                 </tr>
             </thead>
@@ -72,28 +87,39 @@
                             {
                                 <small class="muted" title="Recreated from BOH_ADMIN_PASSWORD on every start">(seeded)</small>
                             }
+                            @if (user.IsOidcLinked)
+                            {
+                                <small class="muted" title="Signs in through the identity provider">(SSO)</small>
+                            }
                         </td>
                         <td>@(user.IsAdmin ? "administrator" : "user")</td>
                         <td>@user.PostCount</td>
                         <td><small>@user.CreatedAt.ToString("yyyy-MM-dd")</small></td>
-                        <td>
-                            <form method="post" asp-page-handler="ResetPassword" class="row-form">
-                                <input type="hidden" name="userId" value="@user.Id" />
-                                <input type="password" name="password" placeholder="new password"
-                                       aria-label="New password for @user.Username"
-                                       autocomplete="new-password" required />
-                                <button type="submit" class="secondary outline">Set</button>
-                            </form>
-                        </td>
+                        @if (Model.LocalAuthEnabled)
+                        {
+                            <td>
+                                <form method="post" asp-page-handler="ResetPassword" class="row-form">
+                                    <input type="hidden" name="userId" value="@user.Id" />
+                                    <input type="password" name="password" placeholder="new password"
+                                           aria-label="New password for @user.Username"
+                                           autocomplete="new-password" required />
+                                    <button type="submit" class="secondary outline">Set</button>
+                                </form>
+                            </td>
+                        }
                         <td>
                             <div class="row-actions">
-                                <form method="post" asp-page-handler="SetAdmin">
-                                    <input type="hidden" name="userId" value="@user.Id" />
-                                    <input type="hidden" name="isAdmin" value="@((!user.IsAdmin).ToString().ToLowerInvariant())" />
-                                    <button type="submit" class="secondary outline">
-                                        @(user.IsAdmin ? "Make user" : "Make admin")
-                                    </button>
-                                </form>
+                                @* The admin group overwrites this on the user's next sign-in. *@
+                                @if (!(Model.OidcAdminManaged && user.IsOidcLinked))
+                                {
+                                    <form method="post" asp-page-handler="SetAdmin">
+                                        <input type="hidden" name="userId" value="@user.Id" />
+                                        <input type="hidden" name="isAdmin" value="@((!user.IsAdmin).ToString().ToLowerInvariant())" />
+                                        <button type="submit" class="secondary outline">
+                                            @(user.IsAdmin ? "Make user" : "Make admin")
+                                        </button>
+                                    </form>
+                                }
 
                                 @if (!isSelf)
                                 {

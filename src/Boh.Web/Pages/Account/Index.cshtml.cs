@@ -20,6 +20,11 @@ public class IndexModel(
     public string? Username { get; private set; }
     public bool IsAdmin { get; private set; }
     public bool AuthDisabled => options.AuthDisabled;
+    public bool LocalAuthEnabled => options.LocalAuthEnabled;
+    public string OidcName => options.OidcDisplayName;
+
+    /// <summary>False for an account made by OIDC sign-in.</summary>
+    public bool HasPassword { get; private set; } = true;
     public int MinPasswordLength => UserService.MinPasswordLength;
 
     /// <summary>Stored palettes; null is stock Pico. Null with auth off, where the form uses browser storage.</summary>
@@ -44,7 +49,7 @@ public class IndexModel(
     public async Task OnGetAsync(CancellationToken ct)
     {
         Load();
-        await LoadPasskeysAsync(ct);
+        await LoadCredentialsAsync(ct);
         await LoadTokensAsync(ct);
     }
 
@@ -52,12 +57,18 @@ public class IndexModel(
         string? currentPassword, string? newPassword, string? confirmPassword, CancellationToken ct)
     {
         Load();
-        await LoadPasskeysAsync(ct);
+        await LoadCredentialsAsync(ct);
         await LoadTokensAsync(ct);
 
         if (options.AuthDisabled)
         {
             Error = "Authentication is disabled on this instance, so there is no password to change.";
+            return Page();
+        }
+
+        if (!options.LocalAuthEnabled)
+        {
+            Error = "Password sign-in is turned off on this instance.";
             return Page();
         }
 
@@ -84,7 +95,7 @@ public class IndexModel(
     public async Task<IActionResult> OnPostThemeAsync(string? lightTheme, string? darkTheme, CancellationToken ct)
     {
         Load();
-        await LoadPasskeysAsync(ct);
+        await LoadCredentialsAsync(ct);
         await LoadTokensAsync(ct);
 
         // Client-side only in this mode; a direct post has no row to write.
@@ -114,7 +125,7 @@ public class IndexModel(
     /// <summary>Credential creation options for passkeys.js; the state is kept server-side.</summary>
     public async Task<IActionResult> OnPostPasskeyOptionsAsync(CancellationToken ct)
     {
-        if (CurrentUserId() is not { } userId) return PasskeyProblem("There is no account to add a passkey to.");
+        if (PasskeyUserId() is not { } userId) return PasskeyProblem("There is no account to add a passkey to.");
 
         var ceremony = await passkeys.BeginRegistrationAsync(userId, HttpContext, ct);
         if (ceremony is null) return PasskeyProblem("That account no longer exists.");
@@ -126,7 +137,7 @@ public class IndexModel(
     /// <summary>Takes the authenticator's answer and, if it checks out, stores the passkey.</summary>
     public async Task<IActionResult> OnPostPasskeyAsync(CancellationToken ct)
     {
-        if (CurrentUserId() is not { } userId) return PasskeyProblem("There is no account to add a passkey to.");
+        if (PasskeyUserId() is not { } userId) return PasskeyProblem("There is no account to add a passkey to.");
 
         var state = challenges.Take(HttpContext, PasskeyChallenge.RegistrationPurpose);
         if (state is null) return PasskeyProblem("That took too long. Start again.");
@@ -154,7 +165,7 @@ public class IndexModel(
 
     public async Task<IActionResult> OnPostPasskeyRenameAsync(int passkeyId, string? name, CancellationToken ct)
     {
-        if (CurrentUserId() is not { } userId) return Forbid();
+        if (PasskeyUserId() is not { } userId) return Forbid();
 
         var result = await passkeys.RenameAsync(userId, passkeyId, name, ct);
         if (result is UserResult.Rejected rejected) return await RerenderAsync(rejected.Reason, ct);
@@ -165,7 +176,7 @@ public class IndexModel(
 
     public async Task<IActionResult> OnPostPasskeyDeleteAsync(int passkeyId, CancellationToken ct)
     {
-        if (CurrentUserId() is not { } userId) return Forbid();
+        if (PasskeyUserId() is not { } userId) return Forbid();
 
         var result = await passkeys.DeleteAsync(userId, passkeyId, ct);
         if (result is UserResult.Rejected rejected) return await RerenderAsync(rejected.Reason, ct);
@@ -209,6 +220,9 @@ public class IndexModel(
     /// <summary>Null with auth off: no account to attach a credential to.</summary>
     private int? CurrentUserId() => options.AuthDisabled ? null : UserPrincipal.GetId(User);
 
+    /// <summary>Also null with local auth off, which takes passkeys with it.</summary>
+    private int? PasskeyUserId() => options.LocalAuthEnabled ? CurrentUserId() : null;
+
     /// <summary>A 400 in the shape passkeys.js reads.</summary>
     private IActionResult PasskeyProblem(string reason) =>
         new JsonResult(new { error = reason }) { StatusCode = StatusCodes.Status400BadRequest };
@@ -216,7 +230,7 @@ public class IndexModel(
     private async Task<IActionResult> RerenderAsync(string? error, CancellationToken ct)
     {
         Load();
-        await LoadPasskeysAsync(ct);
+        await LoadCredentialsAsync(ct);
         await LoadTokensAsync(ct);
         Error = error;
         return Page();
@@ -230,9 +244,12 @@ public class IndexModel(
         DarkTheme = UserPrincipal.GetDarkTheme(User);
     }
 
-    private async Task LoadPasskeysAsync(CancellationToken ct)
+    private async Task LoadCredentialsAsync(CancellationToken ct)
     {
         if (CurrentUserId() is not { } userId) return;
+        HasPassword = (await users.FindByIdAsync(userId, ct))?.PasswordHash.Length > 0;
+
+        if (PasskeyUserId() is null) return;
         Passkeys = await passkeys.ListAsync(userId, ct);
     }
 

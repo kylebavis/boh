@@ -12,25 +12,35 @@
         <div class="notice notice-error" role="alert">@Model.Error</div>
     }
 
-    <form method="post">
-        <input type="hidden" name="returnUrl" value="@(ViewData["ReturnUrl"] as string)" />
+    @if (Model.LocalAuthEnabled)
+    {
+        <form method="post">
+            <input type="hidden" name="returnUrl" value="@(ViewData["ReturnUrl"] as string)" />
 
-        <label for="username">
-            Username
-            <input type="text" id="username" name="Username" value="@Model.Username"
-                   autocomplete="username" autocapitalize="none" required autofocus />
-        </label>
+            <label for="username">
+                Username
+                <input type="text" id="username" name="Username" value="@Model.Username"
+                       autocomplete="username" autocapitalize="none" required autofocus />
+            </label>
 
-        <label for="password">
-            Password
-            <input type="password" id="password" name="Password"
-                   autocomplete="current-password" required />
-        </label>
+            <label for="password">
+                Password
+                <input type="password" id="password" name="Password"
+                       autocomplete="current-password" required />
+            </label>
 
-        <button type="submit">Sign in</button>
-    </form>
+            <button type="submit">Sign in</button>
+        </form>
+    }
 
-    @if (Model.PasskeysUsable)
+    @if (Model.OidcEnabled)
+    {
+        @* A link, not a form: form-action 'self' would block the redirect to the provider. *@
+        <a href="@Model.OidcUrl" role="button"
+           class="oidc-signin@(Model.LocalAuthEnabled ? " secondary" : "")">Sign in with @Model.OidcName</a>
+    }
+
+    @if (Model.LocalAuthEnabled && Model.PasskeysUsable)
     {
         @* Hidden until passkeys.js confirms support; the script owns the submit. *@
         <form id="passkey-signin" class="passkey-signin"
@@ -46,5 +56,8 @@
 </div>
 
 @section Scripts {
-    <script src="~/js/passkeys.js" asp-append-version="true" defer></script>
+    @if (Model.LocalAuthEnabled)
+    {
+        <script src="~/js/passkeys.js" asp-append-version="true" defer></script>
+    }
 }
