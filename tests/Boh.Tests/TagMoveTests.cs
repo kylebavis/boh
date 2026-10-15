@@ -120,6 +120,34 @@ public class TagMoveTests
     }
 
     [Fact]
+    public async Task Merging_an_alias_into_a_used_tag_migrates_that_tags_posts()
+    {
+        using var env = new TestEnvironment();
+        var post = await env.CreatePostAsync();
+        await env.Tags.AddAliasAsync(new TagName("", "eff"), new TagName("", "foo"), Ct);
+        await env.Tags.SetPostTagsAsync(post, Names("artist:eff"), Ct);
+
+        // artist:eff inherits the alias, so its post belongs on foo.
+        await env.Tags.MoveTagAsync(new TagName("", "eff"), new TagName("artist", "eff"), Ct);
+
+        Assert.Equal(["foo"], await env.TagsOnAsync(post));
+        Assert.Equal(1, (await env.Tags.FindAsync(new TagName("", "foo"), Ct))!.PostCount);
+    }
+
+    [Fact]
+    public async Task Merging_into_an_alias_lands_posts_on_its_canonical_tag()
+    {
+        using var env = new TestEnvironment();
+        var post = await env.CreatePostAsync();
+        await env.Tags.AddAliasAsync(new TagName("artist", "eff"), new TagName("", "foo"), Ct);
+        await env.Tags.SetPostTagsAsync(post, Names("eff"), Ct);
+
+        await env.Tags.MoveTagAsync(new TagName("", "eff"), new TagName("artist", "eff"), Ct);
+
+        Assert.Equal(["foo"], await env.TagsOnAsync(post));
+    }
+
+    [Fact]
     public async Task Merging_carries_over_an_implication_on_the_source()
     {
         using var env = new TestEnvironment();

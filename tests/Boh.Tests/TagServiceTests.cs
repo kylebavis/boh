@@ -82,6 +82,26 @@ public class TagServiceTests
     }
 
     [Fact]
+    public async Task A_failed_migration_leaves_no_alias_behind()
+    {
+        using var env = new TestEnvironment();
+        var post = await env.CreatePostAsync();
+        await env.Tags.SetPostTagsAsync(post, Names("foo"), Ct);
+
+        await env.Db.Database.ExecuteSqlRawAsync(
+            "CREATE TRIGGER fail BEFORE INSERT ON PostTags " +
+            "WHEN NEW.TagId = (SELECT Id FROM Tags WHERE Name = 'bar') " +
+            "BEGIN SELECT RAISE(ABORT, 'boom'); END");
+
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => env.Tags.AddAliasAsync(new TagName("", "foo"), new TagName("", "bar"), Ct));
+
+        env.Db.ChangeTracker.Clear();
+        Assert.False(await env.Db.TagAliases.AnyAsync(Ct));
+        Assert.Equal(["foo"], await env.TagsOnAsync(post));
+    }
+
+    [Fact]
     public async Task Alias_chains_resolve_to_the_end_of_the_chain()
     {
         using var env = new TestEnvironment();

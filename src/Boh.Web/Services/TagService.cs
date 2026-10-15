@@ -226,12 +226,26 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         if (await db.TagAliases.AnyAsync(a => a.AliasTagId == alias.Id, ct))
             return new TagLinkResult.Rejected($"'{aliasName.Display}' is already an alias.");
 
+        // One transaction, so a failed migration can't leave the alias with posts still on it.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
         db.TagAliases.Add(new TagAlias { AliasTagId = alias.Id, CanonicalTagId = canonical.Id });
         await db.SaveChangesAsync(ct);
 
-        // Re-applying explicit tags moves affected posts onto the canonical tag.
+        var migrated = await MigrateAliasPostsAsync(alias.Id, ct);
+        await tx.CommitAsync(ct);
+
+        logger.LogInformation("Aliased {Alias} to {Canonical}, migrating {Count} post(s)",
+            aliasName.Display, canonicalName.Display, migrated);
+
+        return new TagLinkResult.Ok();
+    }
+
+    /// <summary>Re-applies explicit tags on posts carrying an alias, moving them onto its canonical tag.</summary>
+    private async Task<int> MigrateAliasPostsAsync(int aliasTagId, CancellationToken ct)
+    {
         var affected = await db.PostTags.AsNoTracking()
-            .Where(pt => pt.TagId == alias.Id)
+            .Where(pt => pt.TagId == aliasTagId)
             .Select(pt => pt.PostId)
             .Distinct()
             .ToListAsync(ct);
@@ -242,10 +256,7 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
             await SetPostTagsAsync(postId, explicitNames, ct);
         }
 
-        logger.LogInformation("Aliased {Alias} to {Canonical}, migrating {Count} post(s)",
-            aliasName.Display, canonicalName.Display, affected.Count);
-
-        return new TagLinkResult.Ok();
+        return affected.Count;
     }
 
     public async Task RemoveAliasAsync(int aliasTagId, CancellationToken ct)
@@ -534,6 +545,10 @@ public sealed class TagService(BohDbContext db, ILogger<TagService> logger)
         await db.Tags.Where(t => t.Id == source.Id).ExecuteDeleteAsync(ct);
 
         await RecountTagsAsync(ct);
+
+        // The destination is an alias if it inherited the source's alias or already was one.
+        if (await db.TagAliases.AnyAsync(a => a.AliasTagId == destination.Id, ct))
+            await MigrateAliasPostsAsync(destination.Id, ct);
     }
 
     // ---- namespaces ----------------------------------------------------
