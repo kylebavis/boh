@@ -40,7 +40,7 @@ public static class SecurityHeaders
 
     /// <summary>
     /// Everything is same-origin. <c>'unsafe-inline'</c> styles for validated tag color
-    /// attributes; <c>data:</c> images for Pico's inlined icons.
+    /// attributes; <c>data:</c> images for Blades' inlined icons.
     /// </summary>
     private static string ContentSecurityPolicy(string nonce) =>
         "default-src 'self'; " +

@@ -12,7 +12,7 @@ header nav {
     gap: 0.25rem 0.5rem;
 }
 
-/* Pico's nav ul doesn't wrap; without this the toggle overflows on phones. */
+/* Blades' nav ul doesn't wrap; without this the toggle overflows on phones. */
 header nav > ul {
     flex-wrap: wrap;
     min-width: 0;
@@ -291,7 +291,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     min-width: 0;
 }
 
-/* Undo Pico's helper-text styling on a <small> after an input. */
+/* Undo Blades' helper-text styling on a <small> after an input. */
 .table-tools small {
     display: inline;
     width: auto;
@@ -483,7 +483,7 @@ html:not([data-theme-choice]) #theme-toggle .icon-auto {
     width: 100%;
 }
 
-/* Undo Pico's nav ul/li layout, which this inherits inside <nav>. */
+/* Undo Blades' nav ul/li layout, which this inherits inside <nav>. */
 .suggestion-list {
     display: block;
     position: absolute;
@@ -569,7 +569,7 @@ section + section {
     margin-top: 2rem;
 }
 
-/* Pico makes form buttons full width. */
+/* Blades makes form buttons full width. */
 .action-form {
     margin: 0;
 }
@@ -636,7 +636,7 @@ section + section {
     max-width: 32rem;
 }
 
-/* Pico's nav li is flex: 0 1 auto; let the search field fill the row. */
+/* Blades' nav li is flex: 0 1 auto; let the search field fill the row. */
 .nav-search li {
     flex: 1 1 auto;
     min-width: 0;
@@ -819,7 +819,7 @@ form + .oidc-signin {
 /* Responsive ----------------------------------------------------------- */
 
 @media (max-width: 768px) {
-    /* Tighter wrapped-nav rows, still clearing Pico's 40px hit areas. */
+    /* Tighter wrapped-nav rows, still clearing Blades' 40px hit areas. */
     header nav > ul > li {
         padding-block: 0.5rem;
     }

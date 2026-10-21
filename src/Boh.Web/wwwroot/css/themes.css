@@ -1,6 +1,6 @@
 /* Packaged color schemes.
-   Each palette sets fifteen --boh-* tokens, mapped onto Pico once below. <html> also gets
-   data-theme (light|dark) because Pico bakes icon colors per mode. To add a theme: a
+   Each palette sets fifteen --boh-* tokens, mapped onto Blades' --pico-* variables once below. <html> also gets
+   data-theme (light|dark) because Blades bakes icon colors per mode. To add a theme: a
    token block here and an entry in Themes.cs. Values are adjusted to pass WCAG AA; see
    scripts/build-themes.py. */
 

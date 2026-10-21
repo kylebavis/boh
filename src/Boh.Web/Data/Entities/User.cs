@@ -13,7 +13,7 @@ public class User
     public bool IsAdmin { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 
-    /// <summary>Palette id per mode, per user. Null is stock Pico.</summary>
+    /// <summary>Palette id per mode, per user. Null is stock Blades.</summary>
     public string? LightTheme { get; set; }
 
     public string? DarkTheme { get; set; }

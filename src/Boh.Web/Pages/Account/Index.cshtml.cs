@@ -27,7 +27,7 @@ public class IndexModel(
     public bool HasPassword { get; private set; } = true;
     public int MinPasswordLength => UserService.MinPasswordLength;
 
-    /// <summary>Stored palettes; null is stock Pico. Null with auth off, where the form uses browser storage.</summary>
+    /// <summary>Stored palettes; null is stock Blades. Null with auth off, where the form uses browser storage.</summary>
     public string? LightTheme { get; private set; }
     public string? DarkTheme { get; private set; }
 
