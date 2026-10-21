@@ -35,8 +35,8 @@ Magick.NET (ImageMagick) — Apache-2.0
     Used for still-image decoding, probing and thumbnail generation. The
     Q8-AnyCPU package bundles the native ImageMagick libraries.
 
-Pico CSS — MIT
-    https://github.com/picocss/pico
+Blades CSS — MIT
+    https://github.com/anyblades/blades
 
 htmx — Zero-Clause BSD (0BSD)
     https://github.com/bigskysoftware/htmx

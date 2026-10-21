@@ -358,7 +358,7 @@ CREDITS = {
     "solarized-light": "Solarized Light — altercation/solarized, MIT",
 }
 
-# Everything above this line in themes.css is hand-written — the mapping onto Pico's
+# Everything above this line in themes.css is hand-written — the mapping onto Blades'
 # variables, which is a design decision rather than a derived one. Only what follows is
 # regenerated, so the two can be reviewed separately.
 MARKER = "   Fifteen tokens each. Provenance and license for every scheme is recorded in NOTICE. */"
@@ -405,7 +405,7 @@ def main():
         for problem in problems:
             print(f"    !! {problem}")
 
-        # :root, not a bare attribute selector. Pico's light-theme variables are declared
+        # :root, not a bare attribute selector. Blades' light-theme variables are declared
         # on `:root:not([data-theme=dark])`, so a plain [data-theme-name] block ties on
         # source order but loses on specificity and every light palette silently no-ops.
         lines = [f"/* {CREDITS[name]} */", f':root[data-theme-name="{name}"] {{']

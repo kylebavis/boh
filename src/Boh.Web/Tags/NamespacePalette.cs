@@ -3,7 +3,7 @@ namespace Boh.Web.Tags;
 /// <summary>A color for every namespace: mid-tones readable in both themes, stable across restarts.</summary>
 public static class NamespacePalette
 {
-    /// <summary>Readable against both the light and dark surface colors Pico uses.</summary>
+    /// <summary>Readable against both the light and dark surface colors Blades uses.</summary>
     public static readonly string[] Palette =
     [
         "#e5534b", // red

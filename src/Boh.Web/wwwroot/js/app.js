@@ -1,6 +1,6 @@
 // Theme toggle and the account page's theme form.
 // State lives on <html>, set before paint by the inline script in <head>:
-// data-theme-choice (auto|light|dark), data-theme (resolved Pico base) and
+// data-theme-choice (auto|light|dark), data-theme (resolved Blades base) and
 // data-theme-name (palette, absent for stock). That script exposes window.bohTheme;
 // this file only wires events to it.
 (function () {

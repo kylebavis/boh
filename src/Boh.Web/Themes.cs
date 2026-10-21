@@ -22,7 +22,7 @@ public static class Themes
 
     public const string DefaultMode = "auto";
 
-    /// <summary>The empty id, meaning Pico's stock appearance with no palette layered on.</summary>
+    /// <summary>The empty id, meaning Blades' stock appearance with no palette layered on.</summary>
     public const string Stock = "";
 
     public static readonly IReadOnlyList<Theme> Light =
