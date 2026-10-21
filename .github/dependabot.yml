@@ -19,12 +19,17 @@ updates:
     schedule:
       interval: "weekly"
 
-  # The sdk:10.0 and aspnet:10.0 base images in the Dockerfile. Tracks the tags
-  # themselves, so this fires when a new major lands, not on every patch rebuild.
+  # The sdk:10.0 and aspnet:10.0 base images in the Dockerfile, pinned by
+  # multi-arch index digest so patch and OS rebuilds of the tag arrive as PRs.
+  # Grouped so both images move together.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      dotnet-images:
+        patterns:
+          - "*"
 
   # gallery-dl, pinned in /requirements.txt and installed into a virtualenv by the
   # Dockerfile. Dependabot only reads requirements files, never a `pip install` inside
