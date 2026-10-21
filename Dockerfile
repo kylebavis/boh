@@ -48,8 +48,11 @@ COPY requirements.txt /tmp/requirements.txt
 # ffmpeg:   video probing (ffprobe) and thumbnail extraction.
 # python3:  runtime for gallery-dl.
 # curl:     used by HEALTHCHECK.
+# ca-certificates: listed explicitly so rebuilds pick up trust store fixes before the
+#           base image does (e.g. the eMudhra distrust, 20260816ubuntu0.24.04.1).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        ca-certificates \
         libgomp1 \
         ffmpeg \
         python3 \
