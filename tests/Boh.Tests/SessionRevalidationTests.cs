@@ -9,7 +9,7 @@ namespace Boh.Tests;
 /// </summary>
 public class SessionRevalidationTests
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static async Task<int> AdminIdWithAnotherAdminAsync(TestApp app)
     {

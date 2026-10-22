@@ -56,7 +56,7 @@ public class ImportPageTests
         var original = first.Headers.Location!.OriginalString;
 
         var second = await UploadAsync(app, client, file);
-        var html = await second.Content.ReadAsStringAsync();
+        var html = await second.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         Assert.Contains("already stored as", html);
@@ -79,8 +79,8 @@ public class ImportPageTests
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
 
-        var admin = await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername);
-        var post = await db.Posts.SingleAsync();
+        var admin = await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername, cancellationToken: TestContext.Current.CancellationToken);
+        var post = await db.Posts.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(admin.Id, post.UploadedById);
     }
 
@@ -173,7 +173,7 @@ public class ImportPageTests
         var client = app.CreateNonRedirectingClient();
 
         var response = await SubmitUrlAsync(app, client, "");
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Enter a URL to import.", html);
@@ -220,9 +220,9 @@ public class ImportPageTests
 
         // Nothing rather than an error, the same as for an import a restart forgot, so a poll
         // for it removes the block instead of retrying forever.
-        var fragment = await client.GetAsync($"{Url}?handler=Job&id={theirs.Id}");
+        var fragment = await client.GetAsync($"{Url}?handler=Job&id={theirs.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, fragment.StatusCode);
-        Assert.Equal("", await fragment.Content.ReadAsStringAsync());
+        Assert.Equal("", await fragment.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -243,7 +243,8 @@ public class ImportPageTests
         var token = TestApp.FormValue(TestApp.FormWithField(page, "SourceUrl"), "__RequestVerificationToken");
 
         var response = await client.PostAsync($"{Url}?handler=Cancel&id={theirs.Id}",
-            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal(JobState.Running, app.Jobs.Get(theirs.Id)!.State);

@@ -73,7 +73,7 @@ public class JobQueueTests
         var second = jobs.Queue.Enqueue(JobLane.Maintenance, "second", "Second", null, Returns(null));
 
         await jobs.WaitAsync(first.Id, j => j.State == JobState.Running);
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
         Assert.Equal(JobState.Queued, jobs.Queue.Get(second.Id)!.State);
 
         release.SetResult();
@@ -226,7 +226,7 @@ public class JobQueueTests
         public static async Task<Harness> StartAsync()
         {
             var harness = new Harness();
-            await harness._worker.StartAsync(CancellationToken.None);
+            await harness._worker.StartAsync(TestContext.Current.CancellationToken);
             return harness;
         }
 

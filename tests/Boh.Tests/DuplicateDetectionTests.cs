@@ -11,7 +11,7 @@ namespace Boh.Tests;
 /// </summary>
 public class DuplicateDetectionTests
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>
     /// Stores one drawing of the seeded pattern. The same seed at another size or in another

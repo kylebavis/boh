@@ -22,7 +22,7 @@ public class InlineHandlerTests
         using (var scope = app.Services.CreateScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserService>();
-            await users.CreateAsync("someone", "someone-password", false, CancellationToken.None);
+            await users.CreateAsync("someone", "someone-password", false, TestContext.Current.CancellationToken);
         }
 
         string[] pages =
@@ -54,7 +54,7 @@ public class InlineHandlerTests
         using (var scope = app.Services.CreateScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserService>();
-            await users.CreateAsync("someone", "someone-password", false, CancellationToken.None);
+            await users.CreateAsync("someone", "someone-password", false, TestContext.Current.CancellationToken);
         }
 
         var html = await app.GetHtmlAsync(client, string.Format(url, postId));

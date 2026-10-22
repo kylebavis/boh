@@ -34,7 +34,7 @@ public class ThemeTests
         _ = mode;
 
         using var app = new TestApp();
-        var css = await app.CreateClient().GetStringAsync("/css/themes.css");
+        var css = await app.CreateClient().GetStringAsync("/css/themes.css", TestContext.Current.CancellationToken);
 
         Assert.Contains($":root[data-theme-name=\"{id}\"]", css);
     }

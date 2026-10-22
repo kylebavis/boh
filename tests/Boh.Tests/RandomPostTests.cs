@@ -4,7 +4,7 @@ namespace Boh.Tests;
 
 public class RandomPostTests
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static List<TagName> Names(params string[] raw) => TagName.ParseMany(string.Join(' ', raw));
 

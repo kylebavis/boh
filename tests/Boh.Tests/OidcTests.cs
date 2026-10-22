@@ -11,7 +11,7 @@ namespace Boh.Tests;
 
 public class OidcTests
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static readonly Dictionary<string, string?> LocalOff = new() { ["BOH_LOCAL_AUTH"] = "false" };
 
@@ -279,8 +279,8 @@ public class OidcTests
         using (var on = App(idp))
         {
             var client = on.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false, AllowAutoRedirect = false });
-            var form = await client.GetAsync("/Account/Login");
-            var page = await form.Content.ReadAsStringAsync();
+            var form = await client.GetAsync("/Account/Login", Ct);
+            var page = await form.Content.ReadAsStringAsync(Ct);
 
             var request = new HttpRequestMessage(HttpMethod.Post, "/Account/Login")
             {
@@ -293,7 +293,7 @@ public class OidcTests
             };
             request.Headers.Add("Cookie", string.Join("; ", form.Headers.GetValues("Set-Cookie").Select(c => c.Split(';')[0])));
 
-            var signIn = await client.SendAsync(request);
+            var signIn = await client.SendAsync(request, Ct);
             cookie = signIn.Headers.GetValues("Set-Cookie").Select(c => c.Split(';')[0]).Single(c => c.StartsWith("boh.auth="));
 
             Assert.Equal(HttpStatusCode.OK, (await Get(client, "/Account", cookie)).StatusCode);

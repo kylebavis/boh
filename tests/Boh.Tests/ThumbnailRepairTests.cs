@@ -2,7 +2,7 @@ namespace Boh.Tests;
 
 public class ThumbnailRepairTests
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task A_deleted_thumbnail_is_rebuilt()
@@ -139,7 +139,7 @@ public class ThumbnailRepairTests
         var thumbPath = env.Store.ThumbPath(post.Sha256);
 
         // Exactly what ffmpeg left behind: a few bytes, no decodable image.
-        await File.WriteAllBytesAsync(thumbPath, new byte[8]);
+        await File.WriteAllBytesAsync(thumbPath, new byte[8], Ct);
         Assert.False(env.Store.ThumbExists(post.Sha256));
 
         var result = await env.Posts.RegenerateMissingThumbnailsAsync(null, Ct);
