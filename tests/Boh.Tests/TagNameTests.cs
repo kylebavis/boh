@@ -4,134 +4,133 @@ namespace Boh.Tests;
 
 public class TagNameTests
 {
-    [Theory]
-    [InlineData("landscape", "", "landscape")]
-    [InlineData("  landscape  ", "", "landscape")]
-    [InlineData("LandScape", "", "landscape")]
-    [InlineData("artist:foo", "artist", "foo")]
-    [InlineData("Artist:Foo", "artist", "foo")]
-    [InlineData("meme:pondering_my_orb", "meme", "pondering_my_orb")]
-    public void Parses_plain_and_namespaced_tags(string input, string ns, string name)
+    [Test]
+    [Arguments("landscape", "", "landscape")]
+    [Arguments("  landscape  ", "", "landscape")]
+    [Arguments("LandScape", "", "landscape")]
+    [Arguments("artist:foo", "artist", "foo")]
+    [Arguments("Artist:Foo", "artist", "foo")]
+    [Arguments("meme:pondering_my_orb", "meme", "pondering_my_orb")]
+    public async Task Parses_plain_and_namespaced_tags(string input, string ns, string name)
     {
-        Assert.True(TagName.TryParse(input, out var tag));
-        Assert.Equal(ns, tag.Namespace);
-        Assert.Equal(name, tag.Name);
+        await Assert.That(TagName.TryParse(input, out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo(ns);
+        await Assert.That(tag.Name).IsEqualTo(name);
     }
 
-    [Theory]
-    [InlineData("long hair", "long_hair")]
-    [InlineData("long   hair", "long_hair")]
-    [InlineData("a\tb", "a_b")]
-    public void Collapses_internal_whitespace_to_underscore(string input, string expected)
+    [Test]
+    [Arguments("long hair", "long_hair")]
+    [Arguments("long   hair", "long_hair")]
+    [Arguments("a\tb", "a_b")]
+    public async Task Collapses_internal_whitespace_to_underscore(string input, string expected)
     {
-        Assert.True(TagName.TryParse(input, out var tag));
-        Assert.Equal(expected, tag.Name);
+        await Assert.That(TagName.TryParse(input, out var tag)).IsTrue();
+        await Assert.That(tag.Name).IsEqualTo(expected);
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("&")]
-    [InlineData(null)]
-    public void Rejects_input_that_normalizes_to_nothing(string? input)
+    [Test]
+    [Arguments("")]
+    [Arguments("   ")]
+    [Arguments("&")]
+    [Arguments(null)]
+    public async Task Rejects_input_that_normalizes_to_nothing(string? input)
     {
-        Assert.False(TagName.TryParse(input, out _));
+        await Assert.That(TagName.TryParse(input, out _)).IsFalse();
     }
 
-    [Fact]
-    public void Strips_disallowed_characters_without_leaving_doubled_underscores()
+    [Test]
+    public async Task Strips_disallowed_characters_without_leaving_doubled_underscores()
     {
-        Assert.True(TagName.TryParse("a & b", out var tag));
-        Assert.Equal("a_b", tag.Name);
+        await Assert.That(TagName.TryParse("a & b", out var tag)).IsTrue();
+        await Assert.That(tag.Name).IsEqualTo("a_b");
     }
 
-    [Fact]
-    public void Keeps_characters_that_appear_in_real_booru_tags()
+    [Test]
+    public async Task Keeps_characters_that_appear_in_real_booru_tags()
     {
-        Assert.True(TagName.TryParse("ranma_1/2_(series)", out var tag));
-        Assert.Equal("ranma_1/2_(series)", tag.Name);
+        await Assert.That(TagName.TryParse("ranma_1/2_(series)", out var tag)).IsTrue();
+        await Assert.That(tag.Name).IsEqualTo("ranma_1/2_(series)");
 
-        Assert.True(TagName.TryParse("d'artagnan", out var apostrophe));
-        Assert.Equal("d'artagnan", apostrophe.Name);
+        await Assert.That(TagName.TryParse("d'artagnan", out var apostrophe)).IsTrue();
+        await Assert.That(apostrophe.Name).IsEqualTo("d'artagnan");
 
-        Assert.True(TagName.TryParse("v.1.0", out var dotted));
-        Assert.Equal("v.1.0", dotted.Name);
+        await Assert.That(TagName.TryParse("v.1.0", out var dotted)).IsTrue();
+        await Assert.That(dotted.Name).IsEqualTo("v.1.0");
     }
 
-    [Fact]
-    public void A_url_scheme_does_not_become_a_namespace()
+    [Test]
+    public async Task A_url_scheme_does_not_become_a_namespace()
     {
-        Assert.True(TagName.TryParse("https://example.com/x", out var tag));
-        Assert.Equal("", tag.Namespace);
+        await Assert.That(TagName.TryParse("https://example.com/x", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("");
     }
 
-    [Fact]
-    public void Only_the_first_colon_separates_the_namespace()
+    [Test]
+    public async Task Only_the_first_colon_separates_the_namespace()
     {
-        Assert.True(TagName.TryParse("artist:foo:bar", out var tag));
-        Assert.Equal("artist", tag.Namespace);
-        Assert.Equal("foo:bar", tag.Name);
+        await Assert.That(TagName.TryParse("artist:foo:bar", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("artist");
+        await Assert.That(tag.Name).IsEqualTo("foo:bar");
     }
 
-    [Theory]
-    [InlineData(":leading")]
-    [InlineData("trailing:")]
-    public void A_colon_at_an_edge_is_not_a_namespace_separator(string input)
+    [Test]
+    [Arguments(":leading")]
+    [Arguments("trailing:")]
+    public async Task A_colon_at_an_edge_is_not_a_namespace_separator(string input)
     {
-        Assert.True(TagName.TryParse(input, out var tag));
-        Assert.Equal("", tag.Namespace);
+        await Assert.That(TagName.TryParse(input, out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("");
     }
 
-    [Fact]
-    public void A_namespace_with_illegal_characters_is_treated_as_part_of_the_name()
+    [Test]
+    public async Task A_namespace_with_illegal_characters_is_treated_as_part_of_the_name()
     {
-        Assert.True(TagName.TryParse("we!rd:thing", out var tag));
-        Assert.Equal("", tag.Namespace);
+        await Assert.That(TagName.TryParse("we!rd:thing", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("");
         // '!' disqualifies the prefix as a namespace; the punctuation itself is kept.
-        Assert.Equal("we!rd:thing", tag.Name);
+        await Assert.That(tag.Name).IsEqualTo("we!rd:thing");
     }
 
-    [Fact]
-    public void Truncates_an_over_long_name()
+    [Test]
+    public async Task Truncates_an_over_long_name()
     {
-        var tag = Assert.IsType<TagName>(
-            TagName.TryParse(new string('a', 500), out var parsed) ? parsed : default);
+        var tag = (await Assert.That(TagName.TryParse(new string('a', 500), out var parsed) ? parsed : default).IsTypeOf<TagName>())!;
 
-        Assert.Equal(TagName.MaxNameLength, tag.Name.Length);
+        await Assert.That(tag.Name.Length).IsEqualTo(TagName.MaxNameLength);
     }
 
-    [Fact]
-    public void An_over_long_namespace_is_not_treated_as_a_namespace()
+    [Test]
+    public async Task An_over_long_namespace_is_not_treated_as_a_namespace()
     {
-        Assert.True(TagName.TryParse(new string('n', 40) + ":x", out var tag));
-        Assert.Equal("", tag.Namespace);
+        await Assert.That(TagName.TryParse(new string('n', 40) + ":x", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("");
     }
 
-    [Fact]
-    public void Display_round_trips_through_parsing()
+    [Test]
+    public async Task Display_round_trips_through_parsing()
     {
-        Assert.True(TagName.TryParse("meme:pondering_my_orb", out var tag));
-        Assert.Equal("meme:pondering_my_orb", tag.Display);
+        await Assert.That(TagName.TryParse("meme:pondering_my_orb", out var tag)).IsTrue();
+        await Assert.That(tag.Display).IsEqualTo("meme:pondering_my_orb");
 
-        Assert.True(TagName.TryParse(tag.Display, out var again));
-        Assert.Equal(tag, again);
+        await Assert.That(TagName.TryParse(tag.Display, out var again)).IsTrue();
+        await Assert.That(again).IsEqualTo(tag);
     }
 
-    [Fact]
-    public void ParseMany_splits_on_whitespace_and_deduplicates_in_order()
+    [Test]
+    public async Task ParseMany_splits_on_whitespace_and_deduplicates_in_order()
     {
         var tags = TagName.ParseMany("  b  a:1   B  a:1 ");
 
-        Assert.Equal(2, tags.Count);
-        Assert.Equal("b", tags[0].Display);
-        Assert.Equal("a:1", tags[1].Display);
+        await Assert.That(tags.Count).IsEqualTo(2);
+        await Assert.That(tags[0].Display).IsEqualTo("b");
+        await Assert.That(tags[1].Display).IsEqualTo("a:1");
     }
 
-    [Fact]
-    public void ParseMany_returns_empty_for_blank_input()
+    [Test]
+    public async Task ParseMany_returns_empty_for_blank_input()
     {
-        Assert.Empty(TagName.ParseMany("   "));
-        Assert.Empty(TagName.ParseMany(null));
+        await Assert.That(TagName.ParseMany("   ")).IsEmpty();
+        await Assert.That(TagName.ParseMany(null)).IsEmpty();
     }
 
     // ---- emoticon tags -------------------------------------------------
@@ -140,86 +139,86 @@ public class TagNameTests
     /// Expression emoticons are ordinary booru vocabulary, not junk. The old ASCII-only charset
     /// erased them: ':d' was on 435 posts of a real collection and normalized to 'd'.
     /// </summary>
-    [Theory]
-    [InlineData(":d")]
-    [InlineData(";d")]
-    [InlineData(":o")]
-    [InlineData(":3")]
-    [InlineData(":p")]
-    [InlineData(":t")]
-    [InlineData(":q")]
-    [InlineData("^_^")]
-    [InlineData(">_<")]
-    [InlineData("=_=")]
-    [InlineData(":<")]
-    [InlineData(":>")]
-    [InlineData(":|")]
-    [InlineData(":/")]
-    [InlineData("+_+")]
-    [InlineData("@_@")]
-    [InlineData("!")]
-    [InlineData("?")]
-    [InlineData("!?")]
-    [InlineData("...")]
-    [InlineData(">:(")]
-    [InlineData(">:)")]
-    [InlineData("^o^")]
-    [InlineData(">o<")]
-    [InlineData("\\m/")]
-    [InlineData("\\||/")]
-    public void Emoticon_tags_survive_verbatim(string input)
+    [Test]
+    [Arguments(":d")]
+    [Arguments(";d")]
+    [Arguments(":o")]
+    [Arguments(":3")]
+    [Arguments(":p")]
+    [Arguments(":t")]
+    [Arguments(":q")]
+    [Arguments("^_^")]
+    [Arguments(">_<")]
+    [Arguments("=_=")]
+    [Arguments(":<")]
+    [Arguments(":>")]
+    [Arguments(":|")]
+    [Arguments(":/")]
+    [Arguments("+_+")]
+    [Arguments("@_@")]
+    [Arguments("!")]
+    [Arguments("?")]
+    [Arguments("!?")]
+    [Arguments("...")]
+    [Arguments(">:(")]
+    [Arguments(">:)")]
+    [Arguments("^o^")]
+    [Arguments(">o<")]
+    [Arguments("\\m/")]
+    [Arguments("\\||/")]
+    public async Task Emoticon_tags_survive_verbatim(string input)
     {
-        Assert.True(TagName.TryParse(input, out var tag));
-        Assert.Equal("", tag.Namespace);
-        Assert.Equal(input, tag.Name);
+        await Assert.That(TagName.TryParse(input, out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("");
+        await Assert.That(tag.Name).IsEqualTo(input);
     }
 
     /// <summary>
     /// The damaging half of the old behavior was not dropping tags but merging distinct ones.
     /// These pairs are different expressions and must stay different tags.
     /// </summary>
-    [Theory]
-    [InlineData(":d", ";d")]
-    [InlineData(":o", ";o")]
-    [InlineData(":o", "^o^")]
-    [InlineData(":p", ";p")]
-    [InlineData(":3", ";3")]
-    [InlineData(">:(", ">:)")]
-    [InlineData("...", "...?")]
-    public void Distinct_emoticons_do_not_collapse_into_one_tag(string first, string second)
+    [Test]
+    [Arguments(":d", ";d")]
+    [Arguments(":o", ";o")]
+    [Arguments(":o", "^o^")]
+    [Arguments(":p", ";p")]
+    [Arguments(":3", ";3")]
+    [Arguments(">:(", ">:)")]
+    [Arguments("...", "...?")]
+    public async Task Distinct_emoticons_do_not_collapse_into_one_tag(string first, string second)
     {
-        Assert.True(TagName.TryParse(first, out var a));
-        Assert.True(TagName.TryParse(second, out var b));
+        await Assert.That(TagName.TryParse(first, out var a)).IsTrue();
+        await Assert.That(TagName.TryParse(second, out var b)).IsTrue();
 
-        Assert.NotEqual(a, b);
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
-    [Fact]
-    public void A_leading_colon_is_not_read_as_an_empty_namespace()
+    [Test]
+    public async Task A_leading_colon_is_not_read_as_an_empty_namespace()
     {
-        Assert.True(TagName.TryParse(":d", out var tag));
-        Assert.Equal("", tag.Namespace);
-        Assert.Equal(":d", tag.Name);
+        await Assert.That(TagName.TryParse(":d", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("");
+        await Assert.That(tag.Name).IsEqualTo(":d");
     }
 
-    [Fact]
-    public void A_colon_after_non_namespace_characters_stays_in_the_name()
+    [Test]
+    public async Task A_colon_after_non_namespace_characters_stays_in_the_name()
     {
-        Assert.True(TagName.TryParse(">:(", out var tag));
-        Assert.Equal("", tag.Namespace);
-        Assert.Equal(">:(", tag.Name);
+        await Assert.That(TagName.TryParse(">:(", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("");
+        await Assert.That(tag.Name).IsEqualTo(">:(");
     }
 
     // ---- non-ASCII names -----------------------------------------------
 
-    [Theory]
-    [InlineData("仁井学")]
-    [InlineData("ボンボボン")]
-    [InlineData("ドラクエ3")]
-    public void Non_ascii_names_survive(string input)
+    [Test]
+    [Arguments("仁井学")]
+    [Arguments("ボンボボン")]
+    [Arguments("ドラクエ3")]
+    public async Task Non_ascii_names_survive(string input)
     {
-        Assert.True(TagName.TryParse(input, out var tag));
-        Assert.Equal(input, tag.Name);
+        await Assert.That(TagName.TryParse(input, out var tag)).IsTrue();
+        await Assert.That(tag.Name).IsEqualTo(input);
     }
 
     /// <summary>
@@ -228,33 +227,33 @@ public class TagNameTests
     /// spellings of "café" remain distinct tags. Verified acceptable because the collection this
     /// was measured against contained no non-NFC names.
     /// </summary>
-    [Fact]
-    public void Composed_and_decomposed_spellings_remain_distinct_without_normalization()
+    [Test]
+    public async Task Composed_and_decomposed_spellings_remain_distinct_without_normalization()
     {
-        Assert.True(TagName.TryParse("caf\u00e9", out var composed));
-        Assert.True(TagName.TryParse("cafe\u0301", out var decomposed));
+        await Assert.That(TagName.TryParse("caf\u00e9", out var composed)).IsTrue();
+        await Assert.That(TagName.TryParse("cafe\u0301", out var decomposed)).IsTrue();
 
-        Assert.Equal("caf\u00e9", composed.Name);
+        await Assert.That(composed.Name).IsEqualTo("caf\u00e9");
         // The combining mark is not a letter or digit, so it reduces to a separator and is
         // then trimmed from the end.
-        Assert.Equal("cafe", decomposed.Name);
-        Assert.NotEqual(composed, decomposed);
+        await Assert.That(decomposed.Name).IsEqualTo("cafe");
+        await Assert.That(decomposed).IsNotEqualTo(composed);
     }
 
-    [Fact]
-    public void A_character_outside_the_bmp_is_judged_once_not_per_surrogate()
+    [Test]
+    public async Task A_character_outside_the_bmp_is_judged_once_not_per_surrogate()
     {
         // U+20BB7 is a CJK ideograph in plane 2; iterating chars would reject each surrogate
         // half separately and yield two underscores instead of one character.
-        Assert.True(TagName.TryParse("a\U00020BB7b", out var tag));
-        Assert.Equal("a\U00020BB7b", tag.Name);
+        await Assert.That(TagName.TryParse("a\U00020BB7b", out var tag)).IsTrue();
+        await Assert.That(tag.Name).IsEqualTo("a\U00020BB7b");
     }
 
-    [Fact]
-    public void An_emoji_is_not_a_letter_so_it_reduces_to_a_separator()
+    [Test]
+    public async Task An_emoji_is_not_a_letter_so_it_reduces_to_a_separator()
     {
-        Assert.True(TagName.TryParse("happy\U0001F600face", out var tag));
-        Assert.Equal("happy_face", tag.Name);
+        await Assert.That(TagName.TryParse("happy\U0001F600face", out var tag)).IsTrue();
+        await Assert.That(tag.Name).IsEqualTo("happy_face");
     }
 
     // ---- explicit namespace --------------------------------------------
@@ -263,62 +262,62 @@ public class TagNameTests
     /// A name containing a colon must not have its own namespace inferred when the caller
     /// already knows which namespace it belongs to.
     /// </summary>
-    [Fact]
-    public void TryParseInNamespace_does_not_infer_a_namespace_from_the_name()
+    [Test]
+    public async Task TryParseInNamespace_does_not_infer_a_namespace_from_the_name()
     {
-        Assert.True(TagName.TryParseInNamespace("series", "nier:automata", out var tag));
-        Assert.Equal("series", tag.Namespace);
-        Assert.Equal("nier:automata", tag.Name);
+        await Assert.That(TagName.TryParseInNamespace("series", "nier:automata", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("series");
+        await Assert.That(tag.Name).IsEqualTo("nier:automata");
     }
 
-    [Fact]
-    public void TryParse_by_contrast_would_infer_one_from_a_bare_name()
+    [Test]
+    public async Task TryParse_by_contrast_would_infer_one_from_a_bare_name()
     {
         // Demonstrates precisely why TryParseInNamespace exists.
-        Assert.True(TagName.TryParse("nier:automata", out var tag));
-        Assert.Equal("nier", tag.Namespace);
+        await Assert.That(TagName.TryParse("nier:automata", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("nier");
     }
 
-    [Fact]
-    public void TryParseInNamespace_normalizes_the_namespace()
+    [Test]
+    public async Task TryParseInNamespace_normalizes_the_namespace()
     {
-        Assert.True(TagName.TryParseInNamespace("  Series  ", "foo", out var tag));
-        Assert.Equal("series", tag.Namespace);
+        await Assert.That(TagName.TryParseInNamespace("  Series  ", "foo", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("series");
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("has space")]
-    [InlineData("has:colon")]
-    public void An_unusable_namespace_degrades_to_an_unnamespaced_tag(string? ns)
+    [Test]
+    [Arguments(null)]
+    [Arguments("")]
+    [Arguments("   ")]
+    [Arguments("has space")]
+    [Arguments("has:colon")]
+    public async Task An_unusable_namespace_degrades_to_an_unnamespaced_tag(string? ns)
     {
-        Assert.True(TagName.TryParseInNamespace(ns, "foo", out var tag));
-        Assert.Equal("", tag.Namespace);
-        Assert.Equal("foo", tag.Name);
+        await Assert.That(TagName.TryParseInNamespace(ns, "foo", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("");
+        await Assert.That(tag.Name).IsEqualTo("foo");
     }
 
-    [Fact]
-    public void TryParseInNamespace_rejects_a_name_that_normalizes_to_nothing()
+    [Test]
+    public async Task TryParseInNamespace_rejects_a_name_that_normalizes_to_nothing()
     {
-        Assert.False(TagName.TryParseInNamespace("series", "   ", out _));
-        Assert.False(TagName.TryParseInNamespace("series", null, out _));
+        await Assert.That(TagName.TryParseInNamespace("series", "   ", out _)).IsFalse();
+        await Assert.That(TagName.TryParseInNamespace("series", null, out _)).IsFalse();
     }
 
-    [Fact]
-    public void TryParseInNamespace_still_collapses_whitespace()
+    [Test]
+    public async Task TryParseInNamespace_still_collapses_whitespace()
     {
-        Assert.True(TagName.TryParseInNamespace("creator", "Some Artist", out var tag));
-        Assert.Equal("creator", tag.Namespace);
-        Assert.Equal("some_artist", tag.Name);
+        await Assert.That(TagName.TryParseInNamespace("creator", "Some Artist", out var tag)).IsTrue();
+        await Assert.That(tag.Namespace).IsEqualTo("creator");
+        await Assert.That(tag.Name).IsEqualTo("some_artist");
     }
 
-    [Fact]
-    public void Equality_is_by_value_so_tags_deduplicate()
+    [Test]
+    public async Task Equality_is_by_value_so_tags_deduplicate()
     {
         TagName.TryParse("artist:foo", out var a);
         TagName.TryParse("Artist:FOO", out var b);
-        Assert.Equal(a, b);
+        await Assert.That(b).IsEqualTo(a);
     }
 }

@@ -1,3 +1,4 @@
+using System.IO;
 using Boh.Web.Services;
 using ImageMagick;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -16,7 +17,7 @@ namespace Boh.Tests;
 /// </remarks>
 public class PerceptualHashTests : IDisposable
 {
-    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+    private static CancellationToken Ct => TestContext.Current!.Execution.CancellationToken;
 
     private readonly string _dir =
         Path.Combine(Path.GetTempPath(), "boh-hash-tests", Guid.NewGuid().ToString("N"));
@@ -41,30 +42,28 @@ public class PerceptualHashTests : IDisposable
     /// The case the whole feature exists for: the same picture, downscaled and re-encoded,
     /// shares no bytes with the original and so cannot be caught by its SHA-256.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task The_same_picture_resized_and_re_encoded_hashes_almost_identically()
     {
         var original = await HashAsync(TestEnvironment.MakePattern(400, 400), "original.png");
         var repost = await HashAsync(
             TestEnvironment.MakePattern(160, 160, MagickFormat.Jpeg), "repost.jpg");
 
-        Assert.NotNull(original);
-        Assert.NotNull(repost);
+        await Assert.That(original).IsNotNull();
+        await Assert.That(repost).IsNotNull();
 
         var distance = PerceptualHash.Distance(original.Value, repost.Value);
-        Assert.True(distance <= DuplicateService.MaxDistance,
-            $"a 400px PNG and its 160px JPEG re-encode were {distance} bits apart");
+        await Assert.That(distance <= DuplicateService.MaxDistance).IsTrue().Because($"a 400px PNG and its 160px JPEG re-encode were {distance} bits apart");
     }
 
-    [Fact]
+    [Test]
     public async Task Unrelated_pictures_hash_far_apart()
     {
         var first = await HashAsync(TestEnvironment.MakePattern(300, 300, seed: 1), "first.png");
         var second = await HashAsync(TestEnvironment.MakePattern(300, 300, seed: 2), "second.png");
 
         var distance = PerceptualHash.Distance(first!.Value, second!.Value);
-        Assert.True(distance > DuplicateService.MaxDistance,
-            $"two unrelated pictures were only {distance} bits apart");
+        await Assert.That(distance > DuplicateService.MaxDistance).IsTrue().Because($"two unrelated pictures were only {distance} bits apart");
     }
 
     /// <summary>
@@ -72,7 +71,7 @@ public class PerceptualHashTests : IDisposable
     /// describe whatever the decoder happened to leave under the alpha, and a picture would
     /// stop matching the version of itself that had the transparency flattened away.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Making_the_background_transparent_still_hashes_as_the_same_picture()
     {
         var opaque = await HashAsync(TestEnvironment.MakePattern(300, 300), "opaque.png");
@@ -85,51 +84,48 @@ public class PerceptualHashTests : IDisposable
 
         var transparent = await HashAsync(image.ToByteArray(), "transparent.png");
 
-        Assert.NotNull(transparent);
+        await Assert.That(transparent).IsNotNull();
 
         // Not bit-for-bit: making white transparent within a 5% fuzz also nudges the pixels
         // that were nearly white. What matters is that it stays well inside duplicate range.
         var distance = PerceptualHash.Distance(opaque!.Value, transparent.Value);
-        Assert.True(distance <= DuplicateService.MaxDistance,
-            $"flattening the alpha moved the hash {distance} bits");
+        await Assert.That(distance <= DuplicateService.MaxDistance).IsTrue().Because($"flattening the alpha moved the hash {distance} bits");
     }
 
     /// <summary>
     /// An image with no structure has nothing to compare. If it hashed anyway, every blank
     /// scan and solid placeholder in the collection would report every other as a duplicate.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task An_image_with_no_detail_is_not_hashed()
     {
-        Assert.Null(await HashAsync(TestEnvironment.MakePng(300, 300), "flat.png"));
-        Assert.Null(await HashAsync(TestEnvironment.MakeJpeg(300, 300), "flat.jpg"));
+        await Assert.That(await HashAsync(TestEnvironment.MakePng(300, 300), "flat.png")).IsNull();
+        await Assert.That(await HashAsync(TestEnvironment.MakeJpeg(300, 300), "flat.jpg")).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task A_file_that_does_not_decode_is_reported_as_no_hash()
     {
         var path = Path.Combine(_dir, "prose.png");
         await File.WriteAllTextAsync(path, "this is not an image, it is prose", Ct);
 
-        Assert.Null(await _processor.TryComputePerceptualHashAsync(path, Ct));
+        await Assert.That(await _processor.TryComputePerceptualHashAsync(path, Ct)).IsNull();
     }
 
-    [Fact]
-    public void Distance_counts_differing_bits()
+    [Test]
+    public async Task Distance_counts_differing_bits()
     {
-        Assert.Equal(0, PerceptualHash.Distance(0, 0));
-        Assert.Equal(0, PerceptualHash.Distance(-1, -1));
-        Assert.Equal(1, PerceptualHash.Distance(0, 1));
-        Assert.Equal(3, PerceptualHash.Distance(0b1011, 0));
+        await Assert.That(PerceptualHash.Distance(0, 0)).IsEqualTo(0);
+        await Assert.That(PerceptualHash.Distance(-1, -1)).IsEqualTo(0);
+        await Assert.That(PerceptualHash.Distance(0, 1)).IsEqualTo(1);
+        await Assert.That(PerceptualHash.Distance(0b1011, 0)).IsEqualTo(3);
 
         // The sign bit is a bit like any other; a hash is not a number.
-        Assert.Equal(64, PerceptualHash.Distance(0, -1));
-        Assert.Equal(
-            PerceptualHash.Distance(long.MinValue, 0),
-            PerceptualHash.Distance(0, long.MinValue));
+        await Assert.That(PerceptualHash.Distance(0, -1)).IsEqualTo(64);
+        await Assert.That(PerceptualHash.Distance(0, long.MinValue)).IsEqualTo(PerceptualHash.Distance(long.MinValue, 0));
     }
 
-    [Fact]
+    [Test]
     public void A_grid_of_the_wrong_size_is_a_programming_error()
     {
         Assert.Throws<ArgumentException>(() => PerceptualHash.TryCompute(new byte[16]));

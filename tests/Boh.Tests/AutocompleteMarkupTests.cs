@@ -15,15 +15,15 @@ public class AutocompleteMarkupTests
     /// The completing fields outside the tag-admin page — <see cref="TagAdminPageTests"/>
     /// covers that page's six — as the field's name and a page that renders it.
     /// </summary>
-    public static TheoryData<string, string> Fields => new()
-    {
+    public static IEnumerable<(string, string)> Fields() =>
+    [
         // The header search, so every page carries it.
-        { "q", "/" },
-        { "tags", "detail" },
-    };
+        ("q", "/"),
+        ("tags", "detail"),
+    ];
 
-    [Theory]
-    [MemberData(nameof(Fields))]
+    [Test]
+    [MethodDataSource(nameof(Fields))]
     public async Task Every_completing_field_is_a_combobox_over_the_panel_it_fills(string name, string page)
     {
         using var app = new TestApp();
@@ -34,22 +34,22 @@ public class AutocompleteMarkupTests
         var html = await app.GetHtmlAsync(client, url);
 
         var tag = Regex.Match(html, "<input[^>]*\\bname=\"" + name + "\"[^>]*>");
-        Assert.True(tag.Success, $"no input named {name} on {url}");
+        await Assert.That(tag.Success).IsTrue().Because($"no input named {name} on {url}");
 
-        Assert.Contains("role=\"combobox\"", tag.Value);
-        Assert.Contains("aria-autocomplete=\"list\"", tag.Value);
+        await Assert.That(tag.Value).Contains("role=\"combobox\"");
+        await Assert.That(tag.Value).Contains("aria-autocomplete=\"list\"");
 
         // The dropdown's open state is announced by flipping this, so it has to start present.
-        Assert.Contains("aria-expanded=\"false\"", tag.Value);
+        await Assert.That(tag.Value).Contains("aria-expanded=\"false\"");
 
         var panel = Regex.Match(tag.Value, "data-suggest-for=\"#([^\"]+)\"").Groups[1].Value;
-        Assert.NotEqual("", panel);
-        Assert.Contains($"id=\"{panel}\" class=\"suggestions\"", html);
+        await Assert.That(panel).IsNotEqualTo("");
+        await Assert.That(html).Contains($"id=\"{panel}\" class=\"suggestions\"");
 
         // aria-controls has to name the same panel htmx swaps into, or a screen reader is
         // told about a list other than the one on screen.
-        Assert.Contains($"aria-controls=\"{panel}\"", tag.Value);
-        Assert.Contains($"hx-target=\"#{panel}\"", tag.Value);
+        await Assert.That(tag.Value).Contains($"aria-controls=\"{panel}\"");
+        await Assert.That(tag.Value).Contains($"hx-target=\"#{panel}\"");
     }
 
     /// <summary>
@@ -57,7 +57,7 @@ public class AutocompleteMarkupTests
     /// one — which leaves focus in the input, and points aria-activedescendant at the row —
     /// reads as a selection rather than as nothing at all.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task The_suggestion_rows_are_options_in_a_listbox()
     {
         using var app = new TestApp();
@@ -67,14 +67,14 @@ public class AutocompleteMarkupTests
 
         var html = await app.GetHtmlAsync(client, "/Tags/Autocomplete?q=meme:pond");
 
-        Assert.Contains("role=\"listbox\"", html);
+        await Assert.That(html).Contains("role=\"listbox\"");
 
         var row = Regex.Match(html, "<button[^>]*class=\"suggestion\"[^>]*>");
-        Assert.True(row.Success, "no suggestion row rendered");
-        Assert.Contains("role=\"option\"", row.Value);
+        await Assert.That(row.Success).IsTrue().Because("no suggestion row rendered");
+        await Assert.That(row.Value).Contains("role=\"option\"");
 
         // Highlighting sets this to true on one row; without it there is nothing to flip.
-        Assert.Contains("aria-selected=\"false\"", row.Value);
+        await Assert.That(row.Value).Contains("aria-selected=\"false\"");
     }
 
     /// <summary>
@@ -82,7 +82,7 @@ public class AutocompleteMarkupTests
     /// complete — but the same text in the post editor is an ordinary namespace and must
     /// still complete, which is why the suppression is scoped to the search box.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task A_url_search_term_offers_no_tag_suggestions()
     {
         using var app = new TestApp();
@@ -90,10 +90,8 @@ public class AutocompleteMarkupTests
         var id = await app.CreatePostAsync(25);
         await app.TagAsync(id, "url:example");
 
-        Assert.DoesNotContain("class=\"suggestion\"",
-            await app.GetHtmlAsync(client, "/Tags/Autocomplete?q=url:exam"));
+        await Assert.That(await app.GetHtmlAsync(client, "/Tags/Autocomplete?q=url:exam")).DoesNotContain("class=\"suggestion\"");
 
-        Assert.Contains("class=\"suggestion\"",
-            await app.GetHtmlAsync(client, "/Tags/Autocomplete?tags=url:exam"));
+        await Assert.That(await app.GetHtmlAsync(client, "/Tags/Autocomplete?tags=url:exam")).Contains("class=\"suggestion\"");
     }
 }

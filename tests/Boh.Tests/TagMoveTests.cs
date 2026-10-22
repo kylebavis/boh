@@ -7,11 +7,11 @@ namespace Boh.Tests;
 
 public class TagMoveTests
 {
-    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+    private static CancellationToken Ct => TestContext.Current!.Execution.CancellationToken;
 
     private static List<TagName> Names(params string[] raw) => TagName.ParseMany(string.Join(' ', raw));
 
-    [Fact]
+    [Test]
     public async Task Moving_a_tag_into_a_namespace_keeps_it_on_the_post()
     {
         using var env = new TestEnvironment();
@@ -20,11 +20,11 @@ public class TagMoveTests
 
         var result = await env.Tags.MoveTagAsync(new TagName("", "foo"), new TagName("artist", "foo"), Ct);
 
-        Assert.IsType<TagLinkResult.Ok>(result);
-        Assert.Equal(["artist:foo"], await env.TagsOnAsync(post));
+        await Assert.That(result).IsTypeOf<TagLinkResult.Ok>();
+        await Assert.That(await env.TagsOnAsync(post)).IsEquivalentTo(["artist:foo"], CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task A_plain_rename_works_too()
     {
         using var env = new TestEnvironment();
@@ -33,20 +33,20 @@ public class TagMoveTests
 
         await env.Tags.MoveTagAsync(new TagName("", "typoo"), new TagName("", "typo"), Ct);
 
-        Assert.Equal(["typo"], await env.TagsOnAsync(post));
+        await Assert.That(await env.TagsOnAsync(post)).IsEquivalentTo(["typo"], CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task Moving_a_tag_that_does_not_exist_is_rejected()
     {
         using var env = new TestEnvironment();
 
         var result = await env.Tags.MoveTagAsync(new TagName("", "nope"), new TagName("artist", "nope"), Ct);
 
-        Assert.IsType<TagLinkResult.Rejected>(result);
+        await Assert.That(result).IsTypeOf<TagLinkResult.Rejected>();
     }
 
-    [Fact]
+    [Test]
     public async Task Moving_a_tag_onto_itself_is_rejected()
     {
         using var env = new TestEnvironment();
@@ -55,12 +55,12 @@ public class TagMoveTests
 
         var result = await env.Tags.MoveTagAsync(new TagName("", "foo"), new TagName("", "foo"), Ct);
 
-        Assert.IsType<TagLinkResult.Rejected>(result);
+        await Assert.That(result).IsTypeOf<TagLinkResult.Rejected>();
     }
 
     // ---- merging into an existing destination ---------------------------
 
-    [Fact]
+    [Test]
     public async Task Merging_unions_the_posts_of_both_tags()
     {
         using var env = new TestEnvironment();
@@ -74,20 +74,20 @@ public class TagMoveTests
 
         await env.Tags.MoveTagAsync(new TagName("", "foo"), new TagName("artist", "foo"), Ct);
 
-        Assert.Equal(["artist:foo"], await env.TagsOnAsync(onlySource));
-        Assert.Equal(["artist:foo"], await env.TagsOnAsync(both));
-        Assert.Equal(["artist:foo"], await env.TagsOnAsync(onlyDestination));
+        await Assert.That(await env.TagsOnAsync(onlySource)).IsEquivalentTo(["artist:foo"], CollectionOrdering.Matching);
+        await Assert.That(await env.TagsOnAsync(both)).IsEquivalentTo(["artist:foo"], CollectionOrdering.Matching);
+        await Assert.That(await env.TagsOnAsync(onlyDestination)).IsEquivalentTo(["artist:foo"], CollectionOrdering.Matching);
 
         env.Db.ChangeTracker.Clear();
-        Assert.Null(await env.Tags.FindAsync(new TagName("", "foo"), Ct));
-        Assert.Equal(3, (await env.Tags.FindAsync(new TagName("artist", "foo"), Ct))!.PostCount);
+        await Assert.That(await env.Tags.FindAsync(new TagName("", "foo"), Ct)).IsNull();
+        await Assert.That((await env.Tags.FindAsync(new TagName("artist", "foo"), Ct))!.PostCount).IsEqualTo(3);
     }
 
     /// <summary>
     /// A post can hold the destination as implied while holding the source explicitly.
     /// The merge must not quietly demote the hand-typed one.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Merging_keeps_the_stronger_provenance()
     {
         using var env = new TestEnvironment();
@@ -96,15 +96,15 @@ public class TagMoveTests
         await env.Tags.AddImplicationAsync(new TagName("", "child"), new TagName("artist", "foo"), Ct);
         await env.Tags.SetPostTagsAsync(post, Names("child", "foo"), Ct);
 
-        Assert.Equal(TagSource.Implied, await env.SourceOfAsync(post, "artist:foo"));
-        Assert.Equal(TagSource.Explicit, await env.SourceOfAsync(post, "foo"));
+        await Assert.That(await env.SourceOfAsync(post, "artist:foo")).IsEqualTo(TagSource.Implied);
+        await Assert.That(await env.SourceOfAsync(post, "foo")).IsEqualTo(TagSource.Explicit);
 
         await env.Tags.MoveTagAsync(new TagName("", "foo"), new TagName("artist", "foo"), Ct);
 
-        Assert.Equal(TagSource.Explicit, await env.SourceOfAsync(post, "artist:foo"));
+        await Assert.That(await env.SourceOfAsync(post, "artist:foo")).IsEqualTo(TagSource.Explicit);
     }
 
-    [Fact]
+    [Test]
     public async Task Merging_carries_over_an_alias_pointing_at_the_source()
     {
         using var env = new TestEnvironment();
@@ -116,10 +116,10 @@ public class TagMoveTests
 
         // The alias must now resolve to the merged destination, not dangle.
         await env.Tags.SetPostTagsAsync(post, Names("eff"), Ct);
-        Assert.Equal(["artist:foo"], await env.TagsOnAsync(post));
+        await Assert.That(await env.TagsOnAsync(post)).IsEquivalentTo(["artist:foo"], CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task Merging_an_alias_into_a_used_tag_migrates_that_tags_posts()
     {
         using var env = new TestEnvironment();
@@ -130,11 +130,11 @@ public class TagMoveTests
         // artist:eff inherits the alias, so its post belongs on foo.
         await env.Tags.MoveTagAsync(new TagName("", "eff"), new TagName("artist", "eff"), Ct);
 
-        Assert.Equal(["foo"], await env.TagsOnAsync(post));
-        Assert.Equal(1, (await env.Tags.FindAsync(new TagName("", "foo"), Ct))!.PostCount);
+        await Assert.That(await env.TagsOnAsync(post)).IsEquivalentTo(["foo"], CollectionOrdering.Matching);
+        await Assert.That((await env.Tags.FindAsync(new TagName("", "foo"), Ct))!.PostCount).IsEqualTo(1);
     }
 
-    [Fact]
+    [Test]
     public async Task Merging_into_an_alias_lands_posts_on_its_canonical_tag()
     {
         using var env = new TestEnvironment();
@@ -144,10 +144,10 @@ public class TagMoveTests
 
         await env.Tags.MoveTagAsync(new TagName("", "eff"), new TagName("artist", "eff"), Ct);
 
-        Assert.Equal(["foo"], await env.TagsOnAsync(post));
+        await Assert.That(await env.TagsOnAsync(post)).IsEquivalentTo(["foo"], CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task Merging_carries_over_an_implication_on_the_source()
     {
         using var env = new TestEnvironment();
@@ -157,14 +157,14 @@ public class TagMoveTests
         await env.Tags.MoveTagAsync(new TagName("", "foo"), new TagName("artist", "foo"), Ct);
 
         await env.Tags.SetPostTagsAsync(post, Names("artist:foo"), Ct);
-        Assert.Equal(["artist:foo", "series:bar"], await env.TagsOnAsync(post));
+        await Assert.That(await env.TagsOnAsync(post)).IsEquivalentTo(["artist:foo", "series:bar"], CollectionOrdering.Matching);
     }
 
     /// <summary>
     /// Merging a tag into one it already implies would leave an edge from a tag to itself,
     /// which the closure walk treats as a cycle.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Merging_two_tags_joined_by_an_implication_leaves_no_self_edge()
     {
         using var env = new TestEnvironment();
@@ -173,10 +173,10 @@ public class TagMoveTests
         await env.Tags.MoveTagAsync(new TagName("", "foo"), new TagName("artist", "foo"), Ct);
 
         env.Db.ChangeTracker.Clear();
-        Assert.Empty(await env.Db.TagImplications.Where(i => i.ChildTagId == i.ParentTagId).ToListAsync(Ct));
+        await Assert.That(await env.Db.TagImplications.Where(i => i.ChildTagId == i.ParentTagId).ToListAsync(Ct)).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task Merging_leaves_no_orphaned_link_rows()
     {
         using var env = new TestEnvironment();
@@ -189,10 +189,10 @@ public class TagMoveTests
         var tagIds = await env.Db.Tags.Select(t => t.Id).ToListAsync(Ct);
         var linkTagIds = await env.Db.PostTags.Select(pt => pt.TagId).Distinct().ToListAsync(Ct);
 
-        Assert.All(linkTagIds, id => Assert.Contains(id, tagIds));
+        await Assert.That(linkTagIds).All(id => tagIds.Contains(id));
     }
 
-    [Fact]
+    [Test]
     public async Task The_moved_tag_is_findable_under_its_new_name_and_gone_from_the_old()
     {
         using var env = new TestEnvironment();
@@ -202,10 +202,10 @@ public class TagMoveTests
         await env.Tags.MoveTagAsync(new TagName("", "foo"), new TagName("artist", "foo"), Ct);
 
         env.Db.ChangeTracker.Clear();
-        Assert.NotNull(await env.Tags.FindAsync(new TagName("artist", "foo"), Ct));
-        Assert.Null(await env.Tags.FindAsync(new TagName("", "foo"), Ct));
+        await Assert.That(await env.Tags.FindAsync(new TagName("artist", "foo"), Ct)).IsNotNull();
+        await Assert.That(await env.Tags.FindAsync(new TagName("", "foo"), Ct)).IsNull();
 
         var resolved = await env.Tags.ResolveSearchAsync(SearchQuery.Parse("artist:foo"), Ct);
-        Assert.False(resolved.Unsatisfiable);
+        await Assert.That(resolved.Unsatisfiable).IsFalse();
     }
 }

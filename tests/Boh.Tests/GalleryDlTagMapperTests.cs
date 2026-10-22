@@ -18,8 +18,8 @@ public class GalleryDlTagMapperTests
     /// general tag list. Emitting both spellings gives the post a redundant bare duplicate
     /// of a tag it already carries under a namespace.
     /// </summary>
-    [Fact]
-    public void A_name_carried_by_a_namespace_is_not_repeated_unnamespaced()
+    [Test]
+    public async Task A_name_carried_by_a_namespace_is_not_repeated_unnamespaced()
     {
         var tags = Map("""
         {
@@ -30,39 +30,39 @@ public class GalleryDlTagMapperTests
         }
         """);
 
-        Assert.Contains("character:pondering_my_orb", tags);
-        Assert.DoesNotContain("pondering_my_orb", tags);
+        await Assert.That(tags).Contains("character:pondering_my_orb");
+        await Assert.That(tags).DoesNotContain("pondering_my_orb");
 
-        Assert.Contains("copyright:ancient_wisdom_collection", tags);
-        Assert.DoesNotContain("ancient_wisdom_collection", tags);
+        await Assert.That(tags).Contains("copyright:ancient_wisdom_collection");
+        await Assert.That(tags).DoesNotContain("ancient_wisdom_collection");
 
-        Assert.Contains("artist:orb_enjoyer", tags);
-        Assert.DoesNotContain("orb_enjoyer", tags);
+        await Assert.That(tags).Contains("artist:orb_enjoyer");
+        await Assert.That(tags).DoesNotContain("orb_enjoyer");
 
         // Genuinely general tags still come through bare.
-        Assert.Contains("long_hair", tags);
+        await Assert.That(tags).Contains("long_hair");
     }
 
-    [Fact]
-    public void The_same_deduplication_applies_to_array_valued_fields()
+    [Test]
+    public async Task The_same_deduplication_applies_to_array_valued_fields()
     {
         var tags = Map("""
         { "tags": ["pondering_my_orb", "landscape"], "character": ["pondering_my_orb"] }
         """);
 
-        Assert.Equal(["character:pondering_my_orb", "landscape"], tags);
+        await Assert.That(tags).IsEquivalentTo(["character:pondering_my_orb", "landscape"], CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void General_tags_survive_when_nothing_claims_them()
+    [Test]
+    public async Task General_tags_survive_when_nothing_claims_them()
     {
         var tags = Map("""{ "tags": ["landscape", "sunset"] }""");
 
-        Assert.Equal(["landscape", "sunset"], tags);
+        await Assert.That(tags).IsEquivalentTo(["landscape", "sunset"], CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void Maps_each_recognized_category_to_its_namespace()
+    [Test]
+    public async Task Maps_each_recognized_category_to_its_namespace()
     {
         var tags = Map("""
         {
@@ -74,44 +74,44 @@ public class GalleryDlTagMapperTests
         }
         """);
 
-        Assert.Contains("artist:foo", tags);
-        Assert.Contains("character:bar", tags);
-        Assert.Contains("copyright:baz", tags);
-        Assert.Contains("rating:safe", tags);
-        Assert.Contains("source:danbooru", tags);
+        await Assert.That(tags).Contains("artist:foo");
+        await Assert.That(tags).Contains("character:bar");
+        await Assert.That(tags).Contains("copyright:baz");
+        await Assert.That(tags).Contains("rating:safe");
+        await Assert.That(tags).Contains("source:danbooru");
     }
 
-    [Fact]
-    public void Reads_the_artist_from_a_nested_user_object()
+    [Test]
+    public async Task Reads_the_artist_from_a_nested_user_object()
     {
         var tags = Map("""{ "user": { "name": "Some Artist" } }""");
 
-        Assert.Equal(["artist:some_artist"], tags);
+        await Assert.That(tags).IsEquivalentTo(["artist:some_artist"], CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void Values_are_normalized_the_same_way_as_typed_tags()
+    [Test]
+    public async Task Values_are_normalized_the_same_way_as_typed_tags()
     {
         var tags = Map("""{ "character": "Pondering My Orb" }""");
 
-        Assert.Equal(["character:pondering_my_orb"], tags);
+        await Assert.That(tags).IsEquivalentTo(["character:pondering_my_orb"], CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void A_space_separated_string_becomes_several_tags()
+    [Test]
+    public async Task A_space_separated_string_becomes_several_tags()
     {
         var tags = Map("""{ "tags": "a b c" }""");
 
-        Assert.Equal(["a", "b", "c"], tags);
+        await Assert.That(tags).IsEquivalentTo(["a", "b", "c"], CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void Duplicate_spellings_across_fields_collapse()
+    [Test]
+    public async Task Duplicate_spellings_across_fields_collapse()
     {
         // Both spellings of the artist field are recognized; the tag should appear once.
         var tags = Map("""{ "artist": "foo", "tag_string_artist": "foo", "creator": "foo" }""");
 
-        Assert.Equal(["artist:foo"], tags);
+        await Assert.That(tags).IsEquivalentTo(["artist:foo"], CollectionOrdering.Matching);
     }
 
     /// <summary>
@@ -119,48 +119,48 @@ public class GalleryDlTagMapperTests
     /// mapper concatenated "ns:value" and relied on where the first colon landed, so a bare
     /// general tag like "nier:automata" produced the bogus namespace "nier".
     /// </summary>
-    [Fact]
-    public void A_colon_inside_a_value_does_not_invent_a_namespace()
+    [Test]
+    public async Task A_colon_inside_a_value_does_not_invent_a_namespace()
     {
         var namespaced = Map("""{ "copyright": "nier:automata" }""");
-        Assert.Equal(["copyright:nier:automata"], namespaced);
+        await Assert.That(namespaced).IsEquivalentTo(["copyright:nier:automata"], CollectionOrdering.Matching);
 
         var general = Map("""{ "tags": ["nier:automata"] }""");
-        Assert.Equal(["nier:automata"], general);
+        await Assert.That(general).IsEquivalentTo(["nier:automata"], CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void Emoticon_tags_from_an_importer_survive()
+    [Test]
+    public async Task Emoticon_tags_from_an_importer_survive()
     {
         var tags = Map("""{ "tags": ":d ^_^ >_<" }""");
 
-        Assert.Equal([":d", "^_^", ">_<"], tags);
+        await Assert.That(tags).IsEquivalentTo([":d", "^_^", ">_<"], CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void Unrecognized_fields_are_ignored_rather_than_guessed_at()
+    [Test]
+    public async Task Unrecognized_fields_are_ignored_rather_than_guessed_at()
     {
         var tags = Map("""{ "score": 42, "file_url": "https://example.com/x.jpg", "id": 7 }""");
 
-        Assert.Empty(tags);
+        await Assert.That(tags).IsEmpty();
     }
 
-    [Theory]
-    [InlineData("{}")]
-    [InlineData("""{ "tags": [] }""")]
-    [InlineData("""{ "tags": "" }""")]
-    [InlineData("""{ "tags": null }""")]
-    public void Degenerate_metadata_yields_no_tags(string json)
+    [Test]
+    [Arguments("{}")]
+    [Arguments("""{ "tags": [] }""")]
+    [Arguments("""{ "tags": "" }""")]
+    [Arguments("""{ "tags": null }""")]
+    public async Task Degenerate_metadata_yields_no_tags(string json)
     {
-        Assert.Empty(Map(json));
+        await Assert.That(Map(json)).IsEmpty();
     }
 
-    [Fact]
-    public void Non_object_metadata_yields_no_tags()
+    [Test]
+    public async Task Non_object_metadata_yields_no_tags()
     {
-        Assert.Empty(GalleryDlTagMapper.Map(null));
+        await Assert.That(GalleryDlTagMapper.Map(null)).IsEmpty();
 
         using var document = JsonDocument.Parse("[1,2,3]");
-        Assert.Empty(GalleryDlTagMapper.Map(document.RootElement.Clone()));
+        await Assert.That(GalleryDlTagMapper.Map(document.RootElement.Clone())).IsEmpty();
     }
 }

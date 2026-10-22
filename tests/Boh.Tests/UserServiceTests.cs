@@ -5,7 +5,7 @@ namespace Boh.Tests;
 
 public class UserServiceTests
 {
-    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+    private static CancellationToken Ct => TestContext.Current!.Execution.CancellationToken;
 
     private const string Password = "correct-horse";
 
@@ -24,7 +24,7 @@ public class UserServiceTests
 
     // ---- authentication ------------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task A_seeded_admin_can_sign_in()
     {
         using var env = new TestEnvironment();
@@ -32,57 +32,57 @@ public class UserServiceTests
 
         var user = await env.Users.AuthenticateAsync("admin", Password, Ct);
 
-        Assert.NotNull(user);
-        Assert.True(user!.IsAdmin);
+        await Assert.That(user).IsNotNull();
+        await Assert.That(user!.IsAdmin).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task The_username_is_matched_case_insensitively()
     {
         using var env = new TestEnvironment();
         await SeedAdminAsync(env);
 
-        Assert.NotNull(await env.Users.AuthenticateAsync("ADMIN", Password, Ct));
-        Assert.NotNull(await env.Users.AuthenticateAsync("  Admin  ", Password, Ct));
+        await Assert.That(await env.Users.AuthenticateAsync("ADMIN", Password, Ct)).IsNotNull();
+        await Assert.That(await env.Users.AuthenticateAsync("  Admin  ", Password, Ct)).IsNotNull();
     }
 
-    [Theory]
-    [InlineData("admin", "wrong-password")]
-    [InlineData("nobody", "correct-horse")]
-    [InlineData("", "")]
+    [Test]
+    [Arguments("admin", "wrong-password")]
+    [Arguments("nobody", "correct-horse")]
+    [Arguments("", "")]
     public async Task Bad_credentials_are_refused(string username, string password)
     {
         using var env = new TestEnvironment();
         await SeedAdminAsync(env);
 
-        Assert.Null(await env.Users.AuthenticateAsync(username, password, Ct));
+        await Assert.That(await env.Users.AuthenticateAsync(username, password, Ct)).IsNull();
     }
 
     // ---- creating ------------------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task An_ordinary_user_can_be_created_and_sign_in()
     {
         using var env = new TestEnvironment();
 
-        Assert.IsType<UserResult.Ok>(await env.Users.CreateAsync("friend", Password, false, Ct));
+        await Assert.That(await env.Users.CreateAsync("friend", Password, false, Ct)).IsTypeOf<UserResult.Ok>();
 
         var user = await env.Users.AuthenticateAsync("friend", Password, Ct);
-        Assert.NotNull(user);
-        Assert.False(user!.IsAdmin);
+        await Assert.That(user).IsNotNull();
+        await Assert.That(user!.IsAdmin).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task Usernames_are_stored_normalized()
     {
         using var env = new TestEnvironment();
 
         await env.Users.CreateAsync("  Friend  ", Password, false, Ct);
 
-        Assert.NotNull(await env.Users.AuthenticateAsync("friend", Password, Ct));
+        await Assert.That(await env.Users.AuthenticateAsync("friend", Password, Ct)).IsNotNull();
     }
 
-    [Fact]
+    [Test]
     public async Task A_duplicate_username_is_rejected()
     {
         using var env = new TestEnvironment();
@@ -90,33 +90,33 @@ public class UserServiceTests
 
         var result = await env.Users.CreateAsync("FRIEND", Password, false, Ct);
 
-        Assert.IsType<UserResult.Rejected>(result);
+        await Assert.That(result).IsTypeOf<UserResult.Rejected>();
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("has space")]
-    [InlineData("has/slash")]
-    [InlineData("has:colon")]
+    [Test]
+    [Arguments("")]
+    [Arguments("   ")]
+    [Arguments("has space")]
+    [Arguments("has/slash")]
+    [Arguments("has:colon")]
     public async Task An_unusable_username_is_rejected(string username)
     {
         using var env = new TestEnvironment();
 
-        Assert.IsType<UserResult.Rejected>(await env.Users.CreateAsync(username, Password, false, Ct));
+        await Assert.That(await env.Users.CreateAsync(username, Password, false, Ct)).IsTypeOf<UserResult.Rejected>();
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("short")]
+    [Test]
+    [Arguments("")]
+    [Arguments("short")]
     public async Task A_weak_password_is_rejected(string password)
     {
         using var env = new TestEnvironment();
 
-        Assert.IsType<UserResult.Rejected>(await env.Users.CreateAsync("friend", password, false, Ct));
+        await Assert.That(await env.Users.CreateAsync("friend", password, false, Ct)).IsTypeOf<UserResult.Rejected>();
     }
 
-    [Fact]
+    [Test]
     public async Task The_password_is_not_stored_in_the_clear()
     {
         using var env = new TestEnvironment();
@@ -124,10 +124,10 @@ public class UserServiceTests
 
         var stored = (await env.Db.Users.SingleAsync(u => u.Username == "friend", Ct)).PasswordHash;
 
-        Assert.DoesNotContain(Password, stored);
+        await Assert.That(stored).DoesNotContain(Password);
     }
 
-    [Fact]
+    [Test]
     public async Task A_legacy_bcrypt_hash_is_refused_without_throwing()
     {
         using var env = new TestEnvironment();
@@ -136,7 +136,7 @@ public class UserServiceTests
             .ExecuteUpdateAsync(s => s.SetProperty(u => u.PasswordHash, LegacyBcryptHash), Ct);
         env.Db.ChangeTracker.Clear();
 
-        Assert.Null(await env.Users.AuthenticateAsync("friend", Password, Ct));
+        await Assert.That(await env.Users.AuthenticateAsync("friend", Password, Ct)).IsNull();
     }
 
     /// <summary>The shape of hash older releases stored.</summary>
@@ -148,7 +148,7 @@ public class UserServiceTests
     /// The failure this prevents is total: with no administrator nobody can add users, manage
     /// tags, or restore the situation from inside the application.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task The_last_administrator_cannot_be_deleted()
     {
         using var env = new TestEnvironment();
@@ -157,11 +157,11 @@ public class UserServiceTests
 
         var result = await env.Users.DeleteAsync(adminId, Ct);
 
-        Assert.IsType<UserResult.Rejected>(result);
-        Assert.True(await env.Db.Users.AnyAsync(u => u.IsAdmin, Ct));
+        await Assert.That(result).IsTypeOf<UserResult.Rejected>();
+        await Assert.That(await env.Db.Users.AnyAsync(u => u.IsAdmin, Ct)).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task The_last_administrator_cannot_be_demoted()
     {
         using var env = new TestEnvironment();
@@ -169,34 +169,34 @@ public class UserServiceTests
 
         var result = await env.Users.SetAdminAsync(adminId, false, Ct);
 
-        Assert.IsType<UserResult.Rejected>(result);
-        Assert.True(await env.Db.Users.AnyAsync(u => u.IsAdmin, Ct));
+        await Assert.That(result).IsTypeOf<UserResult.Rejected>();
+        await Assert.That(await env.Db.Users.AnyAsync(u => u.IsAdmin, Ct)).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task An_administrator_can_be_deleted_once_another_exists()
     {
         using var env = new TestEnvironment();
         var adminId = await SeedAdminAsync(env);
         await env.Users.CreateAsync("second", Password, isAdmin: true, Ct);
 
-        Assert.IsType<UserResult.Ok>(await env.Users.DeleteAsync(adminId, Ct));
-        Assert.Equal(1, await env.Db.Users.CountAsync(u => u.IsAdmin, Ct));
+        await Assert.That(await env.Users.DeleteAsync(adminId, Ct)).IsTypeOf<UserResult.Ok>();
+        await Assert.That(await env.Db.Users.CountAsync(u => u.IsAdmin, Ct)).IsEqualTo(1);
     }
 
-    [Fact]
+    [Test]
     public async Task An_ordinary_user_can_always_be_deleted()
     {
         using var env = new TestEnvironment();
         await SeedAdminAsync(env);
         await env.Users.CreateAsync("friend", Password, false, Ct);
 
-        Assert.IsType<UserResult.Ok>(await env.Users.DeleteAsync(await IdOfAsync(env, "friend"), Ct));
-        Assert.False(await env.Db.Users.AnyAsync(u => u.Username == "friend", Ct));
+        await Assert.That(await env.Users.DeleteAsync(await IdOfAsync(env, "friend"), Ct)).IsTypeOf<UserResult.Ok>();
+        await Assert.That(await env.Db.Users.AnyAsync(u => u.Username == "friend", Ct)).IsFalse();
     }
 
     /// <summary>Deleting the uploader must not take the collection with it.</summary>
-    [Fact]
+    [Test]
     public async Task Deleting_a_user_keeps_their_posts()
     {
         using var env = new TestEnvironment();
@@ -206,19 +206,19 @@ public class UserServiceTests
 
         var result = await env.Posts.CreateAsync(
             new MemoryStream(TestEnvironment.MakePng(60, 60)), friendId, "", Ct);
-        var postId = Assert.IsType<PostCreateResult.Created>(result).Post.Id;
+        var postId = (await Assert.That(result).IsTypeOf<PostCreateResult.Created>())!.Post.Id;
 
-        Assert.IsType<UserResult.Ok>(await env.Users.DeleteAsync(friendId, Ct));
+        await Assert.That(await env.Users.DeleteAsync(friendId, Ct)).IsTypeOf<UserResult.Ok>();
 
         env.Db.ChangeTracker.Clear();
         var post = await env.Posts.GetAsync(postId, Ct);
-        Assert.NotNull(post);
-        Assert.Null(post!.UploadedById);
+        await Assert.That(post).IsNotNull();
+        await Assert.That(post!.UploadedById).IsNull();
     }
 
     // ---- promotion and passwords ---------------------------------------
 
-    [Fact]
+    [Test]
     public async Task A_user_can_be_promoted_and_demoted()
     {
         using var env = new TestEnvironment();
@@ -226,28 +226,28 @@ public class UserServiceTests
         await env.Users.CreateAsync("friend", Password, false, Ct);
         var friendId = await IdOfAsync(env, "friend");
 
-        Assert.IsType<UserResult.Ok>(await env.Users.SetAdminAsync(friendId, true, Ct));
-        Assert.True((await env.Users.FindByIdAsync(friendId, Ct))!.IsAdmin);
+        await Assert.That(await env.Users.SetAdminAsync(friendId, true, Ct)).IsTypeOf<UserResult.Ok>();
+        await Assert.That((await env.Users.FindByIdAsync(friendId, Ct))!.IsAdmin).IsTrue();
 
         env.Db.ChangeTracker.Clear();
-        Assert.IsType<UserResult.Ok>(await env.Users.SetAdminAsync(friendId, false, Ct));
-        Assert.False((await env.Users.FindByIdAsync(friendId, Ct))!.IsAdmin);
+        await Assert.That(await env.Users.SetAdminAsync(friendId, false, Ct)).IsTypeOf<UserResult.Ok>();
+        await Assert.That((await env.Users.FindByIdAsync(friendId, Ct))!.IsAdmin).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task An_admin_reset_replaces_the_password_without_knowing_the_old_one()
     {
         using var env = new TestEnvironment();
         await env.Users.CreateAsync("friend", Password, false, Ct);
         var friendId = await IdOfAsync(env, "friend");
 
-        Assert.IsType<UserResult.Ok>(await env.Users.SetPasswordAsync(friendId, "brand-new-password", Ct));
+        await Assert.That(await env.Users.SetPasswordAsync(friendId, "brand-new-password", Ct)).IsTypeOf<UserResult.Ok>();
 
-        Assert.Null(await env.Users.AuthenticateAsync("friend", Password, Ct));
-        Assert.NotNull(await env.Users.AuthenticateAsync("friend", "brand-new-password", Ct));
+        await Assert.That(await env.Users.AuthenticateAsync("friend", Password, Ct)).IsNull();
+        await Assert.That(await env.Users.AuthenticateAsync("friend", "brand-new-password", Ct)).IsNotNull();
     }
 
-    [Fact]
+    [Test]
     public async Task Changing_your_own_password_requires_the_current_one()
     {
         using var env = new TestEnvironment();
@@ -255,39 +255,38 @@ public class UserServiceTests
         var friendId = await IdOfAsync(env, "friend");
 
         var wrong = await env.Users.ChangeOwnPasswordAsync(friendId, "not-my-password", "brand-new-password", Ct);
-        Assert.IsType<UserResult.Rejected>(wrong);
-        Assert.NotNull(await env.Users.AuthenticateAsync("friend", Password, Ct));
+        await Assert.That(wrong).IsTypeOf<UserResult.Rejected>();
+        await Assert.That(await env.Users.AuthenticateAsync("friend", Password, Ct)).IsNotNull();
 
         env.Db.ChangeTracker.Clear();
         var right = await env.Users.ChangeOwnPasswordAsync(friendId, Password, "brand-new-password", Ct);
-        Assert.IsType<UserResult.Ok>(right);
-        Assert.NotNull(await env.Users.AuthenticateAsync("friend", "brand-new-password", Ct));
+        await Assert.That(right).IsTypeOf<UserResult.Ok>();
+        await Assert.That(await env.Users.AuthenticateAsync("friend", "brand-new-password", Ct)).IsNotNull();
     }
 
-    [Fact]
+    [Test]
     public async Task A_weak_new_password_is_rejected_on_self_service_change()
     {
         using var env = new TestEnvironment();
         await env.Users.CreateAsync("friend", Password, false, Ct);
         var friendId = await IdOfAsync(env, "friend");
 
-        Assert.IsType<UserResult.Rejected>(
-            await env.Users.ChangeOwnPasswordAsync(friendId, Password, "short", Ct));
+        await Assert.That(await env.Users.ChangeOwnPasswordAsync(friendId, Password, "short", Ct)).IsTypeOf<UserResult.Rejected>();
     }
 
-    [Fact]
+    [Test]
     public async Task Operations_on_a_missing_user_are_rejected_rather_than_thrown()
     {
         using var env = new TestEnvironment();
 
-        Assert.IsType<UserResult.Rejected>(await env.Users.DeleteAsync(9999, Ct));
-        Assert.IsType<UserResult.Rejected>(await env.Users.SetAdminAsync(9999, true, Ct));
-        Assert.IsType<UserResult.Rejected>(await env.Users.SetPasswordAsync(9999, Password, Ct));
+        await Assert.That(await env.Users.DeleteAsync(9999, Ct)).IsTypeOf<UserResult.Rejected>();
+        await Assert.That(await env.Users.SetAdminAsync(9999, true, Ct)).IsTypeOf<UserResult.Rejected>();
+        await Assert.That(await env.Users.SetPasswordAsync(9999, Password, Ct)).IsTypeOf<UserResult.Rejected>();
     }
 
     // ---- seeding -------------------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task Seeding_twice_with_the_same_password_does_not_rewrite_the_hash()
     {
         using var env = new TestEnvironment();
@@ -300,10 +299,10 @@ public class UserServiceTests
         env.Db.ChangeTracker.Clear();
         var second = (await env.Db.Users.AsNoTracking().SingleAsync(u => u.Username == "admin", Ct)).PasswordHash;
 
-        Assert.Equal(first, second);
+        await Assert.That(second).IsEqualTo(first);
     }
 
-    [Fact]
+    [Test]
     public async Task Seeding_applies_a_changed_password()
     {
         using var env = new TestEnvironment();
@@ -312,13 +311,13 @@ public class UserServiceTests
         env.Db.ChangeTracker.Clear();
         await env.Users.SeedAdminAsync("a-different-password", Ct);
 
-        Assert.Null(await env.Users.AuthenticateAsync("admin", Password, Ct));
-        Assert.NotNull(await env.Users.AuthenticateAsync("admin", "a-different-password", Ct));
+        await Assert.That(await env.Users.AuthenticateAsync("admin", Password, Ct)).IsNull();
+        await Assert.That(await env.Users.AuthenticateAsync("admin", "a-different-password", Ct)).IsNotNull();
     }
 
     // ---- theme preferences ---------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task Theme_preferences_are_stored_per_mode()
     {
         using var env = new TestEnvironment();
@@ -327,8 +326,8 @@ public class UserServiceTests
         await env.Users.SetThemesAsync(adminId, "solarized-light", "nord", Ct);
 
         var user = await env.Users.FindByIdAsync(adminId, Ct);
-        Assert.Equal("solarized-light", user!.LightTheme);
-        Assert.Equal("nord", user.DarkTheme);
+        await Assert.That(user!.LightTheme).IsEqualTo("solarized-light");
+        await Assert.That(user.DarkTheme).IsEqualTo("nord");
     }
 
     /// <summary>
@@ -337,10 +336,10 @@ public class UserServiceTests
     /// a hand-edited post — neither worth an error message when falling back to the stock
     /// look is a perfectly good outcome.
     /// </summary>
-    [Theory]
-    [InlineData("nord", "solarized-light")]
-    [InlineData("no-such-theme", "no-such-theme")]
-    [InlineData("", "")]
+    [Test]
+    [Arguments("nord", "solarized-light")]
+    [Arguments("no-such-theme", "no-such-theme")]
+    [Arguments("", "")]
     public async Task A_palette_that_does_not_belong_falls_back_to_the_default(string light, string dark)
     {
         using var env = new TestEnvironment();
@@ -349,11 +348,11 @@ public class UserServiceTests
         await env.Users.SetThemesAsync(adminId, light, dark, Ct);
 
         var user = await env.Users.FindByIdAsync(adminId, Ct);
-        Assert.Null(user!.LightTheme);
-        Assert.Null(user.DarkTheme);
+        await Assert.That(user!.LightTheme).IsNull();
+        await Assert.That(user.DarkTheme).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task A_theme_can_be_cleared_back_to_the_default()
     {
         using var env = new TestEnvironment();
@@ -364,11 +363,11 @@ public class UserServiceTests
         await env.Users.SetThemesAsync(adminId, null, "dracula", Ct);
 
         var user = await env.Users.FindByIdAsync(adminId, Ct);
-        Assert.Null(user!.LightTheme);
-        Assert.Equal("dracula", user.DarkTheme);
+        await Assert.That(user!.LightTheme).IsNull();
+        await Assert.That(user.DarkTheme).IsEqualTo("dracula");
     }
 
-    [Fact]
+    [Test]
     public async Task Setting_a_theme_for_a_deleted_user_is_rejected()
     {
         using var env = new TestEnvironment();
@@ -376,14 +375,14 @@ public class UserServiceTests
 
         var result = await env.Users.SetThemesAsync(9999, "gruvbox-light", "nord", Ct);
 
-        Assert.IsType<UserResult.Rejected>(result);
+        await Assert.That(result).IsTypeOf<UserResult.Rejected>();
     }
 
     /// <summary>
     /// The seeded account is the documented way back in, so an accidental demotion must not
     /// survive a restart.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Seeding_restores_admin_rights_to_the_seeded_account()
     {
         using var env = new TestEnvironment();
@@ -394,6 +393,6 @@ public class UserServiceTests
         env.Db.ChangeTracker.Clear();
         await env.Users.SeedAdminAsync(Password, Ct);
 
-        Assert.True((await env.Users.FindByIdAsync(adminId, Ct))!.IsAdmin);
+        await Assert.That((await env.Users.FindByIdAsync(adminId, Ct))!.IsAdmin).IsTrue();
     }
 }

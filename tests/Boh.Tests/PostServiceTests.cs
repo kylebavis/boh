@@ -6,9 +6,9 @@ namespace Boh.Tests;
 
 public class PostServiceTests
 {
-    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+    private static CancellationToken Ct => TestContext.Current!.Execution.CancellationToken;
 
-    [Fact]
+    [Test]
     public async Task CreateAsync_stores_the_post_and_generates_a_thumbnail()
     {
         using var env = new TestEnvironment();
@@ -16,34 +16,33 @@ public class PostServiceTests
         var result = await env.Posts.CreateAsync(
             new MemoryStream(TestEnvironment.MakePng(300, 200)), null, "", Ct);
 
-        var created = Assert.IsType<PostCreateResult.Created>(result);
-        Assert.Equal(300, created.Post.Width);
-        Assert.Equal(200, created.Post.Height);
-        Assert.Equal("image/png", created.Post.MimeType);
-        Assert.Equal(".png", created.Post.FileExtension);
-        Assert.False(created.Post.IsVideo);
+        var created = (await Assert.That(result).IsTypeOf<PostCreateResult.Created>())!;
+        await Assert.That(created.Post.Width).IsEqualTo(300);
+        await Assert.That(created.Post.Height).IsEqualTo(200);
+        await Assert.That(created.Post.MimeType).IsEqualTo("image/png");
+        await Assert.That(created.Post.FileExtension).IsEqualTo(".png");
+        await Assert.That(created.Post.IsVideo).IsFalse();
 
-        Assert.True(env.Store.OriginalExists(created.Post.Sha256, ".png"));
-        Assert.True(env.Store.ThumbExists(created.Post.Sha256));
+        await Assert.That(env.Store.OriginalExists(created.Post.Sha256, ".png")).IsTrue();
+        await Assert.That(env.Store.ThumbExists(created.Post.Sha256)).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task CreateAsync_reports_a_duplicate_instead_of_storing_twice()
     {
         using var env = new TestEnvironment();
         var bytes = TestEnvironment.MakePng(120, 120);
 
-        var first = Assert.IsType<PostCreateResult.Created>(
-            await env.Posts.CreateAsync(new MemoryStream(bytes), null, "", Ct));
+        var first = (await Assert.That(await env.Posts.CreateAsync(new MemoryStream(bytes), null, "", Ct)).IsTypeOf<PostCreateResult.Created>())!;
 
         var second = await env.Posts.CreateAsync(new MemoryStream(bytes), null, "", Ct);
 
-        var duplicate = Assert.IsType<PostCreateResult.Duplicate>(second);
-        Assert.Equal(first.Post.Id, duplicate.ExistingPostId);
-        Assert.Equal(1, await env.Db.Posts.CountAsync(Ct));
+        var duplicate = (await Assert.That(second).IsTypeOf<PostCreateResult.Duplicate>())!;
+        await Assert.That(duplicate.ExistingPostId).IsEqualTo(first.Post.Id);
+        await Assert.That(await env.Db.Posts.CountAsync(Ct)).IsEqualTo(1);
     }
 
-    [Fact]
+    [Test]
     public async Task CreateAsync_rejects_content_that_is_not_an_image()
     {
         using var env = new TestEnvironment();
@@ -51,21 +50,21 @@ public class PostServiceTests
 
         var result = await env.Posts.CreateAsync(new MemoryStream(bytes), null, "", Ct);
 
-        Assert.IsType<PostCreateResult.Rejected>(result);
-        Assert.Equal(0, await env.Db.Posts.CountAsync(Ct));
+        await Assert.That(result).IsTypeOf<PostCreateResult.Rejected>();
+        await Assert.That(await env.Db.Posts.CountAsync(Ct)).IsEqualTo(0);
     }
 
-    [Fact]
+    [Test]
     public async Task CreateAsync_rejects_an_empty_file()
     {
         using var env = new TestEnvironment();
 
         var result = await env.Posts.CreateAsync(new MemoryStream([]), null, "", Ct);
 
-        Assert.IsType<PostCreateResult.Rejected>(result);
+        await Assert.That(result).IsTypeOf<PostCreateResult.Rejected>();
     }
 
-    [Fact]
+    [Test]
     public async Task CreateAsync_trusts_content_over_the_declared_format()
     {
         using var env = new TestEnvironment();
@@ -74,12 +73,12 @@ public class PostServiceTests
         var result = await env.Posts.CreateAsync(
             new MemoryStream(TestEnvironment.MakeJpeg(64, 64)), null, "", Ct);
 
-        var created = Assert.IsType<PostCreateResult.Created>(result);
-        Assert.Equal(".jpg", created.Post.FileExtension);
-        Assert.Equal("image/jpeg", created.Post.MimeType);
+        var created = (await Assert.That(result).IsTypeOf<PostCreateResult.Created>())!;
+        await Assert.That(created.Post.FileExtension).IsEqualTo(".jpg");
+        await Assert.That(created.Post.MimeType).IsEqualTo("image/jpeg");
     }
 
-    [Fact]
+    [Test]
     public async Task ListAsync_orders_newest_first_and_paginates()
     {
         using var env = new TestEnvironment();
@@ -93,37 +92,36 @@ public class PostServiceTests
         var (firstPage, total) = await env.Posts.ListAsync(null, page: 1, pageSize: 2, Ct);
         var (secondPage, _) = await env.Posts.ListAsync(null, page: 2, pageSize: 2, Ct);
 
-        Assert.Equal(5, total);
-        Assert.Equal(2, firstPage.Count);
+        await Assert.That(total).IsEqualTo(5);
+        await Assert.That(firstPage.Count).IsEqualTo(2);
 
         // Newest first: the last created post leads.
-        Assert.Equal(5, firstPage[0].Id);
-        Assert.Equal(4, firstPage[1].Id);
-        Assert.Equal(3, secondPage[0].Id);
+        await Assert.That(firstPage[0].Id).IsEqualTo(5);
+        await Assert.That(firstPage[1].Id).IsEqualTo(4);
+        await Assert.That(secondPage[0].Id).IsEqualTo(3);
     }
 
-    [Fact]
+    [Test]
     public async Task DeleteAsync_removes_the_row_and_its_blobs()
     {
         using var env = new TestEnvironment();
 
-        var created = Assert.IsType<PostCreateResult.Created>(
-            await env.Posts.CreateAsync(new MemoryStream(TestEnvironment.MakePng(80, 80)), null, "", Ct));
+        var created = (await Assert.That(await env.Posts.CreateAsync(new MemoryStream(TestEnvironment.MakePng(80, 80)), null, "", Ct)).IsTypeOf<PostCreateResult.Created>())!;
         var sha = created.Post.Sha256;
 
         var deleted = await env.Posts.DeleteAsync(created.Post.Id, Ct);
 
-        Assert.True(deleted);
-        Assert.Equal(0, await env.Db.Posts.CountAsync(Ct));
-        Assert.False(env.Store.OriginalExists(sha, ".png"));
-        Assert.False(env.Store.ThumbExists(sha));
+        await Assert.That(deleted).IsTrue();
+        await Assert.That(await env.Db.Posts.CountAsync(Ct)).IsEqualTo(0);
+        await Assert.That(env.Store.OriginalExists(sha, ".png")).IsFalse();
+        await Assert.That(env.Store.ThumbExists(sha)).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task DeleteAsync_returns_false_for_a_post_that_does_not_exist()
     {
         using var env = new TestEnvironment();
 
-        Assert.False(await env.Posts.DeleteAsync(4242, Ct));
+        await Assert.That(await env.Posts.DeleteAsync(4242, Ct)).IsFalse();
     }
 }

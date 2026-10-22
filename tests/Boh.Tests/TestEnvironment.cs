@@ -64,15 +64,15 @@ public sealed class TestEnvironment : IDisposable
     public async Task<int> CreatePostAsync(uint size = 32)
     {
         var result = await Posts.CreateAsync(
-            new MemoryStream(MakePng(size, size)), null, "", TestContext.Current.CancellationToken);
+            new MemoryStream(MakePng(size, size)), null, "", TestContext.Current!.Execution.CancellationToken);
 
-        return Assert.IsType<PostCreateResult.Created>(result).Post.Id;
+        return (await Assert.That(result).IsTypeOf<PostCreateResult.Created>())!.Post.Id;
     }
 
     public async Task<string[]> TagsOnAsync(int postId)
     {
         Db.ChangeTracker.Clear();
-        var post = await Posts.GetAsync(postId, TestContext.Current.CancellationToken);
+        var post = await Posts.GetAsync(postId, TestContext.Current!.Execution.CancellationToken);
         return post!.PostTags
             .Select(pt => new Boh.Web.Tags.TagName(pt.Tag.Namespace, pt.Tag.Name).Display)
             .OrderBy(x => x, StringComparer.Ordinal)
@@ -82,7 +82,7 @@ public sealed class TestEnvironment : IDisposable
     public async Task<Boh.Web.Data.Entities.TagSource?> SourceOfAsync(int postId, string display)
     {
         Db.ChangeTracker.Clear();
-        var post = await Posts.GetAsync(postId, TestContext.Current.CancellationToken);
+        var post = await Posts.GetAsync(postId, TestContext.Current!.Execution.CancellationToken);
         var match = post!.PostTags.FirstOrDefault(
             pt => new Boh.Web.Tags.TagName(pt.Tag.Namespace, pt.Tag.Name).Display == display);
 

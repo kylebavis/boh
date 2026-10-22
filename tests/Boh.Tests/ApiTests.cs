@@ -14,95 +14,94 @@ namespace Boh.Tests;
 public class ApiTests
 {
     // ---- authentication ------------------------------------------------
-
-    [Fact]
+    [Test]
     public async Task Without_a_token_a_private_instance_answers_401()
     {
         using var app = new TestApp(authMode: "password");
 
-        var response = await app.CreateNonRedirectingClient().GetAsync("/api/v1/posts", TestContext.Current.CancellationToken);
+        var response = await app.CreateNonRedirectingClient().GetAsync("/api/v1/posts", TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Equal("Bearer", response.Headers.WwwAuthenticate.Single().Scheme);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
+        await Assert.That(response.Headers.WwwAuthenticate.Single().Scheme).IsEqualTo("Bearer");
     }
 
     /// <summary>The cookie is refused so a page elsewhere cannot drive the API with a visitor's session.</summary>
-    [Fact]
+    [Test]
     public async Task A_signed_in_cookie_is_not_enough()
     {
         using var app = new TestApp(authMode: "password");
         var client = await app.SignInAsync();
 
-        var response = await client.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken);
+        var response = await client.GetAsync("/api/v1/posts", TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
 
-    [Fact]
+    [Test]
     public async Task A_token_reads_and_writes()
     {
         using var app = new TestApp(authMode: "password");
         var client = await TokenClientAsync(app);
         var id = await app.CreatePostAsync(24);
 
-        var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts", cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(id, list.GetProperty("posts")[0].GetProperty("id").GetInt32());
+        var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts", cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(list.GetProperty("posts")[0].GetProperty("id").GetInt32()).IsEqualTo(id);
 
-        var tagged = await client.PostAsJsonAsync($"/api/v1/posts/{id}/tags", new { tags = new[] { "landscape" } }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, tagged.StatusCode);
+        var tagged = await client.PostAsJsonAsync($"/api/v1/posts/{id}/tags", new { tags = new[] { "landscape" } }, cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(tagged.StatusCode).IsEqualTo(HttpStatusCode.OK);
     }
 
-    [Fact]
+    [Test]
     public async Task An_unknown_token_is_refused()
     {
         using var app = new TestApp(authMode: "password");
         var client = app.CreateNonRedirectingClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "boh_not-a-real-token");
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That((await client.GetAsync("/api/v1/posts", TestContext.Current!.Execution.CancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
 
-    [Fact]
+    [Test]
     public async Task A_revoked_token_stops_working()
     {
         using var app = new TestApp(authMode: "password");
         var client = await TokenClientAsync(app);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That((await client.GetAsync("/api/v1/posts", TestContext.Current!.Execution.CancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.OK);
 
         using (var scope = app.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
-            await db.ApiTokens.ExecuteDeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
+            await db.ApiTokens.ExecuteDeleteAsync(cancellationToken: TestContext.Current!.Execution.CancellationToken);
         }
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That((await client.GetAsync("/api/v1/posts", TestContext.Current!.Execution.CancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
 
-    [Fact]
+    [Test]
     public async Task Public_read_opens_reads_but_not_writes()
     {
         using var app = new TestApp(authMode: "password", publicRead: true);
         var client = app.CreateNonRedirectingClient();
         var id = await app.CreatePostAsync(24);
 
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/v1/posts/{id}", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.DeleteAsync($"/api/v1/posts/{id}", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That((await client.GetAsync($"/api/v1/posts/{id}", TestContext.Current!.Execution.CancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That((await client.DeleteAsync($"/api/v1/posts/{id}", TestContext.Current!.Execution.CancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
 
-    [Fact]
+    [Test]
     public async Task With_auth_off_no_token_is_needed()
     {
         using var app = new TestApp();
         var id = await app.CreatePostAsync(24);
 
-        var response = await app.CreateNonRedirectingClient().DeleteAsync($"/api/v1/posts/{id}", TestContext.Current.CancellationToken);
+        var response = await app.CreateNonRedirectingClient().DeleteAsync($"/api/v1/posts/{id}", TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NoContent);
     }
 
     // ---- the account page ----------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task The_account_page_creates_a_token_that_works_and_revokes_it()
     {
         using var app = new TestApp(authMode: "password");
@@ -118,15 +117,15 @@ public class ApiTests
             {
                 ["name"] = "shortcut",
                 ["__RequestVerificationToken"] = TestApp.FormValue(form, "__RequestVerificationToken"),
-            }), TestContext.Current.CancellationToken);
-        var html = await created.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            }), TestContext.Current!.Execution.CancellationToken);
+        var html = await created.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken);
 
         var secret = Regex.Match(html, "id=\"new-token\" value=\"(boh_[^\"]+)\"");
-        Assert.True(secret.Success, "the new token was not shown");
+        await Assert.That(secret.Success).IsTrue().Because("the new token was not shown");
 
         var api = app.CreateNonRedirectingClient();
         api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secret.Groups[1].Value);
-        Assert.Equal(HttpStatusCode.OK, (await api.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That((await api.GetAsync("/api/v1/posts", TestContext.Current!.Execution.CancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.OK);
 
         var revoke = TestApp.FormWithField(await app.GetHtmlAsync(browser, "/Account"), "tokenId");
         var revoked = await browser.PostAsync(TestApp.FormAction(revoke), new FormUrlEncodedContent(
@@ -134,14 +133,14 @@ public class ApiTests
             {
                 ["tokenId"] = TestApp.FormValue(revoke, "tokenId"),
                 ["__RequestVerificationToken"] = TestApp.FormValue(revoke, "__RequestVerificationToken"),
-            }), TestContext.Current.CancellationToken);
-        Assert.Contains("Token revoked.", await revoked.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        Assert.Equal(HttpStatusCode.Unauthorized, (await api.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken)).StatusCode);
+            }), TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(await revoked.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken)).Contains("Token revoked.");
+        await Assert.That((await api.GetAsync("/api/v1/posts", TestContext.Current!.Execution.CancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
 
     // ---- posts ---------------------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task Uploading_creates_a_tagged_post_with_its_source()
     {
         using var app = new TestApp();
@@ -149,44 +148,42 @@ public class ApiTests
 
         var response = await client.PostAsync("/api/v1/posts",
             Upload(TestEnvironment.MakePng(24, 24), tags: "landscape artist:someone", source: "https://example.com/1"),
-            TestContext.Current.CancellationToken);
+            TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var post = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Created);
+        var post = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(
-            ["artist:someone", "landscape"],
-            post.GetProperty("tags").EnumerateArray().Select(t => t.GetProperty("display").GetString()).Order());
-        Assert.Equal("https://example.com/1", post.GetProperty("sources")[0].GetProperty("url").GetString());
-        Assert.Equal($"/api/v1/posts/{post.GetProperty("id").GetInt32()}", response.Headers.Location!.OriginalString);
+        await Assert.That(post.GetProperty("tags").EnumerateArray().Select(t => t.GetProperty("display").GetString()).Order()).IsEquivalentTo<IEnumerable<string?>, string?>(["artist:someone", "landscape"], CollectionOrdering.Matching);
+        await Assert.That(post.GetProperty("sources")[0].GetProperty("url").GetString()).IsEqualTo("https://example.com/1");
+        await Assert.That(response.Headers.Location!.OriginalString).IsEqualTo($"/api/v1/posts/{post.GetProperty("id").GetInt32()}");
     }
 
-    [Fact]
+    [Test]
     public async Task Uploading_a_stored_file_answers_409_naming_the_post()
     {
         using var app = new TestApp();
         var client = app.CreateNonRedirectingClient();
         var file = TestEnvironment.MakePng(24, 24);
 
-        var first = await (await client.PostAsync("/api/v1/posts", Upload(file), TestContext.Current.CancellationToken)).Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
-        var second = await client.PostAsync("/api/v1/posts", Upload(file), TestContext.Current.CancellationToken);
+        var first = await (await client.PostAsync("/api/v1/posts", Upload(file), TestContext.Current!.Execution.CancellationToken)).Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        var second = await client.PostAsync("/api/v1/posts", Upload(file), TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
-        var body = await second.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(first.GetProperty("id").GetInt32(), body.GetProperty("postId").GetInt32());
+        await Assert.That(second.StatusCode).IsEqualTo(HttpStatusCode.Conflict);
+        var body = await second.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(body.GetProperty("postId").GetInt32()).IsEqualTo(first.GetProperty("id").GetInt32());
     }
 
-    [Fact]
+    [Test]
     public async Task Uploading_without_a_file_is_a_400()
     {
         using var app = new TestApp();
 
-        var response = await app.CreateNonRedirectingClient().PostAsync("/api/v1/posts", new MultipartFormDataContent(), TestContext.Current.CancellationToken);
+        var response = await app.CreateNonRedirectingClient().PostAsync("/api/v1/posts", new MultipartFormDataContent(), TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
     }
 
-    [Fact]
+    [Test]
     public async Task Put_replaces_the_explicit_tags()
     {
         using var app = new TestApp();
@@ -194,24 +191,24 @@ public class ApiTests
         var id = await app.CreatePostAsync(24);
         await app.TagAsync(id, "old", "keep");
 
-        var response = await client.PutAsJsonAsync($"/api/v1/posts/{id}/tags", new { tags = new[] { "keep", "new" } }, cancellationToken: TestContext.Current.CancellationToken);
+        var response = await client.PutAsJsonAsync($"/api/v1/posts/{id}/tags", new { tags = new[] { "keep", "new" } }, cancellationToken: TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(["keep", "new"], (await app.ExplicitTagsAsync(id)).Select(t => t.Display).Order());
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That((await app.ExplicitTagsAsync(id)).Select(t => t.Display).Order()).IsEquivalentTo(["keep", "new"], CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task Tagging_a_missing_post_is_a_404()
     {
         using var app = new TestApp();
 
         var response = await app.CreateNonRedirectingClient()
-            .PostAsJsonAsync("/api/v1/posts/999/tags", new { tags = new[] { "x" } }, cancellationToken: TestContext.Current.CancellationToken);
+            .PostAsJsonAsync("/api/v1/posts/999/tags", new { tags = new[] { "x" } }, cancellationToken: TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
-    [Fact]
+    [Test]
     public async Task Search_and_random_follow_the_query()
     {
         using var app = new TestApp();
@@ -220,71 +217,71 @@ public class ApiTests
         await app.CreatePostAsync(32);
         await app.TagAsync(tagged, "landscape");
 
-        var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts?q=landscape", cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(1, list.GetProperty("totalCount").GetInt32());
+        var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts?q=landscape", cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(list.GetProperty("totalCount").GetInt32()).IsEqualTo(1);
 
-        var random = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts/random?q=landscape", cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(tagged, random.GetProperty("id").GetInt32());
+        var random = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts/random?q=landscape", cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(random.GetProperty("id").GetInt32()).IsEqualTo(tagged);
 
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/v1/posts/random?q=nothing_has_this", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That((await client.GetAsync("/api/v1/posts/random?q=nothing_has_this", TestContext.Current!.Execution.CancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
-    [Fact]
+    [Test]
     public async Task Sources_can_be_added_and_removed()
     {
         using var app = new TestApp();
         var client = app.CreateNonRedirectingClient();
         var id = await app.CreatePostAsync(24);
 
-        var added = await client.PostAsJsonAsync($"/api/v1/posts/{id}/sources", new { url = "https://example.com/a" }, cancellationToken: TestContext.Current.CancellationToken);
-        var source = (await added.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("sources")[0];
+        var added = await client.PostAsJsonAsync($"/api/v1/posts/{id}/sources", new { url = "https://example.com/a" }, cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        var source = (await added.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current!.Execution.CancellationToken)).GetProperty("sources")[0];
 
-        var removed = await client.DeleteAsync($"/api/v1/posts/{id}/sources/{source.GetProperty("id").GetInt32()}", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+        var removed = await client.DeleteAsync($"/api/v1/posts/{id}/sources/{source.GetProperty("id").GetInt32()}", TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(removed.StatusCode).IsEqualTo(HttpStatusCode.NoContent);
 
-        var bad = await client.PostAsJsonAsync($"/api/v1/posts/{id}/sources", new { url = "javascript:alert(1)" }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        var bad = await client.PostAsJsonAsync($"/api/v1/posts/{id}/sources", new { url = "javascript:alert(1)" }, cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(bad.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
     }
 
-    [Fact]
+    [Test]
     public async Task Tag_autocomplete_answers_json()
     {
         using var app = new TestApp();
         var id = await app.CreatePostAsync(24);
         await app.TagAsync(id, "landscape");
 
-        var tags = await app.CreateNonRedirectingClient().GetFromJsonAsync<JsonElement>("/api/v1/tags?q=land", cancellationToken: TestContext.Current.CancellationToken);
+        var tags = await app.CreateNonRedirectingClient().GetFromJsonAsync<JsonElement>("/api/v1/tags?q=land", cancellationToken: TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal("landscape", tags[0].GetProperty("display").GetString());
+        await Assert.That(tags[0].GetProperty("display").GetString()).IsEqualTo("landscape");
     }
 
     // ---- imports -------------------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task An_import_is_queued_and_its_status_readable()
     {
         using var app = new TestApp();
         var client = app.CreateNonRedirectingClient();
 
-        var queued = await client.PostAsJsonAsync("/api/v1/imports", new { url = "https://example.com/gallery" }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Accepted, queued.StatusCode);
+        var queued = await client.PostAsJsonAsync("/api/v1/imports", new { url = "https://example.com/gallery" }, cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(queued.StatusCode).IsEqualTo(HttpStatusCode.Accepted);
 
         await app.WaitForJobsAsync();
 
-        var status = await client.GetFromJsonAsync<JsonElement>(queued.Headers.Location!.OriginalString, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal("https://example.com/gallery", status.GetProperty("url").GetString());
-        Assert.NotEqual("Queued", status.GetProperty("state").GetString());
+        var status = await client.GetFromJsonAsync<JsonElement>(queued.Headers.Location!.OriginalString, cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(status.GetProperty("url").GetString()).IsEqualTo("https://example.com/gallery");
+        await Assert.That(status.GetProperty("state").GetString()).IsNotEqualTo("Queued");
     }
 
-    [Fact]
+    [Test]
     public async Task An_import_needs_a_http_url()
     {
         using var app = new TestApp();
 
         var response = await app.CreateNonRedirectingClient()
-            .PostAsJsonAsync("/api/v1/imports", new { url = "file:///etc/passwd" }, cancellationToken: TestContext.Current.CancellationToken);
+            .PostAsJsonAsync("/api/v1/imports", new { url = "file:///etc/passwd" }, cancellationToken: TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
     }
 
     private static MultipartFormDataContent Upload(byte[] file, string? tags = null, string? source = null)
@@ -305,7 +302,7 @@ public class ApiTests
             var admin = await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername);
 
             var (_, created) = await scope.ServiceProvider.GetRequiredService<ApiTokenService>()
-                .CreateAsync(admin.Id, "test", TestContext.Current.CancellationToken);
+                .CreateAsync(admin.Id, "test", TestContext.Current!.Execution.CancellationToken);
             secret = created!;
         }
 

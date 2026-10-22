@@ -37,7 +37,7 @@ public class PasskeyTests
 
     // ---- what the pages offer ------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task The_account_page_offers_a_passkey_form_pointing_at_both_handlers()
     {
         using var app = new TestApp(authMode: "password");
@@ -46,15 +46,15 @@ public class PasskeyTests
         var form = Regex.Match(
             await app.GetHtmlAsync(client, AccountUrl), "<form[^>]*id=\"passkey-form\"[^>]*>");
 
-        Assert.True(form.Success, "no passkey form on the account page");
+        await Assert.That(form.Success).IsTrue().Because("no passkey form on the account page");
 
         // passkeys.js reads both URLs off the element; a renamed handler would otherwise
         // only show up as a button that silently does nothing.
-        Assert.Contains("data-passkey-options=\"/Account?handler=PasskeyOptions\"", form.Value);
-        Assert.Contains("data-passkey-register=\"/Account?handler=Passkey\"", form.Value);
+        await Assert.That(form.Value).Contains("data-passkey-options=\"/Account?handler=PasskeyOptions\"");
+        await Assert.That(form.Value).Contains("data-passkey-register=\"/Account?handler=Passkey\"");
     }
 
-    [Fact]
+    [Test]
     public async Task The_login_page_offers_a_passkey_sign_in_pointing_at_both_handlers()
     {
         using var app = new TestApp(authMode: "password", passkeyOrigins: Origin);
@@ -63,42 +63,42 @@ public class PasskeyTests
             await app.GetHtmlAsync(app.CreateNonRedirectingClient(), LoginUrl),
             "<form[^>]*id=\"passkey-signin\"[^>]*>", RegexOptions.Singleline);
 
-        Assert.True(form.Success, "no passkey sign-in on the login page");
-        Assert.Contains("data-passkey-options=\"/Account/Login?handler=PasskeyOptions\"", form.Value);
+        await Assert.That(form.Success).IsTrue().Because("no passkey sign-in on the login page");
+        await Assert.That(form.Value).Contains("data-passkey-options=\"/Account/Login?handler=PasskeyOptions\"");
 
         // No returnUrl in the query string: cookie authentication reads one there as an
         // instruction to redirect, which would replace the JSON the script is waiting for.
-        Assert.Contains("data-passkey-assert=\"/Account/Login?handler=Passkey\"", form.Value);
-        Assert.Contains("data-passkey-return=", form.Value);
+        await Assert.That(form.Value).Contains("data-passkey-assert=\"/Account/Login?handler=Passkey\"");
+        await Assert.That(form.Value).Contains("data-passkey-return=");
     }
 
     /// <summary>
     /// Over plain HTTP nothing will work — ASP.NET Core's origin check turns the request away
     /// whatever the browser thinks — so the sign-in button is left out rather than offered.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Over_plain_http_the_login_page_offers_no_passkey()
     {
         using var app = new TestApp(authMode: "password");
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), LoginUrl);
 
-        Assert.DoesNotContain("id=\"passkey-signin\"", html);
+        await Assert.That(html).DoesNotContain("id=\"passkey-signin\"");
     }
 
-    [Fact]
+    [Test]
     public async Task Over_plain_http_the_account_page_says_why_a_passkey_will_not_work()
     {
         using var app = new TestApp(authMode: "password");
         var client = await app.SignInAsync();
 
-        Assert.Contains("Passkeys need HTTPS", await app.GetHtmlAsync(client, AccountUrl));
+        await Assert.That(await app.GetHtmlAsync(client, AccountUrl)).Contains("Passkeys need HTTPS");
     }
 
     /// <summary>
     /// The button is markup the script reveals, so it has to start hidden — otherwise a
     /// browser without WebAuthn is offered a control that can only fail.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task The_passkey_controls_start_hidden_for_the_script_to_reveal()
     {
         using var app = new TestApp(authMode: "password", passkeyOrigins: Origin);
@@ -106,49 +106,48 @@ public class PasskeyTests
 
         var signin = Regex.Match(
             await app.GetHtmlAsync(client, LoginUrl), "<form[^>]*id=\"passkey-signin\"[^>]*>");
-        Assert.Contains("hidden", signin.Value);
+        await Assert.That(signin.Value).Contains("hidden");
 
         var add = Regex.Match(
             await app.GetHtmlAsync(client, AccountUrl),
             "<form[^>]*id=\"passkey-form\".*?</form>", RegexOptions.Singleline);
-        Assert.Contains("<button type=\"submit\" hidden>", add.Value);
+        await Assert.That(add.Value).Contains("<button type=\"submit\" hidden>");
     }
 
     /// <summary>With no accounts there is nothing to register a credential against.</summary>
-    [Fact]
+    [Test]
     public async Task Without_accounts_the_account_page_offers_no_passkeys()
     {
         using var app = new TestApp();
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), AccountUrl);
 
-        Assert.DoesNotContain("id=\"passkey-form\"", html);
-        Assert.DoesNotContain("<h2>Passkeys</h2>", html);
+        await Assert.That(html).DoesNotContain("id=\"passkey-form\"");
+        await Assert.That(html).DoesNotContain("<h2>Passkeys</h2>");
     }
 
     // ---- the first half of each ceremony -------------------------------
 
-    [Fact]
+    [Test]
     public async Task Registration_options_name_the_account_and_ask_for_a_discoverable_key()
     {
         using var app = new TestApp(authMode: "password");
         var client = await app.SignInAsync();
 
         var response = await PostAsync(app, client, AccountUrl, $"{AccountUrl}?handler=PasskeyOptions");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
 
-        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken));
         var root = options.RootElement;
 
-        Assert.NotEmpty(root.GetProperty("challenge").GetString()!);
-        Assert.Equal(UserService.AdminUsername, root.GetProperty("user").GetProperty("name").GetString());
+        await Assert.That(root.GetProperty("challenge").GetString()!).IsNotEmpty();
+        await Assert.That(root.GetProperty("user").GetProperty("name").GetString()).IsEqualTo(UserService.AdminUsername);
 
         // Discoverable, or the sign-in page could not offer a passkey without first being
         // told whose account to look in.
-        Assert.Equal("required",
-            root.GetProperty("authenticatorSelection").GetProperty("residentKey").GetString());
+        await Assert.That(root.GetProperty("authenticatorSelection").GetProperty("residentKey").GetString()).IsEqualTo("required");
 
         // localhost, because that is the host the request arrived on and nothing overrode it.
-        Assert.Equal("localhost", root.GetProperty("rp").GetProperty("id").GetString());
+        await Assert.That(root.GetProperty("rp").GetProperty("id").GetString()).IsEqualTo("localhost");
     }
 
     /// <summary>
@@ -156,7 +155,7 @@ public class PasskeyTests
     /// it must reach the browser sealed — an editable copy would let somebody register their
     /// own authenticator against another account.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task The_state_kept_between_the_two_requests_never_leaves_readable()
     {
         using var app = new TestApp(authMode: "password");
@@ -164,46 +163,42 @@ public class PasskeyTests
 
         var response = await PostAsync(app, client, AccountUrl, $"{AccountUrl}?handler=PasskeyOptions");
 
-        var cookie = Assert.Single(
-            response.Headers.GetValues("Set-Cookie"),
-            c => c.StartsWith("boh.passkey-registration="));
+        var cookie = await Assert.That(response.Headers.GetValues("Set-Cookie")).HasSingleItem(c => c.StartsWith("boh.passkey-registration="));
 
-        Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("samesite=strict", cookie, StringComparison.OrdinalIgnoreCase);
+        await Assert.That(cookie).Contains("httponly");
+        await Assert.That(cookie).Contains("samesite=strict");
 
         // The challenge the browser was given appears in the options; none of it, nor the
         // account it belongs to, may be legible in the cookie.
-        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        Assert.DoesNotContain(options.RootElement.GetProperty("challenge").GetString()!, cookie);
-        Assert.DoesNotContain("userId", cookie, StringComparison.OrdinalIgnoreCase);
+        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken));
+        await Assert.That(cookie).DoesNotContain(options.RootElement.GetProperty("challenge").GetString()!);
+        await Assert.That(cookie).DoesNotContain("userId");
     }
 
     /// <summary>
     /// Asking for a sign-in names no credential on purpose: the browser offers what it holds,
     /// and a stranger probing the endpoint learns nothing about which accounts exist.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Sign_in_options_ask_for_no_particular_credential()
     {
         using var app = new TestApp(authMode: "password");
         var client = app.CreateNonRedirectingClient();
 
         var response = await PostAsync(app, client, LoginUrl, $"{LoginUrl}?handler=PasskeyOptions");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
 
-        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken));
         var root = options.RootElement;
 
-        Assert.NotEmpty(root.GetProperty("challenge").GetString()!);
+        await Assert.That(root.GetProperty("challenge").GetString()!).IsNotEmpty();
 
-        Assert.True(
-            !root.TryGetProperty("allowCredentials", out var allowed) || allowed.GetArrayLength() == 0,
-            "the sign-in options named a credential");
+        await Assert.That(!root.TryGetProperty("allowCredentials", out var allowed) || allowed.GetArrayLength() == 0).IsTrue().Because("the sign-in options named a credential");
     }
 
     // ---- the second half, without the state ----------------------------
 
-    [Fact]
+    [Test]
     public async Task A_credential_arriving_with_no_ceremony_underway_is_refused()
     {
         using var app = new TestApp(authMode: "password");
@@ -212,11 +207,11 @@ public class PasskeyTests
         var response = await PostJsonAsync(
             app, client, AccountUrl, $"{AccountUrl}?handler=Passkey", "{\"name\":\"phone\"}");
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("error", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
+        await Assert.That(await response.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken)).Contains("error");
     }
 
-    [Fact]
+    [Test]
     public async Task A_sign_in_arriving_with_no_ceremony_underway_is_refused()
     {
         using var app = new TestApp(authMode: "password");
@@ -224,15 +219,15 @@ public class PasskeyTests
 
         var response = await PostJsonAsync(app, client, LoginUrl, $"{LoginUrl}?handler=Passkey", "{}");
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
 
         // And nothing was signed in on the way past.
-        Assert.DoesNotContain("boh.auth=", string.Join(" ", response.Headers.TryGetValues("Set-Cookie", out var set) ? set : []));
+        await Assert.That(string.Join(" ", response.Headers.TryGetValues("Set-Cookie", out var set) ? set : [])).DoesNotContain("boh.auth=");
     }
 
     // ---- managing what is already registered ---------------------------
 
-    [Fact]
+    [Test]
     public async Task A_registered_passkey_is_listed_with_its_name()
     {
         using var app = new TestApp(authMode: "password");
@@ -241,10 +236,10 @@ public class PasskeyTests
         await AddPasskeyAsync(app, "Work laptop");
 
         var html = await app.GetHtmlAsync(client, AccountUrl);
-        Assert.Contains("value=\"Work laptop\"", html);
+        await Assert.That(html).Contains("value=\"Work laptop\"");
     }
 
-    [Fact]
+    [Test]
     public async Task A_passkey_can_be_renamed_and_removed_from_the_account_page()
     {
         using var app = new TestApp(authMode: "password");
@@ -254,22 +249,22 @@ public class PasskeyTests
 
         var renamed = await PostAsync(app, client, AccountUrl, $"{AccountUrl}?handler=PasskeyRename",
             new Dictionary<string, string> { ["passkeyId"] = passkeyId.ToString(), ["name"] = "Old phone" });
-        Assert.Equal(HttpStatusCode.OK, renamed.StatusCode);
-        Assert.Contains("value=\"Old phone\"", await app.GetHtmlAsync(client, AccountUrl));
+        await Assert.That(renamed.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(await app.GetHtmlAsync(client, AccountUrl)).Contains("value=\"Old phone\"");
 
         var removed = await PostAsync(app, client, AccountUrl, $"{AccountUrl}?handler=PasskeyDelete",
             new Dictionary<string, string> { ["passkeyId"] = passkeyId.ToString() });
-        Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
+        await Assert.That(removed.StatusCode).IsEqualTo(HttpStatusCode.OK);
 
         using var scope = app.Services.CreateScope();
-        Assert.Empty(await scope.ServiceProvider.GetRequiredService<BohDbContext>().Passkeys.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.That(await scope.ServiceProvider.GetRequiredService<BohDbContext>().Passkeys.ToListAsync(cancellationToken: TestContext.Current!.Execution.CancellationToken)).IsEmpty();
     }
 
     /// <summary>
     /// The row id is a small integer and trivially guessed, so the owner is part of every
     /// lookup rather than only of reaching the page.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Someone_elses_passkey_cannot_be_removed()
     {
         using var app = new TestApp(authMode: "password");
@@ -280,18 +275,18 @@ public class PasskeyTests
         var response = await PostAsync(app, client, AccountUrl, $"{AccountUrl}?handler=PasskeyDelete",
             new Dictionary<string, string> { ["passkeyId"] = theirId.ToString() });
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("already gone", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(await response.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken)).Contains("already gone");
 
         using var scope = app.Services.CreateScope();
-        Assert.Single(await scope.ServiceProvider.GetRequiredService<BohDbContext>().Passkeys.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.That(await scope.ServiceProvider.GetRequiredService<BohDbContext>().Passkeys.ToListAsync(cancellationToken: TestContext.Current!.Execution.CancellationToken)).HasSingleItem();
     }
 
     /// <summary>
     /// A removed account must not leave credentials behind that still name it, which is what
     /// the cascade on the foreign key is for.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Deleting_a_user_takes_their_passkeys_with_them()
     {
         using var app = new TestApp(authMode: "password");
@@ -303,10 +298,10 @@ public class PasskeyTests
         var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
         var users = scope.ServiceProvider.GetRequiredService<UserService>();
 
-        var other = await db.Users.SingleAsync(u => u.Username == OtherUsername, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.IsType<UserResult.Ok>(await users.DeleteAsync(other.Id, TestContext.Current.CancellationToken));
+        var other = await db.Users.SingleAsync(u => u.Username == OtherUsername, cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(await users.DeleteAsync(other.Id, TestContext.Current!.Execution.CancellationToken)).IsTypeOf<UserResult.Ok>();
 
-        Assert.Empty(await db.Passkeys.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.That(await db.Passkeys.ToListAsync(cancellationToken: TestContext.Current!.Execution.CancellationToken)).IsEmpty();
     }
 
     /// <summary>
@@ -316,7 +311,7 @@ public class PasskeyTests
     /// past, and a store that answered any of that wrongly would fail only at the moment
     /// somebody first tried to use a passkey.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task A_credential_stored_through_the_framework_round_trips()
     {
         using var app = new TestApp(authMode: "password");
@@ -325,7 +320,7 @@ public class PasskeyTests
         var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
         var identityUsers = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
 
-        var admin = await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername, cancellationToken: TestContext.Current.CancellationToken);
+        var admin = await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername, cancellationToken: TestContext.Current!.Execution.CancellationToken);
 
         var credentialId = Encoding.UTF8.GetBytes("credential");
         var stored = await identityUsers.AddOrUpdatePasskeyAsync(admin, new UserPasskeyInfo(
@@ -340,33 +335,33 @@ public class PasskeyTests
             attestationObject: [4, 5],
             clientDataJson: [6, 7]) { Name = "Phone" });
 
-        Assert.True(stored.Succeeded, string.Join("; ", stored.Errors.Select(e => e.Description)));
+        await Assert.That(stored.Succeeded).IsTrue();
 
         // Read back the way the handler reads it, not straight from the table, so the
         // conversion is covered in both directions.
-        var passkey = Assert.Single(await identityUsers.GetPasskeysAsync(admin));
-        Assert.Equal("Phone", passkey.Name);
-        Assert.Equal(["internal", "hybrid"], passkey.Transports!);
-        Assert.Equal<byte[]>([1, 2, 3], passkey.PublicKey);
+        var passkey = await Assert.That(await identityUsers.GetPasskeysAsync(admin)).HasSingleItem();
+        await Assert.That(passkey.Name).IsEqualTo("Phone");
+        await Assert.That(passkey.Transports!).IsEquivalentTo(["internal", "hybrid"], CollectionOrdering.Matching);
+        await Assert.That(passkey.PublicKey).IsEquivalentTo((byte[])[1, 2, 3], CollectionOrdering.Matching);
 
         // And the credential leads back to its owner, which is what a sign-in that never
         // asked for a username depends on.
         var owner = await identityUsers.FindByPasskeyIdAsync(credentialId);
-        Assert.Equal(admin.Id, owner?.Id);
+        await Assert.That(owner?.Id).IsEqualTo(admin.Id);
 
         // Using it moves the counter and the backed-up flag; storing that again is what keeps
         // the framework's clone check meaningful.
         passkey.SignCount = 7;
         passkey.IsBackedUp = true;
-        Assert.True((await identityUsers.AddOrUpdatePasskeyAsync(admin, passkey)).Succeeded);
+        await Assert.That((await identityUsers.AddOrUpdatePasskeyAsync(admin, passkey)).Succeeded).IsTrue();
 
-        var used = Assert.Single(await identityUsers.GetPasskeysAsync(admin));
-        Assert.Equal(7u, used.SignCount);
-        Assert.True(used.IsBackedUp);
-        Assert.Equal("Phone", used.Name);
+        var used = await Assert.That(await identityUsers.GetPasskeysAsync(admin)).HasSingleItem();
+        await Assert.That(used.SignCount).IsEqualTo(7u);
+        await Assert.That(used.IsBackedUp).IsTrue();
+        await Assert.That(used.Name).IsEqualTo("Phone");
 
         await identityUsers.RemovePasskeyAsync(admin, credentialId);
-        Assert.Empty(await identityUsers.GetPasskeysAsync(admin));
+        await Assert.That(await identityUsers.GetPasskeysAsync(admin)).IsEmpty();
     }
 
     /// <summary>
@@ -378,7 +373,7 @@ public class PasskeyTests
     /// its own authenticator. It holds the private key, registers the matching public key,
     /// and signs the challenge the server issued.
     /// </remarks>
-    [Fact]
+    [Test]
     public async Task A_passkey_that_verifies_signs_its_owner_in()
     {
         using var app = new TestApp(authMode: "password", passkeyOrigins: Origin);
@@ -391,7 +386,7 @@ public class PasskeyTests
         using (var scope = app.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
-            userId = (await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername, cancellationToken: TestContext.Current.CancellationToken)).Id;
+            userId = (await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername, cancellationToken: TestContext.Current!.Execution.CancellationToken)).Id;
 
             db.Passkeys.Add(new Passkey
             {
@@ -405,7 +400,7 @@ public class PasskeyTests
                 CreatedAt = DateTimeOffset.UtcNow,
             });
 
-            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+            await db.SaveChangesAsync(TestContext.Current!.Execution.CancellationToken);
         }
 
         // The options call also leaves the sealed challenge on the client, as it does in a
@@ -413,9 +408,9 @@ public class PasskeyTests
         var optionsResponse = await TestApp.PostHxAsync(
             client, $"{LoginUrl}?handler=PasskeyOptions", await app.GetHtmlAsync(client, LoginUrl));
 
-        Assert.Equal(HttpStatusCode.OK, optionsResponse.StatusCode);
+        await Assert.That(optionsResponse.StatusCode).IsEqualTo(HttpStatusCode.OK);
 
-        using var options = JsonDocument.Parse(await optionsResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        using var options = JsonDocument.Parse(await optionsResponse.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken));
         var challenge = options.RootElement.GetProperty("challenge").GetString()!;
 
         var clientData = Encoding.UTF8.GetBytes(
@@ -457,25 +452,25 @@ public class PasskeyTests
         // than this JSON, because cookie authentication turns a ReturnUrl in the query string
         // into a redirect — and a client that follows redirects hides that by fetching the
         // page it points at and returning a perfectly good 200.
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Null(response.Headers.Location);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(response.Headers.Location).IsNull();
 
-        using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        Assert.Equal("/", result.RootElement.GetProperty("redirect").GetString());
+        using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken));
+        await Assert.That(result.RootElement.GetProperty("redirect").GetString()).IsEqualTo("/");
 
         // The counter moved, which is what keeps the clone check meaningful, and the use
         // was recorded for the account page.
         using (var scope = app.Services.CreateScope())
         {
             var stored = await scope.ServiceProvider.GetRequiredService<BohDbContext>()
-                .Passkeys.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
+                .Passkeys.SingleAsync(cancellationToken: TestContext.Current!.Execution.CancellationToken);
 
-            Assert.Equal(1u, stored.SignCount);
-            Assert.NotNull(stored.LastUsedAt);
+            await Assert.That(stored.SignCount).IsEqualTo(1u);
+            await Assert.That(stored.LastUsedAt).IsNotNull();
         }
 
         // And the ticket is the one a password would have produced.
-        Assert.Contains(UserService.AdminUsername, await app.GetHtmlAsync(client, AccountUrl));
+        await Assert.That(await app.GetHtmlAsync(client, AccountUrl)).Contains(UserService.AdminUsername);
     }
 
     // ---- helpers -------------------------------------------------------
@@ -511,8 +506,7 @@ public class PasskeyTests
         if (forAnotherUser)
         {
             var users = scope.ServiceProvider.GetRequiredService<UserService>();
-            Assert.IsType<UserResult.Ok>(
-                await users.CreateAsync(OtherUsername, "not-the-admin", false, TestContext.Current.CancellationToken));
+            await Assert.That(await users.CreateAsync(OtherUsername, "not-the-admin", false, TestContext.Current!.Execution.CancellationToken)).IsTypeOf<UserResult.Ok>();
 
             userId = (await db.Users.SingleAsync(u => u.Username == OtherUsername)).Id;
         }
@@ -550,7 +544,7 @@ public class PasskeyTests
     {
         var page = await app.GetHtmlAsync(client, pageUrl);
         var headers = Regex.Match(page, "hx-headers:inherited='([^']*)'");
-        Assert.True(headers.Success, "the layout rendered no hx-headers");
+        await Assert.That(headers.Success).IsTrue().Because("the layout rendered no hx-headers");
 
         using var token = JsonDocument.Parse(WebUtility.HtmlDecode(headers.Groups[1].Value));
 

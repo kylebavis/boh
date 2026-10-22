@@ -10,7 +10,7 @@ namespace Boh.Tests;
 /// </summary>
 public class InlineHandlerTests
 {
-    [Fact]
+    [Test]
     public async Task No_page_renders_an_inline_event_handler()
     {
         using var app = new TestApp(authMode: "password");
@@ -22,7 +22,7 @@ public class InlineHandlerTests
         using (var scope = app.Services.CreateScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserService>();
-            await users.CreateAsync("someone", "someone-password", false, TestContext.Current.CancellationToken);
+            await users.CreateAsync("someone", "someone-password", false, TestContext.Current!.Execution.CancellationToken);
         }
 
         string[] pages =
@@ -34,17 +34,17 @@ public class InlineHandlerTests
         foreach (var url in pages)
         {
             var html = await app.GetHtmlAsync(client, url);
-            Assert.True(InlineHandlers(html).Count == 0, $"{url} has {string.Join(", ", InlineHandlers(html))}");
+            await Assert.That(InlineHandlers(html).Count == 0).IsTrue().Because($"{url} has {string.Join(", ", InlineHandlers(html))}");
         }
 
         var login = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), "/Account/Login");
-        Assert.Empty(InlineHandlers(login));
+        await Assert.That(InlineHandlers(login)).IsEmpty();
     }
 
-    [Theory]
-    [InlineData("/Maintenance")]
-    [InlineData("/Posts/Detail/{0}")]
-    [InlineData("/Users")]
+    [Test]
+    [Arguments("/Maintenance")]
+    [Arguments("/Posts/Detail/{0}")]
+    [Arguments("/Users")]
     public async Task Destructive_forms_still_ask_first(string url)
     {
         using var app = new TestApp(authMode: "password");
@@ -54,12 +54,12 @@ public class InlineHandlerTests
         using (var scope = app.Services.CreateScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserService>();
-            await users.CreateAsync("someone", "someone-password", false, TestContext.Current.CancellationToken);
+            await users.CreateAsync("someone", "someone-password", false, TestContext.Current!.Execution.CancellationToken);
         }
 
         var html = await app.GetHtmlAsync(client, string.Format(url, postId));
 
-        Assert.Matches("<form[^>]*\\sdata-confirm=\"[^\"]+\"", html);
+        await Assert.That(html).Matches("<form[^>]*\\sdata-confirm=\"[^\"]+\"");
     }
 
     // Script bodies are dropped first so code mentioning "onclick=" is not mistaken for markup.

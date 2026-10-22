@@ -9,7 +9,7 @@ namespace Boh.Tests;
 /// </summary>
 public class SessionRevalidationTests
 {
-    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+    private static CancellationToken Ct => TestContext.Current!.Execution.CancellationToken;
 
     private static async Task<int> AdminIdWithAnotherAdminAsync(TestApp app)
     {
@@ -17,7 +17,7 @@ public class SessionRevalidationTests
         var users = scope.ServiceProvider.GetRequiredService<UserService>();
 
         // The last administrator can be neither demoted nor deleted.
-        Assert.IsType<UserResult.Ok>(await users.CreateAsync("second", "second-password-123", true, Ct));
+        await Assert.That(await users.CreateAsync("second", "second-password-123", true, Ct)).IsTypeOf<UserResult.Ok>();
 
         return (await users.ListAsync(Ct)).Single(u => u.Username == UserService.AdminUsername).Id;
     }
@@ -25,37 +25,37 @@ public class SessionRevalidationTests
     private static async Task<string> PathReachedAsync(HttpClient client, string url) =>
         (await client.GetAsync(url)).RequestMessage!.RequestUri!.AbsolutePath;
 
-    [Fact]
+    [Test]
     public async Task Demotion_applies_on_the_next_request()
     {
         using var app = new TestApp(authMode: "password");
         var client = await app.SignInAsync();
         var adminId = await AdminIdWithAnotherAdminAsync(app);
-        Assert.Equal("/Users", await PathReachedAsync(client, "/Users"));
+        await Assert.That(await PathReachedAsync(client, "/Users")).IsEqualTo("/Users");
 
         using (var scope = app.Services.CreateScope())
         {
-            Assert.IsType<UserResult.Ok>(await scope.ServiceProvider.GetRequiredService<UserService>()
-                .SetAdminAsync(adminId, false, Ct));
+            await Assert.That(await scope.ServiceProvider.GetRequiredService<UserService>()
+                .SetAdminAsync(adminId, false, Ct)).IsTypeOf<UserResult.Ok>();
         }
 
-        Assert.Equal("/Account/Login", await PathReachedAsync(client, "/Users"));
+        await Assert.That(await PathReachedAsync(client, "/Users")).IsEqualTo("/Account/Login");
     }
 
-    [Fact]
+    [Test]
     public async Task Deletion_applies_on_the_next_request()
     {
         using var app = new TestApp(authMode: "password");
         var client = await app.SignInAsync();
         var adminId = await AdminIdWithAnotherAdminAsync(app);
-        Assert.Equal("/Tags", await PathReachedAsync(client, "/Tags"));
+        await Assert.That(await PathReachedAsync(client, "/Tags")).IsEqualTo("/Tags");
 
         using (var scope = app.Services.CreateScope())
         {
-            Assert.IsType<UserResult.Ok>(await scope.ServiceProvider.GetRequiredService<UserService>()
-                .DeleteAsync(adminId, Ct));
+            await Assert.That(await scope.ServiceProvider.GetRequiredService<UserService>()
+                .DeleteAsync(adminId, Ct)).IsTypeOf<UserResult.Ok>();
         }
 
-        Assert.Equal("/Account/Login", await PathReachedAsync(client, "/Tags"));
+        await Assert.That(await PathReachedAsync(client, "/Tags")).IsEqualTo("/Account/Login");
     }
 }
