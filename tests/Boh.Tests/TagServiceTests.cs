@@ -7,7 +7,7 @@ namespace Boh.Tests;
 
 public class TagServiceTests
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static List<TagName> Names(params string[] raw) => TagName.ParseMany(string.Join(' ', raw));
 
@@ -91,7 +91,8 @@ public class TagServiceTests
         await env.Db.Database.ExecuteSqlRawAsync(
             "CREATE TRIGGER fail BEFORE INSERT ON PostTags " +
             "WHEN NEW.TagId = (SELECT Id FROM Tags WHERE Name = 'bar') " +
-            "BEGIN SELECT RAISE(ABORT, 'boom'); END");
+            "BEGIN SELECT RAISE(ABORT, 'boom'); END",
+            cancellationToken: Ct);
 
         await Assert.ThrowsAnyAsync<Exception>(
             () => env.Tags.AddAliasAsync(new TagName("", "foo"), new TagName("", "bar"), Ct));

@@ -312,7 +312,7 @@ docker run --rm -p 8080:8080 -v boh_dev:/data -e BOH_ADMIN_PASSWORD=dev boh:dev
 With a local .NET 10 SDK:
 
 ```sh
-dotnet test boh.slnx
+dotnet test --solution boh.slnx
 dotnet run --project src/Boh.Web
 ```
 

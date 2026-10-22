@@ -6,7 +6,7 @@ namespace Boh.Tests;
 
 public class PostServiceTests
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task CreateAsync_stores_the_post_and_generates_a_thumbnail()

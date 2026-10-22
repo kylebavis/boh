@@ -136,7 +136,7 @@ public class MaintenancePageTests
     {
         using var app = new TestApp();
 
-        var response = await app.CreateNonRedirectingClient().GetAsync($"{Url}?handler=Status&task=nope");
+        var response = await app.CreateNonRedirectingClient().GetAsync($"{Url}?handler=Status&task=nope", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

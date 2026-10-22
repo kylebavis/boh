@@ -136,7 +136,7 @@ public class PasskeyTests
         var response = await PostAsync(app, client, AccountUrl, $"{AccountUrl}?handler=PasskeyOptions");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         var root = options.RootElement;
 
         Assert.NotEmpty(root.GetProperty("challenge").GetString()!);
@@ -173,7 +173,7 @@ public class PasskeyTests
 
         // The challenge the browser was given appears in the options; none of it, nor the
         // account it belongs to, may be legible in the cookie.
-        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.DoesNotContain(options.RootElement.GetProperty("challenge").GetString()!, cookie);
         Assert.DoesNotContain("userId", cookie, StringComparison.OrdinalIgnoreCase);
     }
@@ -191,7 +191,7 @@ public class PasskeyTests
         var response = await PostAsync(app, client, LoginUrl, $"{LoginUrl}?handler=PasskeyOptions");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var options = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         var root = options.RootElement;
 
         Assert.NotEmpty(root.GetProperty("challenge").GetString()!);
@@ -213,7 +213,7 @@ public class PasskeyTests
             app, client, AccountUrl, $"{AccountUrl}?handler=Passkey", "{\"name\":\"phone\"}");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("error", await response.Content.ReadAsStringAsync());
+        Assert.Contains("error", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public class PasskeyTests
         Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
 
         using var scope = app.Services.CreateScope();
-        Assert.Empty(await scope.ServiceProvider.GetRequiredService<BohDbContext>().Passkeys.ToListAsync());
+        Assert.Empty(await scope.ServiceProvider.GetRequiredService<BohDbContext>().Passkeys.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -281,10 +281,10 @@ public class PasskeyTests
             new Dictionary<string, string> { ["passkeyId"] = theirId.ToString() });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("already gone", await response.Content.ReadAsStringAsync());
+        Assert.Contains("already gone", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using var scope = app.Services.CreateScope();
-        Assert.Single(await scope.ServiceProvider.GetRequiredService<BohDbContext>().Passkeys.ToListAsync());
+        Assert.Single(await scope.ServiceProvider.GetRequiredService<BohDbContext>().Passkeys.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -303,10 +303,10 @@ public class PasskeyTests
         var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
         var users = scope.ServiceProvider.GetRequiredService<UserService>();
 
-        var other = await db.Users.SingleAsync(u => u.Username == OtherUsername);
-        Assert.IsType<UserResult.Ok>(await users.DeleteAsync(other.Id, CancellationToken.None));
+        var other = await db.Users.SingleAsync(u => u.Username == OtherUsername, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.IsType<UserResult.Ok>(await users.DeleteAsync(other.Id, TestContext.Current.CancellationToken));
 
-        Assert.Empty(await db.Passkeys.ToListAsync());
+        Assert.Empty(await db.Passkeys.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -325,7 +325,7 @@ public class PasskeyTests
         var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
         var identityUsers = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
 
-        var admin = await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername);
+        var admin = await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername, cancellationToken: TestContext.Current.CancellationToken);
 
         var credentialId = Encoding.UTF8.GetBytes("credential");
         var stored = await identityUsers.AddOrUpdatePasskeyAsync(admin, new UserPasskeyInfo(
@@ -391,7 +391,7 @@ public class PasskeyTests
         using (var scope = app.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
-            userId = (await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername)).Id;
+            userId = (await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername, cancellationToken: TestContext.Current.CancellationToken)).Id;
 
             db.Passkeys.Add(new Passkey
             {
@@ -405,7 +405,7 @@ public class PasskeyTests
                 CreatedAt = DateTimeOffset.UtcNow,
             });
 
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         // The options call also leaves the sealed challenge on the client, as it does in a
@@ -415,7 +415,7 @@ public class PasskeyTests
 
         Assert.Equal(HttpStatusCode.OK, optionsResponse.StatusCode);
 
-        using var options = JsonDocument.Parse(await optionsResponse.Content.ReadAsStringAsync());
+        using var options = JsonDocument.Parse(await optionsResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         var challenge = options.RootElement.GetProperty("challenge").GetString()!;
 
         var clientData = Encoding.UTF8.GetBytes(
@@ -460,7 +460,7 @@ public class PasskeyTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Null(response.Headers.Location);
 
-        using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal("/", result.RootElement.GetProperty("redirect").GetString());
 
         // The counter moved, which is what keeps the clone check meaningful, and the use
@@ -468,7 +468,7 @@ public class PasskeyTests
         using (var scope = app.Services.CreateScope())
         {
             var stored = await scope.ServiceProvider.GetRequiredService<BohDbContext>()
-                .Passkeys.SingleAsync();
+                .Passkeys.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(1u, stored.SignCount);
             Assert.NotNull(stored.LastUsedAt);
@@ -512,7 +512,7 @@ public class PasskeyTests
         {
             var users = scope.ServiceProvider.GetRequiredService<UserService>();
             Assert.IsType<UserResult.Ok>(
-                await users.CreateAsync(OtherUsername, "not-the-admin", false, CancellationToken.None));
+                await users.CreateAsync(OtherUsername, "not-the-admin", false, TestContext.Current.CancellationToken));
 
             userId = (await db.Users.SingleAsync(u => u.Username == OtherUsername)).Id;
         }

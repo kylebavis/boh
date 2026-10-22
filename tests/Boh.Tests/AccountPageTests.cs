@@ -115,7 +115,7 @@ public class AccountPageTests
                 ["lightTheme"] = "solarized-light",
                 ["darkTheme"] = "nord",
                 ["__RequestVerificationToken"] = token.Groups[1].Value,
-            }));
+            }), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
 
         // The gallery, not the account page: the point is that the choice reaches the layout

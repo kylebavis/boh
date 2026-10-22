@@ -103,7 +103,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         var posts = scope.ServiceProvider.GetRequiredService<PostService>();
 
         var result = await posts.CreateAsync(
-            new MemoryStream(TestEnvironment.MakePng(size, size)), null, "", CancellationToken.None);
+            new MemoryStream(TestEnvironment.MakePng(size, size)), null, "", TestContext.Current.CancellationToken);
 
         return Assert.IsType<PostCreateResult.Created>(result).Post.Id;
     }
@@ -121,7 +121,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
         var result = await posts.CreateAsync(
             new MemoryStream(TestEnvironment.MakePattern(size, size, format, seed)),
-            null, "", CancellationToken.None);
+            null, "", TestContext.Current.CancellationToken);
 
         return Assert.IsType<PostCreateResult.Created>(result).Post.Id;
     }
@@ -133,7 +133,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         var service = scope.ServiceProvider.GetRequiredService<TagService>();
 
         await service.SetPostTagsAsync(
-            postId, Boh.Web.Tags.TagName.ParseMany(string.Join(' ', tags)), CancellationToken.None);
+            postId, Boh.Web.Tags.TagName.ParseMany(string.Join(' ', tags)), TestContext.Current.CancellationToken);
     }
 
     /// <summary>
@@ -146,7 +146,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         using var scope = Services.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<TagService>();
 
-        await service.SetPostTagsAsync(postId, tags, CancellationToken.None);
+        await service.SetPostTagsAsync(postId, tags, TestContext.Current.CancellationToken);
     }
 
     /// <summary>The explicit tags a post carries, read back as stored.</summary>
@@ -155,7 +155,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         using var scope = Services.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<TagService>();
 
-        return await service.GetExplicitTagNamesAsync(postId, CancellationToken.None);
+        return await service.GetExplicitTagNamesAsync(postId, TestContext.Current.CancellationToken);
     }
 
     public async Task AddAliasAsync(string alias, string canonical)
@@ -165,7 +165,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
         Assert.True(Boh.Web.Tags.TagName.TryParse(alias, out var a));
         Assert.True(Boh.Web.Tags.TagName.TryParse(canonical, out var c));
-        Assert.IsType<TagLinkResult.Ok>(await service.AddAliasAsync(a, c, CancellationToken.None));
+        Assert.IsType<TagLinkResult.Ok>(await service.AddAliasAsync(a, c, TestContext.Current.CancellationToken));
     }
 
     public async Task AddImplicationAsync(string child, string parent)
@@ -175,7 +175,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
         Assert.True(Boh.Web.Tags.TagName.TryParse(child, out var ch));
         Assert.True(Boh.Web.Tags.TagName.TryParse(parent, out var pa));
-        Assert.IsType<TagLinkResult.Ok>(await service.AddImplicationAsync(ch, pa, CancellationToken.None));
+        Assert.IsType<TagLinkResult.Ok>(await service.AddImplicationAsync(ch, pa, TestContext.Current.CancellationToken));
     }
 
     /// <summary>

@@ -5,7 +5,7 @@ namespace Boh.Tests;
 
 public class UserServiceTests
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private const string Password = "correct-horse";
 

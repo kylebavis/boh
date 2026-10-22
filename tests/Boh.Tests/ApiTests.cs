@@ -20,7 +20,7 @@ public class ApiTests
     {
         using var app = new TestApp(authMode: "password");
 
-        var response = await app.CreateNonRedirectingClient().GetAsync("/api/v1/posts");
+        var response = await app.CreateNonRedirectingClient().GetAsync("/api/v1/posts", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Equal("Bearer", response.Headers.WwwAuthenticate.Single().Scheme);
@@ -33,7 +33,7 @@ public class ApiTests
         using var app = new TestApp(authMode: "password");
         var client = await app.SignInAsync();
 
-        var response = await client.GetAsync("/api/v1/posts");
+        var response = await client.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -45,10 +45,10 @@ public class ApiTests
         var client = await TokenClientAsync(app);
         var id = await app.CreatePostAsync(24);
 
-        var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts");
+        var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(id, list.GetProperty("posts")[0].GetProperty("id").GetInt32());
 
-        var tagged = await client.PostAsJsonAsync($"/api/v1/posts/{id}/tags", new { tags = new[] { "landscape" } });
+        var tagged = await client.PostAsJsonAsync($"/api/v1/posts/{id}/tags", new { tags = new[] { "landscape" } }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, tagged.StatusCode);
     }
 
@@ -59,7 +59,7 @@ public class ApiTests
         var client = app.CreateNonRedirectingClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "boh_not-a-real-token");
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/posts")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]
@@ -67,15 +67,15 @@ public class ApiTests
     {
         using var app = new TestApp(authMode: "password");
         var client = await TokenClientAsync(app);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/posts")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken)).StatusCode);
 
         using (var scope = app.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
-            await db.ApiTokens.ExecuteDeleteAsync();
+            await db.ApiTokens.ExecuteDeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/posts")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]
@@ -85,8 +85,8 @@ public class ApiTests
         var client = app.CreateNonRedirectingClient();
         var id = await app.CreatePostAsync(24);
 
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/v1/posts/{id}")).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.DeleteAsync($"/api/v1/posts/{id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/v1/posts/{id}", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.DeleteAsync($"/api/v1/posts/{id}", TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class ApiTests
         using var app = new TestApp();
         var id = await app.CreatePostAsync(24);
 
-        var response = await app.CreateNonRedirectingClient().DeleteAsync($"/api/v1/posts/{id}");
+        var response = await app.CreateNonRedirectingClient().DeleteAsync($"/api/v1/posts/{id}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
@@ -118,15 +118,15 @@ public class ApiTests
             {
                 ["name"] = "shortcut",
                 ["__RequestVerificationToken"] = TestApp.FormValue(form, "__RequestVerificationToken"),
-            }));
-        var html = await created.Content.ReadAsStringAsync();
+            }), TestContext.Current.CancellationToken);
+        var html = await created.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         var secret = Regex.Match(html, "id=\"new-token\" value=\"(boh_[^\"]+)\"");
         Assert.True(secret.Success, "the new token was not shown");
 
         var api = app.CreateNonRedirectingClient();
         api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secret.Groups[1].Value);
-        Assert.Equal(HttpStatusCode.OK, (await api.GetAsync("/api/v1/posts")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await api.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken)).StatusCode);
 
         var revoke = TestApp.FormWithField(await app.GetHtmlAsync(browser, "/Account"), "tokenId");
         var revoked = await browser.PostAsync(TestApp.FormAction(revoke), new FormUrlEncodedContent(
@@ -134,9 +134,9 @@ public class ApiTests
             {
                 ["tokenId"] = TestApp.FormValue(revoke, "tokenId"),
                 ["__RequestVerificationToken"] = TestApp.FormValue(revoke, "__RequestVerificationToken"),
-            }));
-        Assert.Contains("Token revoked.", await revoked.Content.ReadAsStringAsync());
-        Assert.Equal(HttpStatusCode.Unauthorized, (await api.GetAsync("/api/v1/posts")).StatusCode);
+            }), TestContext.Current.CancellationToken);
+        Assert.Contains("Token revoked.", await revoked.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await api.GetAsync("/api/v1/posts", TestContext.Current.CancellationToken)).StatusCode);
     }
 
     // ---- posts ---------------------------------------------------------
@@ -148,10 +148,11 @@ public class ApiTests
         var client = app.CreateNonRedirectingClient();
 
         var response = await client.PostAsync("/api/v1/posts",
-            Upload(TestEnvironment.MakePng(24, 24), tags: "landscape artist:someone", source: "https://example.com/1"));
+            Upload(TestEnvironment.MakePng(24, 24), tags: "landscape artist:someone", source: "https://example.com/1"),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var post = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var post = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(
             ["artist:someone", "landscape"],
@@ -167,11 +168,11 @@ public class ApiTests
         var client = app.CreateNonRedirectingClient();
         var file = TestEnvironment.MakePng(24, 24);
 
-        var first = await (await client.PostAsync("/api/v1/posts", Upload(file))).Content.ReadFromJsonAsync<JsonElement>();
-        var second = await client.PostAsync("/api/v1/posts", Upload(file));
+        var first = await (await client.PostAsync("/api/v1/posts", Upload(file), TestContext.Current.CancellationToken)).Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var second = await client.PostAsync("/api/v1/posts", Upload(file), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
-        var body = await second.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await second.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(first.GetProperty("id").GetInt32(), body.GetProperty("postId").GetInt32());
     }
 
@@ -180,7 +181,7 @@ public class ApiTests
     {
         using var app = new TestApp();
 
-        var response = await app.CreateNonRedirectingClient().PostAsync("/api/v1/posts", new MultipartFormDataContent());
+        var response = await app.CreateNonRedirectingClient().PostAsync("/api/v1/posts", new MultipartFormDataContent(), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -193,7 +194,7 @@ public class ApiTests
         var id = await app.CreatePostAsync(24);
         await app.TagAsync(id, "old", "keep");
 
-        var response = await client.PutAsJsonAsync($"/api/v1/posts/{id}/tags", new { tags = new[] { "keep", "new" } });
+        var response = await client.PutAsJsonAsync($"/api/v1/posts/{id}/tags", new { tags = new[] { "keep", "new" } }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(["keep", "new"], (await app.ExplicitTagsAsync(id)).Select(t => t.Display).Order());
@@ -205,7 +206,7 @@ public class ApiTests
         using var app = new TestApp();
 
         var response = await app.CreateNonRedirectingClient()
-            .PostAsJsonAsync("/api/v1/posts/999/tags", new { tags = new[] { "x" } });
+            .PostAsJsonAsync("/api/v1/posts/999/tags", new { tags = new[] { "x" } }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -219,13 +220,13 @@ public class ApiTests
         await app.CreatePostAsync(32);
         await app.TagAsync(tagged, "landscape");
 
-        var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts?q=landscape");
+        var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts?q=landscape", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(1, list.GetProperty("totalCount").GetInt32());
 
-        var random = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts/random?q=landscape");
+        var random = await client.GetFromJsonAsync<JsonElement>("/api/v1/posts/random?q=landscape", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(tagged, random.GetProperty("id").GetInt32());
 
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/v1/posts/random?q=nothing_has_this")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/v1/posts/random?q=nothing_has_this", TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]
@@ -235,13 +236,13 @@ public class ApiTests
         var client = app.CreateNonRedirectingClient();
         var id = await app.CreatePostAsync(24);
 
-        var added = await client.PostAsJsonAsync($"/api/v1/posts/{id}/sources", new { url = "https://example.com/a" });
-        var source = (await added.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("sources")[0];
+        var added = await client.PostAsJsonAsync($"/api/v1/posts/{id}/sources", new { url = "https://example.com/a" }, cancellationToken: TestContext.Current.CancellationToken);
+        var source = (await added.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("sources")[0];
 
-        var removed = await client.DeleteAsync($"/api/v1/posts/{id}/sources/{source.GetProperty("id").GetInt32()}");
+        var removed = await client.DeleteAsync($"/api/v1/posts/{id}/sources/{source.GetProperty("id").GetInt32()}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
 
-        var bad = await client.PostAsJsonAsync($"/api/v1/posts/{id}/sources", new { url = "javascript:alert(1)" });
+        var bad = await client.PostAsJsonAsync($"/api/v1/posts/{id}/sources", new { url = "javascript:alert(1)" }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
     }
 
@@ -252,7 +253,7 @@ public class ApiTests
         var id = await app.CreatePostAsync(24);
         await app.TagAsync(id, "landscape");
 
-        var tags = await app.CreateNonRedirectingClient().GetFromJsonAsync<JsonElement>("/api/v1/tags?q=land");
+        var tags = await app.CreateNonRedirectingClient().GetFromJsonAsync<JsonElement>("/api/v1/tags?q=land", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("landscape", tags[0].GetProperty("display").GetString());
     }
@@ -265,12 +266,12 @@ public class ApiTests
         using var app = new TestApp();
         var client = app.CreateNonRedirectingClient();
 
-        var queued = await client.PostAsJsonAsync("/api/v1/imports", new { url = "https://example.com/gallery" });
+        var queued = await client.PostAsJsonAsync("/api/v1/imports", new { url = "https://example.com/gallery" }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Accepted, queued.StatusCode);
 
         await app.WaitForJobsAsync();
 
-        var status = await client.GetFromJsonAsync<JsonElement>(queued.Headers.Location!.OriginalString);
+        var status = await client.GetFromJsonAsync<JsonElement>(queued.Headers.Location!.OriginalString, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("https://example.com/gallery", status.GetProperty("url").GetString());
         Assert.NotEqual("Queued", status.GetProperty("state").GetString());
     }
@@ -281,7 +282,7 @@ public class ApiTests
         using var app = new TestApp();
 
         var response = await app.CreateNonRedirectingClient()
-            .PostAsJsonAsync("/api/v1/imports", new { url = "file:///etc/passwd" });
+            .PostAsJsonAsync("/api/v1/imports", new { url = "file:///etc/passwd" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -304,7 +305,7 @@ public class ApiTests
             var admin = await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername);
 
             var (_, created) = await scope.ServiceProvider.GetRequiredService<ApiTokenService>()
-                .CreateAsync(admin.Id, "test", CancellationToken.None);
+                .CreateAsync(admin.Id, "test", TestContext.Current.CancellationToken);
             secret = created!;
         }
 

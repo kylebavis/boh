@@ -11,7 +11,7 @@ namespace Boh.Tests;
 /// </summary>
 public class PostSourceEditingTests
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private const string Origin = "https://example.invalid/posts/1";
     private const string Mirror = "https://elsewhere.invalid/art/42";
@@ -103,7 +103,7 @@ public class PostSourceEditingTests
         var response = await TestApp.PostHxAsync(client, RemoveControlFor(page, Origin), page);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal([Mirror], SourcesIn(await response.Content.ReadAsStringAsync()));
+        Assert.Equal([Mirror], SourcesIn(await response.Content.ReadAsStringAsync(Ct)));
         Assert.Equal([Mirror], SourcesIn(await app.GetHtmlAsync(client, $"/Posts/Detail/{postId}")));
     }
 

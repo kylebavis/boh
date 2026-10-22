@@ -11,7 +11,7 @@ public class ContentAddressedFileStoreTests
         var bytes = TestEnvironment.MakePng(32, 32);
         var expected = Convert.ToHexStringLower(SHA256.HashData(bytes));
 
-        var staged = await env.Store.StageAsync(new MemoryStream(bytes), CancellationToken.None);
+        var staged = await env.Store.StageAsync(new MemoryStream(bytes), TestContext.Current.CancellationToken);
 
         Assert.Equal(expected, staged.Sha256);
         Assert.Equal(bytes.Length, staged.Length);
@@ -24,7 +24,7 @@ public class ContentAddressedFileStoreTests
         using var env = new TestEnvironment();
         var bytes = TestEnvironment.MakePng(16, 16);
 
-        var staged = await env.Store.StageAsync(new MemoryStream(bytes), CancellationToken.None);
+        var staged = await env.Store.StageAsync(new MemoryStream(bytes), TestContext.Current.CancellationToken);
         env.Store.CommitOriginal(staged, ".png");
 
         var expected = Path.Combine(
@@ -34,7 +34,7 @@ public class ContentAddressedFileStoreTests
             staged.Sha256 + ".png");
 
         Assert.True(File.Exists(expected));
-        Assert.Equal(bytes, await File.ReadAllBytesAsync(expected, CancellationToken.None));
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(expected, TestContext.Current.CancellationToken));
         Assert.False(File.Exists(staged.TempPath));
     }
 
@@ -43,7 +43,7 @@ public class ContentAddressedFileStoreTests
     {
         using var env = new TestEnvironment();
         var bytes = TestEnvironment.MakePng(16, 16);
-        var ct = CancellationToken.None;
+        var ct = TestContext.Current.CancellationToken;
 
         var first = await env.Store.StageAsync(new MemoryStream(bytes), ct);
         env.Store.CommitOriginal(first, ".png");
@@ -61,7 +61,7 @@ public class ContentAddressedFileStoreTests
     public async Task DeleteBlobs_removes_both_original_and_thumbnail()
     {
         using var env = new TestEnvironment();
-        var ct = CancellationToken.None;
+        var ct = TestContext.Current.CancellationToken;
 
         var staged = await env.Store.StageAsync(new MemoryStream(TestEnvironment.MakePng(16, 16)), ct);
         env.Store.CommitOriginal(staged, ".png");
@@ -79,7 +79,7 @@ public class ContentAddressedFileStoreTests
     {
         using var env = new TestEnvironment();
         var staged = await env.Store.StageAsync(
-            new MemoryStream(TestEnvironment.MakePng(8, 8)), CancellationToken.None);
+            new MemoryStream(TestEnvironment.MakePng(8, 8)), TestContext.Current.CancellationToken);
 
         env.Store.CleanTemp(TimeSpan.FromHours(6));
 

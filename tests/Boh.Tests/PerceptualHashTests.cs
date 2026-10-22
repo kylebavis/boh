@@ -16,7 +16,7 @@ namespace Boh.Tests;
 /// </remarks>
 public class PerceptualHashTests : IDisposable
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private readonly string _dir =
         Path.Combine(Path.GetTempPath(), "boh-hash-tests", Guid.NewGuid().ToString("N"));

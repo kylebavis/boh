@@ -8,7 +8,7 @@ namespace Boh.Tests;
 /// </summary>
 public class SourceSearchTests
 {
-    private static CancellationToken Ct => CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private const string Twitter = "https://twitter.com/someone/status/1234567890";
     private const string Flickr = "https://www.flickr.com/photos/someone/9876543210";
