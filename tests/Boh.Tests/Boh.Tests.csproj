@@ -13,7 +13,7 @@
       route value name "page", and no test that calls OnGetAsync directly can catch that.
     -->
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
-    <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="TUnit" Version="1.76.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Using Include="Xunit" />
+    <Using Include="TUnit.Assertions.Enums" />
   </ItemGroup>
 
 </Project>

@@ -17,33 +17,33 @@ public class AccountPageTests
 {
     private const string Url = "/Account";
 
-    [Fact]
+    [Test]
     public async Task The_header_carries_the_theme_toggle()
     {
         using var app = new TestApp();
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), "/");
 
-        Assert.Contains("id=\"theme-toggle\"", html);
+        await Assert.That(html).Contains("id=\"theme-toggle\"");
 
         // The icon shown is picked by CSS off data-theme-choice, so all three have to be
         // in the document for the toggle to have anything to switch between.
-        Assert.Contains("icon-auto", html);
-        Assert.Contains("icon-light", html);
-        Assert.Contains("icon-dark", html);
+        await Assert.That(html).Contains("icon-auto");
+        await Assert.That(html).Contains("icon-light");
+        await Assert.That(html).Contains("icon-dark");
     }
 
-    [Fact]
+    [Test]
     public async Task The_account_page_offers_a_palette_for_each_mode()
     {
         using var app = new TestApp();
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), Url);
 
-        Assert.Contains("id=\"theme-form\"", html);
+        await Assert.That(html).Contains("id=\"theme-form\"");
 
         foreach (var mode in new[] { Themes.LightMode, Themes.DarkMode })
         {
             var select = Regex.Match(html, "<select[^>]*data-theme-mode=\"" + mode + "\"[^>]*>");
-            Assert.True(select.Success, $"no select for {mode}");
+            await Assert.That(select.Success).IsTrue().Because($"no select for {mode}");
         }
     }
 
@@ -51,9 +51,9 @@ public class AccountPageTests
     /// Each list must offer only the schemes built for that background, plus the stock look.
     /// Offering a dark scheme on the light side would let someone pick dark-on-dark.
     /// </summary>
-    [Theory]
-    [InlineData("light")]
-    [InlineData("dark")]
+    [Test]
+    [Arguments("light")]
+    [Arguments("dark")]
     public async Task Each_list_offers_only_the_palettes_for_its_own_mode(string mode)
     {
         using var app = new TestApp();
@@ -61,14 +61,14 @@ public class AccountPageTests
 
         var block = Regex.Match(
             html, "<select[^>]*data-theme-mode=\"" + mode + "\"[^>]*>(.*?)</select>", RegexOptions.Singleline);
-        Assert.True(block.Success, $"no select for {mode}");
+        await Assert.That(block.Success).IsTrue().Because($"no select for {mode}");
 
         var offered = Regex.Matches(block.Groups[1].Value, "value=\"([^\"]*)\"")
             .Select(m => m.Groups[1].Value)
             .ToList();
 
-        Assert.Contains(Themes.Stock, offered);
-        Assert.Equal(Themes.For(mode).Select(t => t.Id).Order(), offered.Where(v => v != Themes.Stock).Order());
+        await Assert.That(offered).Contains(Themes.Stock);
+        await Assert.That(offered.Where(v => v != Themes.Stock).Order()).IsEquivalentTo(Themes.For(mode).Select(t => t.Id).Order(), CollectionOrdering.Matching);
     }
 
     /// <summary>
@@ -76,23 +76,21 @@ public class AccountPageTests
     /// when it does it cancels the submit. Getting it wrong in the "account" direction is
     /// silent and total: the Save button stops reaching the server at all.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Without_accounts_the_form_stores_the_choice_in_the_browser()
     {
         using var app = new TestApp();
 
-        Assert.Contains(
-            "data-theme-store=\"local\"",
-            ThemeForm(await app.GetHtmlAsync(app.CreateNonRedirectingClient(), Url)));
+        await Assert.That(ThemeForm(await app.GetHtmlAsync(app.CreateNonRedirectingClient(), Url))).Contains("data-theme-store=\"local\"");
     }
 
-    [Fact]
+    [Test]
     public async Task Signed_in_the_form_stores_the_choice_on_the_account()
     {
         using var app = new TestApp(authMode: "password");
         var client = await app.SignInAsync();
 
-        Assert.Contains("data-theme-store=\"account\"", ThemeForm(await app.GetHtmlAsync(client, Url)));
+        await Assert.That(ThemeForm(await app.GetHtmlAsync(client, Url))).Contains("data-theme-store=\"account\"");
     }
 
     /// <summary>
@@ -100,7 +98,7 @@ public class AccountPageTests
     /// which also covers the palettes reaching the layout, since those travel on the auth
     /// ticket rather than being read from the row at render time.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task A_saved_palette_is_applied_on_the_next_page()
     {
         using var app = new TestApp(authMode: "password");
@@ -115,20 +113,20 @@ public class AccountPageTests
                 ["lightTheme"] = "solarized-light",
                 ["darkTheme"] = "nord",
                 ["__RequestVerificationToken"] = token.Groups[1].Value,
-            }), TestContext.Current.CancellationToken);
-        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+            }), TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(response.StatusCode).IsEqualTo(System.Net.HttpStatusCode.OK);
 
         // The gallery, not the account page: the point is that the choice reaches the layout
         // everywhere, before first paint.
         var home = await app.GetHtmlAsync(client, "/");
-        Assert.Contains("\"light\":\"solarized-light\"", home);
-        Assert.Contains("\"dark\":\"nord\"", home);
+        await Assert.That(home).Contains("\"light\":\"solarized-light\"");
+        await Assert.That(home).Contains("\"dark\":\"nord\"");
     }
 
-    private static string ThemeForm(string html)
+    private static async Task<string> ThemeForm(string html)
     {
         var form = Regex.Match(html, "<form[^>]*id=\"theme-form\"[^>]*>");
-        Assert.True(form.Success, "no theme form on the account page");
+        await Assert.That(form.Success).IsTrue().Because("no theme form on the account page");
         return form.Value;
     }
 
@@ -136,13 +134,13 @@ public class AccountPageTests
     /// The password form is the one thing that genuinely needs an account; the theme section
     /// has to survive its absence.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Without_accounts_there_is_no_password_form()
     {
         using var app = new TestApp();
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), Url);
 
-        Assert.DoesNotContain("name=\"currentPassword\"", html);
-        Assert.Contains("id=\"theme-form\"", html);
+        await Assert.That(html).DoesNotContain("name=\"currentPassword\"");
+        await Assert.That(html).Contains("id=\"theme-form\"");
     }
 }

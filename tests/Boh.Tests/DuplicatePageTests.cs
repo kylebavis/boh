@@ -9,7 +9,7 @@ namespace Boh.Tests;
 /// </summary>
 public class DuplicatePageTests
 {
-    [Fact]
+    [Test]
     public async Task A_post_detail_page_lists_what_looks_like_it()
     {
         using var app = new TestApp();
@@ -18,14 +18,14 @@ public class DuplicatePageTests
 
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), $"/Posts/Detail/{original}");
 
-        Assert.Contains("Possible duplicates", html);
-        Assert.Contains($"/Posts/Detail/{repost}", html);
+        await Assert.That(html).Contains("Possible duplicates");
+        await Assert.That(html).Contains($"/Posts/Detail/{repost}");
 
         // The section offers the search that lists them all, not just the few it shows.
-        Assert.Contains($"similar%3A{original}", html);
+        await Assert.That(html).Contains($"similar%3A{original}");
     }
 
-    [Fact]
+    [Test]
     public async Task An_ordinary_post_says_nothing_about_duplicates()
     {
         using var app = new TestApp();
@@ -34,10 +34,10 @@ public class DuplicatePageTests
 
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), $"/Posts/Detail/{first}");
 
-        Assert.DoesNotContain("Possible duplicates", html);
+        await Assert.That(html).DoesNotContain("Possible duplicates");
     }
 
-    [Fact]
+    [Test]
     public async Task The_gallery_answers_a_similar_search()
     {
         using var app = new TestApp(pageSize: 40);
@@ -48,20 +48,20 @@ public class DuplicatePageTests
         var html = await app.GetHtmlAsync(
             app.CreateNonRedirectingClient(), $"/?q=similar%3A{original}");
 
-        Assert.Equal([repost, original], TestApp.PostIdsIn(html));
+        await Assert.That(TestApp.PostIdsIn(html)).IsEquivalentTo([repost, original], CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task Maintenance_offers_both_duplicate_actions()
     {
         using var app = new TestApp();
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), "/Maintenance");
 
-        Assert.Contains("Compute missing perceptual hashes", html);
-        Assert.Contains("Scan for possible duplicates", html);
+        await Assert.That(html).Contains("Compute missing perceptual hashes");
+        await Assert.That(html).Contains("Scan for possible duplicates");
     }
 
-    [Fact]
+    [Test]
     public async Task Running_the_hashing_pass_reports_that_there_is_nothing_to_do()
     {
         using var app = new TestApp();
@@ -70,10 +70,10 @@ public class DuplicatePageTests
         // Uploads are hashed as they arrive, so a fresh collection has no backlog.
         var html = await SubmitAsync(app, "hashes");
 
-        Assert.Contains("Every post that can be hashed already is", html);
+        await Assert.That(html).Contains("Every post that can be hashed already is");
     }
 
-    [Fact]
+    [Test]
     public async Task The_scan_reports_a_duplicate_it_found()
     {
         using var app = new TestApp();
@@ -82,12 +82,12 @@ public class DuplicatePageTests
 
         var html = await SubmitAsync(app, "duplicates");
 
-        Assert.Contains("1 group(s) of look-alikes", html);
-        Assert.Contains($"/Posts/Detail/{original}", html);
-        Assert.Contains($"/Posts/Detail/{repost}", html);
+        await Assert.That(html).Contains("1 group(s) of look-alikes");
+        await Assert.That(html).Contains($"/Posts/Detail/{original}");
+        await Assert.That(html).Contains($"/Posts/Detail/{repost}");
     }
 
-    [Fact]
+    [Test]
     public async Task The_scan_says_so_when_nothing_looks_alike()
     {
         using var app = new TestApp();
@@ -96,7 +96,7 @@ public class DuplicatePageTests
 
         var html = await SubmitAsync(app, "duplicates");
 
-        Assert.Contains("nothing looks like anything else", html);
+        await Assert.That(html).Contains("nothing looks like anything else");
     }
 
     /// <summary>Starts a maintenance task from its button and returns the page once it has finished.</summary>

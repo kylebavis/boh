@@ -61,7 +61,7 @@ public sealed class FakeOidcProvider
         foreach (var group in groups) next.Add(new Claim("groups", group));
 
         var challenge = await client.GetAsync("/Account/Login?handler=Oidc");
-        Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
+        await Assert.That(challenge.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
 
         var authorize = HttpUtility.ParseQueryString(challenge.Headers.Location!.Query);
         nonce = authorize["nonce"];
@@ -74,7 +74,7 @@ public sealed class FakeOidcProvider
     public static async Task<Uri> AuthorizeRequestAsync(HttpClient client)
     {
         var challenge = await client.GetAsync("/Account/Login?handler=Oidc");
-        Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
+        await Assert.That(challenge.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
         return challenge.Headers.Location!;
     }
 
@@ -90,9 +90,9 @@ public sealed class FakeOidcProvider
 
     private sealed class TokenEndpoint(FakeOidcProvider provider) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
-            Assert.Equal(Issuer + "/token", request.RequestUri!.ToString());
+            await Assert.That(request.RequestUri!.ToString()).IsEqualTo(Issuer + "/token");
 
             var body = JsonSerializer.Serialize(new Dictionary<string, object>
             {
@@ -102,10 +102,10 @@ public sealed class FakeOidcProvider
                 ["expires_in"] = 300,
             });
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
-            });
+            };
         }
     }
 }

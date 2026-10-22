@@ -1,30 +1,31 @@
+using System.IO;
 using System.Security.Cryptography;
 
 namespace Boh.Tests;
 
 public class ContentAddressedFileStoreTests
 {
-    [Fact]
+    [Test]
     public async Task StageAsync_computes_the_same_hash_as_the_content()
     {
         using var env = new TestEnvironment();
         var bytes = TestEnvironment.MakePng(32, 32);
         var expected = Convert.ToHexStringLower(SHA256.HashData(bytes));
 
-        var staged = await env.Store.StageAsync(new MemoryStream(bytes), TestContext.Current.CancellationToken);
+        var staged = await env.Store.StageAsync(new MemoryStream(bytes), TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(expected, staged.Sha256);
-        Assert.Equal(bytes.Length, staged.Length);
-        Assert.True(File.Exists(staged.TempPath));
+        await Assert.That(staged.Sha256).IsEqualTo(expected);
+        await Assert.That(staged.Length).IsEqualTo(bytes.Length);
+        await Assert.That(File.Exists(staged.TempPath)).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task CommitOriginal_places_the_blob_in_a_two_level_shard()
     {
         using var env = new TestEnvironment();
         var bytes = TestEnvironment.MakePng(16, 16);
 
-        var staged = await env.Store.StageAsync(new MemoryStream(bytes), TestContext.Current.CancellationToken);
+        var staged = await env.Store.StageAsync(new MemoryStream(bytes), TestContext.Current!.Execution.CancellationToken);
         env.Store.CommitOriginal(staged, ".png");
 
         var expected = Path.Combine(
@@ -33,17 +34,17 @@ public class ContentAddressedFileStoreTests
             staged.Sha256[2..4],
             staged.Sha256 + ".png");
 
-        Assert.True(File.Exists(expected));
-        Assert.Equal(bytes, await File.ReadAllBytesAsync(expected, TestContext.Current.CancellationToken));
-        Assert.False(File.Exists(staged.TempPath));
+        await Assert.That(File.Exists(expected)).IsTrue();
+        await Assert.That(await File.ReadAllBytesAsync(expected, TestContext.Current!.Execution.CancellationToken)).IsEquivalentTo(bytes, CollectionOrdering.Matching);
+        await Assert.That(File.Exists(staged.TempPath)).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task CommitOriginal_is_idempotent_for_identical_content()
     {
         using var env = new TestEnvironment();
         var bytes = TestEnvironment.MakePng(16, 16);
-        var ct = TestContext.Current.CancellationToken;
+        var ct = TestContext.Current!.Execution.CancellationToken;
 
         var first = await env.Store.StageAsync(new MemoryStream(bytes), ct);
         env.Store.CommitOriginal(first, ".png");
@@ -52,16 +53,16 @@ public class ContentAddressedFileStoreTests
         var second = await env.Store.StageAsync(new MemoryStream(bytes), ct);
         env.Store.CommitOriginal(second, ".png");
 
-        Assert.Equal(first.Sha256, second.Sha256);
-        Assert.False(File.Exists(second.TempPath));
-        Assert.Single(Directory.EnumerateFiles(env.Options.OriginalsDir, "*.png", SearchOption.AllDirectories));
+        await Assert.That(second.Sha256).IsEqualTo(first.Sha256);
+        await Assert.That(File.Exists(second.TempPath)).IsFalse();
+        await Assert.That(Directory.EnumerateFiles(env.Options.OriginalsDir, "*.png", SearchOption.AllDirectories)).HasSingleItem();
     }
 
-    [Fact]
+    [Test]
     public async Task DeleteBlobs_removes_both_original_and_thumbnail()
     {
         using var env = new TestEnvironment();
-        var ct = TestContext.Current.CancellationToken;
+        var ct = TestContext.Current!.Execution.CancellationToken;
 
         var staged = await env.Store.StageAsync(new MemoryStream(TestEnvironment.MakePng(16, 16)), ct);
         env.Store.CommitOriginal(staged, ".png");
@@ -70,19 +71,19 @@ public class ContentAddressedFileStoreTests
 
         env.Store.DeleteBlobs(staged.Sha256, ".png");
 
-        Assert.False(env.Store.OriginalExists(staged.Sha256, ".png"));
-        Assert.False(env.Store.ThumbExists(staged.Sha256));
+        await Assert.That(env.Store.OriginalExists(staged.Sha256, ".png")).IsFalse();
+        await Assert.That(env.Store.ThumbExists(staged.Sha256)).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task CleanTemp_leaves_recent_staging_files_alone()
     {
         using var env = new TestEnvironment();
         var staged = await env.Store.StageAsync(
-            new MemoryStream(TestEnvironment.MakePng(8, 8)), TestContext.Current.CancellationToken);
+            new MemoryStream(TestEnvironment.MakePng(8, 8)), TestContext.Current!.Execution.CancellationToken);
 
         env.Store.CleanTemp(TimeSpan.FromHours(6));
 
-        Assert.True(File.Exists(staged.TempPath));
+        await Assert.That(File.Exists(staged.TempPath)).IsTrue();
     }
 }

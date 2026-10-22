@@ -19,7 +19,7 @@ public class MaintenancePageTests
 {
     private const string Url = "/Maintenance";
 
-    [Fact]
+    [Test]
     public async Task An_administrator_reaches_it_from_the_nav()
     {
         using var app = new TestApp(authMode: "password");
@@ -27,30 +27,30 @@ public class MaintenancePageTests
 
         var html = await app.GetHtmlAsync(client, "/");
 
-        Assert.Contains("href=\"/Maintenance\"", html);
+        await Assert.That(html).Contains("href=\"/Maintenance\"");
     }
 
-    [Fact]
+    [Test]
     public async Task A_signed_out_visitor_is_not_shown_it()
     {
         using var app = new TestApp(authMode: "password", publicRead: true);
 
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), "/");
 
-        Assert.DoesNotContain("href=\"/Maintenance\"", html);
+        await Assert.That(html).DoesNotContain("href=\"/Maintenance\"");
     }
 
-    [Fact]
+    [Test]
     public async Task Tag_administration_keeps_only_configuration()
     {
         using var app = new TestApp();
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), "/Tags/Admin");
 
-        Assert.DoesNotContain("Rebuild implied tags", html);
-        Assert.DoesNotContain("Recount tag totals", html);
+        await Assert.That(html).DoesNotContain("Rebuild implied tags");
+        await Assert.That(html).DoesNotContain("Recount tag totals");
     }
 
-    [Fact]
+    [Test]
     public async Task Every_task_has_a_button_that_starts_it()
     {
         using var app = new TestApp();
@@ -62,12 +62,12 @@ public class MaintenancePageTests
 
         foreach (var task in MaintenanceTask.All)
         {
-            Assert.Contains(actions, a => a.Contains("handler=Start") && a.Contains($"task={task.Key}"));
-            Assert.Contains(task.Title, html);
+            await Assert.That(actions).Contains(a => a.Contains("handler=Start") && a.Contains($"task={task.Key}"));
+            await Assert.That(html).Contains(task.Title);
         }
     }
 
-    [Fact]
+    [Test]
     public async Task Starting_a_task_returns_to_its_section()
     {
         using var app = new TestApp();
@@ -75,13 +75,13 @@ public class MaintenancePageTests
 
         var response = await app.SubmitFormAsync(client, Url, "task=tag-counts");
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Maintenance#tag-counts", response.Headers.Location!.OriginalString);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
+        await Assert.That(response.Headers.Location!.OriginalString).IsEqualTo("/Maintenance#tag-counts");
 
         await app.WaitForJobsAsync();
     }
 
-    [Fact]
+    [Test]
     public async Task A_running_task_polls_for_its_status_until_it_finishes()
     {
         using var app = new TestApp();
@@ -97,8 +97,8 @@ public class MaintenancePageTests
         var html = await app.GetHtmlAsync(client, Url);
         var block = Regex.Match(html, "<div id=\"job-thumbnails\"[^>]*>").Value;
 
-        Assert.Contains("hx-get=\"/Maintenance?handler=Status&amp;task=thumbnails\"", block);
-        Assert.Contains("hx-trigger=\"every 2s\"", block);
+        await Assert.That(block).Contains("hx-get=\"/Maintenance?handler=Status&amp;task=thumbnails\"");
+        await Assert.That(block).Contains("hx-trigger=\"every 2s\"");
 
         release.SetResult();
         await app.WaitForJobsAsync();
@@ -106,11 +106,11 @@ public class MaintenancePageTests
         // What the poll receives once the task is done: the result, and nothing that polls again.
         var status = await app.GetHtmlAsync(client, $"{Url}?handler=Status&task=thumbnails");
 
-        Assert.Contains("Every post already has a thumbnail", status);
-        Assert.DoesNotContain("hx-trigger", status);
+        await Assert.That(status).Contains("Every post already has a thumbnail");
+        await Assert.That(status).DoesNotContain("hx-trigger");
     }
 
-    [Fact]
+    [Test]
     public async Task A_running_task_can_be_canceled_from_the_page()
     {
         using var app = new TestApp();
@@ -123,25 +123,25 @@ public class MaintenancePageTests
         });
 
         var response = await app.SubmitFormAsync(client, Url, "handler=Cancel");
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Maintenance#thumbnails", response.Headers.Location!.OriginalString);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
+        await Assert.That(response.Headers.Location!.OriginalString).IsEqualTo("/Maintenance#thumbnails");
 
         await app.WaitForJobsAsync();
 
-        Assert.Contains("Canceled before it finished", await app.GetHtmlAsync(client, Url));
+        await Assert.That(await app.GetHtmlAsync(client, Url)).Contains("Canceled before it finished");
     }
 
-    [Fact]
+    [Test]
     public async Task An_unknown_task_is_not_found()
     {
         using var app = new TestApp();
 
-        var response = await app.CreateNonRedirectingClient().GetAsync($"{Url}?handler=Status&task=nope", TestContext.Current.CancellationToken);
+        var response = await app.CreateNonRedirectingClient().GetAsync($"{Url}?handler=Status&task=nope", TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
-    [Fact]
+    [Test]
     public async Task Rebuilding_restores_an_implied_tag_that_went_missing()
     {
         using var app = new TestApp();
@@ -155,12 +155,12 @@ public class MaintenancePageTests
 
         var html = await app.SubmitAndWaitAsync(Url, "task=implied-tags");
 
-        Assert.Contains("Rebuilt implied tags", html);
-        Assert.Equal(1, await WithDbAsync(app, db => db.PostTags
-            .CountAsync(pt => pt.PostId == post && pt.Source == TagSource.Implied)));
+        await Assert.That(html).Contains("Rebuilt implied tags");
+        await Assert.That(await WithDbAsync(app, db => db.PostTags
+            .CountAsync(pt => pt.PostId == post && pt.Source == TagSource.Implied))).IsEqualTo(1);
     }
 
-    [Fact]
+    [Test]
     public async Task Rebuilding_an_intact_collection_says_there_was_nothing_to_fix()
     {
         using var app = new TestApp();
@@ -170,10 +170,10 @@ public class MaintenancePageTests
 
         var html = await app.SubmitAndWaitAsync(Url, "task=implied-tags");
 
-        Assert.Contains("already correct", html);
+        await Assert.That(html).Contains("already correct");
     }
 
-    [Fact]
+    [Test]
     public async Task Recounting_repairs_a_total_that_drifted()
     {
         using var app = new TestApp();
@@ -184,11 +184,11 @@ public class MaintenancePageTests
 
         var html = await app.SubmitAndWaitAsync(Url, "task=tag-counts");
 
-        Assert.Contains("Tag post counts recomputed", html);
-        Assert.Equal(1, await WithDbAsync(app, db => db.Tags
+        await Assert.That(html).Contains("Tag post counts recomputed");
+        await Assert.That(await WithDbAsync(app, db => db.Tags
             .Where(t => t.Name == "landscape")
             .Select(t => t.PostCount)
-            .SingleAsync()));
+            .SingleAsync())).IsEqualTo(1);
     }
 
     /// <summary>

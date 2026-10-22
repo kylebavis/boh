@@ -4,28 +4,28 @@ namespace Boh.Tests;
 
 public class RandomPostTests
 {
-    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+    private static CancellationToken Ct => TestContext.Current!.Execution.CancellationToken;
 
     private static List<TagName> Names(params string[] raw) => TagName.ParseMany(string.Join(' ', raw));
 
-    [Fact]
+    [Test]
     public async Task Returns_null_when_there_are_no_posts()
     {
         using var env = new TestEnvironment();
 
-        Assert.Null(await env.Posts.GetRandomIdAsync(null, Ct));
+        await Assert.That(await env.Posts.GetRandomIdAsync(null, Ct)).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task Returns_the_only_post_when_there_is_one()
     {
         using var env = new TestEnvironment();
         var id = await env.CreatePostAsync();
 
-        Assert.Equal(id, await env.Posts.GetRandomIdAsync(null, Ct));
+        await Assert.That(await env.Posts.GetRandomIdAsync(null, Ct)).IsEqualTo(id);
     }
 
-    [Fact]
+    [Test]
     public async Task Only_ever_returns_a_real_post_id()
     {
         using var env = new TestEnvironment();
@@ -39,8 +39,8 @@ public class RandomPostTests
         for (var i = 0; i < 30; i++)
         {
             var picked = await env.Posts.GetRandomIdAsync(null, Ct);
-            Assert.NotNull(picked);
-            Assert.Contains(picked!.Value, ids);
+            await Assert.That(picked).IsNotNull();
+            await Assert.That(ids).Contains(picked!.Value);
         }
     }
 
@@ -48,7 +48,7 @@ public class RandomPostTests
     /// The offset arithmetic is the part that can silently go wrong: an off-by-one would make
     /// one end of the collection unreachable, which no single call would reveal.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Every_post_is_reachable_including_the_first_and_last()
     {
         using var env = new TestEnvironment();
@@ -66,10 +66,10 @@ public class RandomPostTests
             if (picked is not null) seen.Add(picked.Value);
         }
 
-        Assert.Equal(ids.ToHashSet(), seen);
+        await Assert.That(seen).IsEquivalentTo(ids.ToHashSet());
     }
 
-    [Fact]
+    [Test]
     public async Task Honors_the_active_search()
     {
         using var env = new TestEnvironment();
@@ -83,11 +83,11 @@ public class RandomPostTests
 
         for (var i = 0; i < 15; i++)
         {
-            Assert.Equal(wanted, await env.Posts.GetRandomIdAsync(search, Ct));
+            await Assert.That(await env.Posts.GetRandomIdAsync(search, Ct)).IsEqualTo(wanted);
         }
     }
 
-    [Fact]
+    [Test]
     public async Task Returns_null_when_the_search_matches_nothing()
     {
         using var env = new TestEnvironment();
@@ -96,10 +96,10 @@ public class RandomPostTests
 
         var search = await env.Tags.ResolveSearchAsync(SearchQuery.Parse("no_such_tag"), Ct);
 
-        Assert.Null(await env.Posts.GetRandomIdAsync(search, Ct));
+        await Assert.That(await env.Posts.GetRandomIdAsync(search, Ct)).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task An_exclusion_can_leave_nothing_to_pick()
     {
         using var env = new TestEnvironment();
@@ -108,6 +108,6 @@ public class RandomPostTests
 
         var search = await env.Tags.ResolveSearchAsync(SearchQuery.Parse("-only_tag"), Ct);
 
-        Assert.Null(await env.Posts.GetRandomIdAsync(search, Ct));
+        await Assert.That(await env.Posts.GetRandomIdAsync(search, Ct)).IsNull();
     }
 }

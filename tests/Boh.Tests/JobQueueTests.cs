@@ -10,7 +10,7 @@ namespace Boh.Tests;
 /// </summary>
 public class JobQueueTests
 {
-    [Fact]
+    [Test]
     public async Task A_job_runs_and_keeps_its_result()
     {
         await using var jobs = await Harness.StartAsync();
@@ -18,12 +18,12 @@ public class JobQueueTests
         var job = jobs.Queue.Enqueue(JobLane.Maintenance, "test", "Test", null, Returns(42));
         var done = await jobs.WaitAsync(job.Id, j => !j.IsActive);
 
-        Assert.Equal(JobState.Succeeded, done.State);
-        Assert.Equal(42, done.Result);
-        Assert.NotNull(done.FinishedAt);
+        await Assert.That(done.State).IsEqualTo(JobState.Succeeded);
+        await Assert.That(done.Result).IsEqualTo(42);
+        await Assert.That(done.FinishedAt).IsNotNull();
     }
 
-    [Fact]
+    [Test]
     public async Task Progress_is_visible_while_the_job_runs()
     {
         await using var jobs = await Harness.StartAsync();
@@ -38,14 +38,14 @@ public class JobQueueTests
 
         var running = await jobs.WaitAsync(job.Id, j => j.Progress is not null);
 
-        Assert.Equal(JobState.Running, running.State);
-        Assert.Equal(new JobProgress("Working", 3, 10), running.Progress);
+        await Assert.That(running.State).IsEqualTo(JobState.Running);
+        await Assert.That(running.Progress).IsEqualTo(new JobProgress("Working", 3, 10));
 
         release.SetResult();
         await jobs.WaitAsync(job.Id, j => !j.IsActive);
     }
 
-    [Fact]
+    [Test]
     public async Task A_job_that_throws_is_marked_failed_and_the_lane_carries_on()
     {
         await using var jobs = await Harness.StartAsync();
@@ -55,15 +55,15 @@ public class JobQueueTests
         var next = jobs.Queue.Enqueue(JobLane.Maintenance, "next", "Next", null, Returns("ok"));
 
         var failed = await jobs.WaitAsync(broken.Id, j => !j.IsActive);
-        Assert.Equal(JobState.Failed, failed.State);
+        await Assert.That(failed.State).IsEqualTo(JobState.Failed);
 
         // What went wrong goes to the log; the page gets a message that leaks nothing.
-        Assert.DoesNotContain("/srv/secret", failed.Message);
+        await Assert.That(failed.Message).DoesNotContain("/srv/secret");
 
-        Assert.Equal(JobState.Succeeded, (await jobs.WaitAsync(next.Id, j => !j.IsActive)).State);
+        await Assert.That((await jobs.WaitAsync(next.Id, j => !j.IsActive)).State).IsEqualTo(JobState.Succeeded);
     }
 
-    [Fact]
+    [Test]
     public async Task Jobs_in_one_lane_run_one_at_a_time()
     {
         await using var jobs = await Harness.StartAsync();
@@ -73,14 +73,14 @@ public class JobQueueTests
         var second = jobs.Queue.Enqueue(JobLane.Maintenance, "second", "Second", null, Returns(null));
 
         await jobs.WaitAsync(first.Id, j => j.State == JobState.Running);
-        await Task.Delay(100, TestContext.Current.CancellationToken);
-        Assert.Equal(JobState.Queued, jobs.Queue.Get(second.Id)!.State);
+        await Task.Delay(100, TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(jobs.Queue.Get(second.Id)!.State).IsEqualTo(JobState.Queued);
 
         release.SetResult();
-        Assert.Equal(JobState.Succeeded, (await jobs.WaitAsync(second.Id, j => !j.IsActive)).State);
+        await Assert.That((await jobs.WaitAsync(second.Id, j => !j.IsActive)).State).IsEqualTo(JobState.Succeeded);
     }
 
-    [Fact]
+    [Test]
     public async Task A_busy_lane_does_not_hold_up_the_other()
     {
         await using var jobs = await Harness.StartAsync();
@@ -91,13 +91,13 @@ public class JobQueueTests
 
         var import = jobs.Queue.Enqueue(JobLane.Import, "import", "https://example.com/", null, Returns(null));
 
-        Assert.Equal(JobState.Succeeded, (await jobs.WaitAsync(import.Id, j => !j.IsActive)).State);
-        Assert.Equal(JobState.Running, jobs.Queue.Get(backfill.Id)!.State);
+        await Assert.That((await jobs.WaitAsync(import.Id, j => !j.IsActive)).State).IsEqualTo(JobState.Succeeded);
+        await Assert.That(jobs.Queue.Get(backfill.Id)!.State).IsEqualTo(JobState.Running);
 
         release.SetResult();
     }
 
-    [Fact]
+    [Test]
     public async Task Cancelling_a_running_job_stops_it()
     {
         await using var jobs = await Harness.StartAsync();
@@ -105,14 +105,14 @@ public class JobQueueTests
         var job = jobs.Queue.Enqueue(JobLane.Maintenance, "test", "Test", null, RunsUntilCanceled);
         await jobs.WaitAsync(job.Id, j => j.State == JobState.Running);
 
-        Assert.True(jobs.Queue.Cancel(job.Id));
+        await Assert.That(jobs.Queue.Cancel(job.Id)).IsTrue();
 
         var stopped = await jobs.WaitAsync(job.Id, j => !j.IsActive);
-        Assert.Equal(JobState.Canceled, stopped.State);
-        Assert.Null(stopped.Message);
+        await Assert.That(stopped.State).IsEqualTo(JobState.Canceled);
+        await Assert.That(stopped.Message).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task A_job_canceled_while_waiting_never_runs()
     {
         await using var jobs = await Harness.StartAsync();
@@ -128,8 +128,8 @@ public class JobQueueTests
             return Task.FromResult<object?>(null);
         });
 
-        Assert.True(jobs.Queue.Cancel(waiting.Id));
-        Assert.Equal(JobState.Canceled, jobs.Queue.Get(waiting.Id)!.State);
+        await Assert.That(jobs.Queue.Cancel(waiting.Id)).IsTrue();
+        await Assert.That(jobs.Queue.Get(waiting.Id)!.State).IsEqualTo(JobState.Canceled);
 
         release.SetResult();
 
@@ -137,10 +137,10 @@ public class JobQueueTests
         var behind = jobs.Queue.Enqueue(JobLane.Maintenance, "behind", "Behind", null, Returns(null));
         await jobs.WaitAsync(behind.Id, j => !j.IsActive);
 
-        Assert.False(ran);
+        await Assert.That(ran).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task An_exclusive_kind_is_not_queued_twice()
     {
         await using var jobs = await Harness.StartAsync();
@@ -149,18 +149,18 @@ public class JobQueueTests
         var first = jobs.Queue.Enqueue(JobLane.Maintenance, "scan", "Scan", null, Blocks(release), exclusive: true);
         var again = jobs.Queue.Enqueue(JobLane.Maintenance, "scan", "Scan", null, Returns(null), exclusive: true);
 
-        Assert.Equal(first.Id, again.Id);
-        Assert.Single(jobs.Queue.List(j => j.Kind == "scan"));
+        await Assert.That(again.Id).IsEqualTo(first.Id);
+        await Assert.That(jobs.Queue.List(j => j.Kind == "scan")).HasSingleItem();
 
         release.SetResult();
         await jobs.WaitAsync(first.Id, j => !j.IsActive);
 
         // Once it has finished, the button starts a fresh run.
         var later = jobs.Queue.Enqueue(JobLane.Maintenance, "scan", "Scan", null, Returns(null), exclusive: true);
-        Assert.NotEqual(first.Id, later.Id);
+        await Assert.That(later.Id).IsNotEqualTo(first.Id);
     }
 
-    [Fact]
+    [Test]
     public async Task Only_the_most_recent_finished_runs_are_remembered()
     {
         await using var jobs = await Harness.StartAsync();
@@ -175,11 +175,11 @@ public class JobQueueTests
         await jobs.WaitAsync(last, j => !j.IsActive);
 
         var kept = jobs.Queue.List(j => j.Kind == "import");
-        Assert.Equal(JobQueue.FinishedKeptPerKind, kept.Count);
-        Assert.Equal($"#{runs - 1}", kept[0].Title);
+        await Assert.That(kept.Count).IsEqualTo(JobQueue.FinishedKeptPerKind);
+        await Assert.That(kept[0].Title).IsEqualTo($"#{runs - 1}");
     }
 
-    [Fact]
+    [Test]
     public async Task Shutting_down_cancels_the_running_job_and_says_why()
     {
         await using var jobs = await Harness.StartAsync();
@@ -190,8 +190,8 @@ public class JobQueueTests
         await jobs.StopAsync();
 
         var stopped = jobs.Queue.Get(job.Id)!;
-        Assert.Equal(JobState.Canceled, stopped.State);
-        Assert.Contains("shut down", stopped.Message!);
+        await Assert.That(stopped.State).IsEqualTo(JobState.Canceled);
+        await Assert.That(stopped.Message!).Contains("shut down");
     }
 
     private static JobWork Returns(object? value) => _ => Task.FromResult(value);
@@ -226,7 +226,7 @@ public class JobQueueTests
         public static async Task<Harness> StartAsync()
         {
             var harness = new Harness();
-            await harness._worker.StartAsync(TestContext.Current.CancellationToken);
+            await harness._worker.StartAsync(TestContext.Current!.Execution.CancellationToken);
             return harness;
         }
 
@@ -240,10 +240,10 @@ public class JobQueueTests
             while (true)
             {
                 var job = Queue.Get(id);
-                Assert.NotNull(job);
+                await Assert.That(job).IsNotNull();
                 if (until(job)) return job;
 
-                Assert.True(DateTime.UtcNow < deadline, $"job {job.Title} is still {job.State}");
+                await Assert.That(DateTime.UtcNow < deadline).IsTrue().Because($"job {job.Title} is still {job.State}");
                 await Task.Delay(10);
             }
         }

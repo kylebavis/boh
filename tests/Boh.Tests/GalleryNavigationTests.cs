@@ -17,7 +17,7 @@ public class GalleryNavigationTests
         return [.. ids];
     }
 
-    [Fact]
+    [Test]
     public async Task Next_advances_to_the_second_page()
     {
         using var app = new TestApp(pageSize: 2);
@@ -28,17 +28,17 @@ public class GalleryNavigationTests
         var second = await app.GetHtmlAsync(client, "/?page=2");
         var third = await app.GetHtmlAsync(client, "/?page=3");
 
-        Assert.Equal("Page 1 of 3", TestApp.PaginationLabel(first));
-        Assert.Equal("Page 2 of 3", TestApp.PaginationLabel(second));
-        Assert.Equal("Page 3 of 3", TestApp.PaginationLabel(third));
+        await Assert.That(TestApp.PaginationLabel(first)).IsEqualTo("Page 1 of 3");
+        await Assert.That(TestApp.PaginationLabel(second)).IsEqualTo("Page 2 of 3");
+        await Assert.That(TestApp.PaginationLabel(third)).IsEqualTo("Page 3 of 3");
 
         // Newest first with a page size of 2: [5,4] [3,2] [1].
-        Assert.Equal([ids[4], ids[3]], TestApp.PostIdsIn(first));
-        Assert.Equal([ids[2], ids[1]], TestApp.PostIdsIn(second));
-        Assert.Equal([ids[0]], TestApp.PostIdsIn(third));
+        await Assert.That(TestApp.PostIdsIn(first)).IsEquivalentTo([ids[4], ids[3]], CollectionOrdering.Matching);
+        await Assert.That(TestApp.PostIdsIn(second)).IsEquivalentTo([ids[2], ids[1]], CollectionOrdering.Matching);
+        await Assert.That(TestApp.PostIdsIn(third)).IsEquivalentTo([ids[0]], CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task The_next_link_on_page_one_points_at_page_two()
     {
         using var app = new TestApp(pageSize: 2);
@@ -47,10 +47,10 @@ public class GalleryNavigationTests
 
         var html = await app.GetHtmlAsync(client, "/");
 
-        Assert.Contains("href=\"/?page=2\"", html);
+        await Assert.That(html).Contains("href=\"/?page=2\"");
     }
 
-    [Fact]
+    [Test]
     public async Task Pagination_keeps_the_active_search()
     {
         using var app = new TestApp(pageSize: 2);
@@ -61,12 +61,12 @@ public class GalleryNavigationTests
         var second = await app.GetHtmlAsync(client, "/?page=2&q=keeper");
 
         // Three matches over two pages; the second holds the oldest one alone.
-        Assert.Equal("Page 2 of 2", TestApp.PaginationLabel(second));
-        Assert.Equal([ids[0]], TestApp.PostIdsIn(second));
-        Assert.Contains("q=keeper", TestApp.FirstCardHref(second));
+        await Assert.That(TestApp.PaginationLabel(second)).IsEqualTo("Page 2 of 2");
+        await Assert.That(TestApp.PostIdsIn(second)).IsEquivalentTo([ids[0]], CollectionOrdering.Matching);
+        await Assert.That(TestApp.FirstCardHref(second)).Contains("q=keeper");
     }
 
-    [Fact]
+    [Test]
     public async Task A_page_past_the_end_clamps_to_the_last_page()
     {
         using var app = new TestApp(pageSize: 2);
@@ -75,11 +75,11 @@ public class GalleryNavigationTests
 
         var html = await app.GetHtmlAsync(client, "/?page=999");
 
-        Assert.Equal("Page 3 of 3", TestApp.PaginationLabel(html));
-        Assert.Equal([ids[0]], TestApp.PostIdsIn(html));
+        await Assert.That(TestApp.PaginationLabel(html)).IsEqualTo("Page 3 of 3");
+        await Assert.That(TestApp.PostIdsIn(html)).IsEquivalentTo([ids[0]], CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task Deleting_a_post_returns_to_the_search_it_was_opened_from()
     {
         using var app = new TestApp(pageSize: 40);
@@ -89,15 +89,15 @@ public class GalleryNavigationTests
         var client = app.CreateNonRedirectingClient();
 
         var detailUrl = TestApp.FirstCardHref(await app.GetHtmlAsync(client, "/?q=keeper"));
-        Assert.Contains("q=keeper", detailUrl);
+        await Assert.That(detailUrl).Contains("q=keeper");
 
         var landing = await DeleteAsync(app, client, detailUrl);
 
-        Assert.Equal(HttpStatusCode.Found, landing.StatusCode);
-        Assert.Equal("/?q=keeper", landing.Headers.Location?.OriginalString);
+        await Assert.That(landing.StatusCode).IsEqualTo(HttpStatusCode.Found);
+        await Assert.That(landing.Headers.Location?.OriginalString).IsEqualTo("/?q=keeper");
     }
 
-    [Fact]
+    [Test]
     public async Task Deleting_a_post_returns_to_the_page_it_was_opened_from()
     {
         using var app = new TestApp(pageSize: 2);
@@ -107,7 +107,7 @@ public class GalleryNavigationTests
         var detailUrl = TestApp.FirstCardHref(await app.GetHtmlAsync(client, "/?page=2"));
         var landing = await DeleteAsync(app, client, detailUrl);
 
-        Assert.Equal("/?page=2", landing.Headers.Location?.OriginalString);
+        await Assert.That(landing.Headers.Location?.OriginalString).IsEqualTo("/?page=2");
     }
 
     /// <summary>
@@ -115,7 +115,7 @@ public class GalleryNavigationTests
     /// names that page; the gallery is what has to cope, by clamping rather than rendering an
     /// empty grid.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task Deleting_the_last_post_on_the_final_page_does_not_strand_the_visitor()
     {
         using var app = new TestApp(pageSize: 2);
@@ -125,14 +125,14 @@ public class GalleryNavigationTests
         var detailUrl = TestApp.FirstCardHref(await app.GetHtmlAsync(client, "/?page=3"));
         var landing = await DeleteAsync(app, client, detailUrl);
 
-        Assert.Equal("/?page=3", landing.Headers.Location?.OriginalString);
+        await Assert.That(landing.Headers.Location?.OriginalString).IsEqualTo("/?page=3");
 
         var html = await app.GetHtmlAsync(client, landing.Headers.Location!.OriginalString);
-        Assert.Equal("Page 2 of 2", TestApp.PaginationLabel(html));
-        Assert.NotEmpty(TestApp.PostIdsIn(html));
+        await Assert.That(TestApp.PaginationLabel(html)).IsEqualTo("Page 2 of 2");
+        await Assert.That(TestApp.PostIdsIn(html)).IsNotEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task Deleting_a_post_reached_directly_returns_to_the_gallery()
     {
         using var app = new TestApp(pageSize: 40);
@@ -141,7 +141,7 @@ public class GalleryNavigationTests
 
         var landing = await DeleteAsync(app, client, $"/Posts/Detail/{ids[0]}");
 
-        Assert.Equal("/", landing.Headers.Location?.OriginalString);
+        await Assert.That(landing.Headers.Location?.OriginalString).IsEqualTo("/");
     }
 
     /// <summary>
@@ -157,7 +157,7 @@ public class GalleryNavigationTests
         // asp-page-handler rebuilds the URL from route values and drops the query string, so
         // the action cannot carry the browsing context. That is exactly why the hidden fields
         // exist, and asserting it keeps this test from passing on a query string of its own.
-        Assert.DoesNotContain("q=", action);
+        await Assert.That(action).DoesNotContain("q=");
 
         var fields = new Dictionary<string, string>
         {

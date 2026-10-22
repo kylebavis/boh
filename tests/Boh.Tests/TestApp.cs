@@ -103,9 +103,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
         var posts = scope.ServiceProvider.GetRequiredService<PostService>();
 
         var result = await posts.CreateAsync(
-            new MemoryStream(TestEnvironment.MakePng(size, size)), null, "", TestContext.Current.CancellationToken);
+            new MemoryStream(TestEnvironment.MakePng(size, size)), null, "", TestContext.Current!.Execution.CancellationToken);
 
-        return Assert.IsType<PostCreateResult.Created>(result).Post.Id;
+        return (await Assert.That(result).IsTypeOf<PostCreateResult.Created>())!.Post.Id;
     }
 
     /// <summary>
@@ -121,9 +121,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
         var result = await posts.CreateAsync(
             new MemoryStream(TestEnvironment.MakePattern(size, size, format, seed)),
-            null, "", TestContext.Current.CancellationToken);
+            null, "", TestContext.Current!.Execution.CancellationToken);
 
-        return Assert.IsType<PostCreateResult.Created>(result).Post.Id;
+        return (await Assert.That(result).IsTypeOf<PostCreateResult.Created>())!.Post.Id;
     }
 
     /// <summary>Applies tags the way the application does, so implications and counts stay correct.</summary>
@@ -133,7 +133,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         var service = scope.ServiceProvider.GetRequiredService<TagService>();
 
         await service.SetPostTagsAsync(
-            postId, Boh.Web.Tags.TagName.ParseMany(string.Join(' ', tags)), TestContext.Current.CancellationToken);
+            postId, Boh.Web.Tags.TagName.ParseMany(string.Join(' ', tags)), TestContext.Current!.Execution.CancellationToken);
     }
 
     /// <summary>
@@ -146,7 +146,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         using var scope = Services.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<TagService>();
 
-        await service.SetPostTagsAsync(postId, tags, TestContext.Current.CancellationToken);
+        await service.SetPostTagsAsync(postId, tags, TestContext.Current!.Execution.CancellationToken);
     }
 
     /// <summary>The explicit tags a post carries, read back as stored.</summary>
@@ -155,7 +155,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         using var scope = Services.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<TagService>();
 
-        return await service.GetExplicitTagNamesAsync(postId, TestContext.Current.CancellationToken);
+        return await service.GetExplicitTagNamesAsync(postId, TestContext.Current!.Execution.CancellationToken);
     }
 
     public async Task AddAliasAsync(string alias, string canonical)
@@ -163,9 +163,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
         using var scope = Services.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<TagService>();
 
-        Assert.True(Boh.Web.Tags.TagName.TryParse(alias, out var a));
-        Assert.True(Boh.Web.Tags.TagName.TryParse(canonical, out var c));
-        Assert.IsType<TagLinkResult.Ok>(await service.AddAliasAsync(a, c, TestContext.Current.CancellationToken));
+        await Assert.That(Boh.Web.Tags.TagName.TryParse(alias, out var a)).IsTrue();
+        await Assert.That(Boh.Web.Tags.TagName.TryParse(canonical, out var c)).IsTrue();
+        await Assert.That(await service.AddAliasAsync(a, c, TestContext.Current!.Execution.CancellationToken)).IsTypeOf<TagLinkResult.Ok>();
     }
 
     public async Task AddImplicationAsync(string child, string parent)
@@ -173,9 +173,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
         using var scope = Services.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<TagService>();
 
-        Assert.True(Boh.Web.Tags.TagName.TryParse(child, out var ch));
-        Assert.True(Boh.Web.Tags.TagName.TryParse(parent, out var pa));
-        Assert.IsType<TagLinkResult.Ok>(await service.AddImplicationAsync(ch, pa, TestContext.Current.CancellationToken));
+        await Assert.That(Boh.Web.Tags.TagName.TryParse(child, out var ch)).IsTrue();
+        await Assert.That(Boh.Web.Tags.TagName.TryParse(parent, out var pa)).IsTrue();
+        await Assert.That(await service.AddImplicationAsync(ch, pa, TestContext.Current!.Execution.CancellationToken)).IsTypeOf<TagLinkResult.Ok>();
     }
 
     /// <summary>
@@ -191,7 +191,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         HttpClient client, string url, string pageHtml, Dictionary<string, string>? fields = null)
     {
         var token = Regex.Match(pageHtml, "hx-headers:inherited='([^']*)'");
-        Assert.True(token.Success, "the layout rendered no hx-headers");
+        await Assert.That(token.Success).IsTrue().Because("the layout rendered no hx-headers");
 
         using var headers = JsonDocument.Parse(WebUtility.HtmlDecode(token.Groups[1].Value));
 
@@ -208,7 +208,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public async Task<string> GetHtmlAsync(HttpClient client, string url)
     {
         var response = await client.GetAsync(url);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
         return await response.Content.ReadAsStringAsync();
     }
 
@@ -243,7 +243,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         var client = CreateNonRedirectingClient();
 
         var response = await SubmitFormAsync(client, pageUrl, formMarker);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
 
         await WaitForJobsAsync();
         return await GetHtmlAsync(client, pageUrl);
@@ -261,7 +261,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
         while (Jobs.List(j => j.IsActive).Count > 0)
         {
-            Assert.True(DateTime.UtcNow < deadline, "background jobs were still running after 30 seconds");
+            await Assert.That(DateTime.UtcNow < deadline).IsTrue().Because("background jobs were still running after 30 seconds");
             await Task.Delay(20);
         }
     }
@@ -281,7 +281,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
         var form = await GetHtmlAsync(client, "/Account/Login");
         var token = Regex.Match(form, "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"");
-        Assert.True(token.Success, "no antiforgery token on the login form");
+        await Assert.That(token.Success).IsTrue().Because("no antiforgery token on the login form");
 
         var response = await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
             new Dictionary<string, string>
@@ -291,7 +291,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
                 ["__RequestVerificationToken"] = token.Groups[1].Value,
             }));
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
         return client;
     }
 
@@ -311,7 +311,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public static string FirstCardHref(string html)
     {
         var match = Regex.Match(html, CardPattern);
-        Assert.True(match.Success, "the gallery rendered no cards");
+        if (!match.Success) Assert.Fail("the gallery rendered no cards");
         return WebUtility.HtmlDecode(match.Groups[1].Value);
     }
 
@@ -327,7 +327,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
             .Where(f => f.Contains("name=\"" + name + "\""))
             .ToArray();
 
-        Assert.Single(forms);
+        if (forms.Length != 1) Assert.Fail($"expected one form with a field named {name}, found {forms.Length}");
         return forms[0];
     }
 
@@ -335,7 +335,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public static string FormAction(string form)
     {
         var match = Regex.Match(form, "<form[^>]*\\baction=\"([^\"]*)\"");
-        Assert.True(match.Success, "the form declares no action");
+        if (!match.Success) Assert.Fail("the form declares no action");
         return WebUtility.HtmlDecode(match.Groups[1].Value);
     }
 
@@ -346,7 +346,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public static string FormValue(string form, string name)
     {
         var tag = Regex.Match(form, "<input[^>]*\\bname=\"" + Regex.Escape(name) + "\"[^>]*>");
-        Assert.True(tag.Success, $"no input named {name} in the form");
+        if (!tag.Success) Assert.Fail($"no input named {name} in the form");
 
         var value = Regex.Match(tag.Value, "\\bvalue=\"([^\"]*)\"");
         return value.Success ? WebUtility.HtmlDecode(value.Groups[1].Value) : "";

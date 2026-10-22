@@ -17,23 +17,23 @@ public class ImportPageTests
 {
     private const string Url = "/Import";
 
-    [Fact]
+    [Test]
     public async Task Each_form_submits_to_its_own_handler()
     {
         using var app = new TestApp();
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), Url);
 
         var upload = TestApp.FormWithField(html, "UploadedFile");
-        Assert.Equal("/Import?handler=Upload", TestApp.FormAction(upload));
+        await Assert.That(TestApp.FormAction(upload)).IsEqualTo("/Import?handler=Upload");
 
         // Without it the browser sends the filename and no bytes.
-        Assert.Contains("enctype=\"multipart/form-data\"", upload);
+        await Assert.That(upload).Contains("enctype=\"multipart/form-data\"");
 
         var fetch = TestApp.FormWithField(html, "SourceUrl");
-        Assert.Equal("/Import?handler=Url", TestApp.FormAction(fetch));
+        await Assert.That(TestApp.FormAction(fetch)).IsEqualTo("/Import?handler=Url");
     }
 
-    [Fact]
+    [Test]
     public async Task Uploading_a_file_opens_the_new_post()
     {
         using var app = new TestApp();
@@ -41,11 +41,11 @@ public class ImportPageTests
 
         var response = await UploadAsync(app, client, TestEnvironment.MakePng(24, 24));
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Matches(@"^/Posts/Detail/\d+$", response.Headers.Location!.OriginalString);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
+        await Assert.That(response.Headers.Location!.OriginalString).Matches(@"^/Posts/Detail/\d+$");
     }
 
-    [Fact]
+    [Test]
     public async Task Uploading_a_stored_file_again_links_to_the_original()
     {
         using var app = new TestApp();
@@ -56,35 +56,35 @@ public class ImportPageTests
         var original = first.Headers.Location!.OriginalString;
 
         var second = await UploadAsync(app, client, file);
-        var html = await second.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var html = await second.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
-        Assert.Contains("already stored as", html);
-        Assert.Contains($"href=\"{original}\"", html);
+        await Assert.That(second.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(html).Contains("already stored as");
+        await Assert.That(html).Contains($"href=\"{original}\"");
     }
 
     /// <summary>
     /// The standalone upload page recorded no uploader, so a user's post count on the Users page
     /// only ever reflected their imports.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task An_upload_is_credited_to_the_account_that_made_it()
     {
         using var app = new TestApp(authMode: "password");
         var client = await app.SignInAsync();
 
         var response = await UploadAsync(app, client, TestEnvironment.MakePng(24, 24));
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
 
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BohDbContext>();
 
-        var admin = await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername, cancellationToken: TestContext.Current.CancellationToken);
-        var post = await db.Posts.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(admin.Id, post.UploadedById);
+        var admin = await db.Users.SingleAsync(u => u.Username == UserService.AdminUsername, cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        var post = await db.Posts.SingleAsync(cancellationToken: TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(post.UploadedById).IsEqualTo(admin.Id);
     }
 
-    [Fact]
+    [Test]
     public async Task The_nav_offers_a_single_way_in()
     {
         using var app = new TestApp();
@@ -94,11 +94,11 @@ public class ImportPageTests
 
         var html = await app.GetHtmlAsync(app.CreateNonRedirectingClient(), "/");
 
-        Assert.Single(Regex.Matches(html, "href=\"/Import\""));
-        Assert.DoesNotContain("/Posts/Upload", html);
+        await Assert.That(Regex.Matches(html, "href=\"/Import\"")).HasSingleItem();
+        await Assert.That(html).DoesNotContain("/Posts/Upload");
     }
 
-    [Fact]
+    [Test]
     public async Task A_url_is_queued_and_its_outcome_listed_under_the_form()
     {
         using var app = new TestApp();
@@ -106,8 +106,8 @@ public class ImportPageTests
 
         var response = await SubmitUrlAsync(app, client, "https://example.com/gallery");
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Import#imports", response.Headers.Location!.OriginalString);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
+        await Assert.That(response.Headers.Location!.OriginalString).IsEqualTo("/Import#imports");
 
         await app.WaitForJobsAsync();
         var html = await app.GetHtmlAsync(client, Url);
@@ -115,9 +115,9 @@ public class ImportPageTests
         // Nothing is fetchable there, and the test machine need not have gallery-dl at all, so
         // the outcome is a reported failure — which is enough: a job ran, and what it said
         // reached the page.
-        Assert.Contains("Recent imports", html);
-        Assert.Contains("https://example.com/gallery", html);
-        Assert.Contains("notice notice-error", html);
+        await Assert.That(html).Contains("Recent imports");
+        await Assert.That(html).Contains("https://example.com/gallery");
+        await Assert.That(html).Contains("notice notice-error");
     }
 
     /// <summary>
@@ -125,7 +125,7 @@ public class ImportPageTests
     /// Printing the id on its own left the reader to go and find it by hand, which is the
     /// one thing they want to do next.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task A_file_the_collection_already_holds_links_to_the_post_that_holds_it()
     {
         using var app = new TestApp();
@@ -142,12 +142,12 @@ public class ImportPageTests
         await app.WaitForJobsAsync();
         var html = await app.GetHtmlAsync(client, Url);
 
-        Assert.Contains("already stored as", html);
-        Assert.Contains($"<a href=\"/Posts/Detail/{postId}\">post {postId}</a>", html);
+        await Assert.That(html).Contains("already stored as");
+        await Assert.That(html).Contains($"<a href=\"/Posts/Detail/{postId}\">post {postId}</a>");
     }
 
     /// <summary>A skip that is not a duplicate has no post to point at, and gets no link.</summary>
-    [Fact]
+    [Test]
     public async Task A_file_skipped_for_any_other_reason_is_reported_as_plain_text()
     {
         using var app = new TestApp();
@@ -162,25 +162,25 @@ public class ImportPageTests
         await app.WaitForJobsAsync();
         var html = await app.GetHtmlAsync(client, Url);
 
-        Assert.Contains("that file type is not accepted", html);
-        Assert.DoesNotContain("/Posts/Detail/", html);
+        await Assert.That(html).Contains("that file type is not accepted");
+        await Assert.That(html).DoesNotContain("/Posts/Detail/");
     }
 
-    [Fact]
+    [Test]
     public async Task A_blank_address_is_refused_without_queueing_anything()
     {
         using var app = new TestApp();
         var client = app.CreateNonRedirectingClient();
 
         var response = await SubmitUrlAsync(app, client, "");
-        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Enter a URL to import.", html);
-        Assert.Empty(app.Jobs.List());
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(html).Contains("Enter a URL to import.");
+        await Assert.That(app.Jobs.List()).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task A_running_import_polls_for_progress_and_can_be_canceled()
     {
         using var app = new TestApp();
@@ -195,18 +195,18 @@ public class ImportPageTests
 
         var html = await app.GetHtmlAsync(client, Url);
         var block = Regex.Match(html, $"<div id=\"import-{job.Id}\"[^>]*>").Value;
-        Assert.Contains("hx-trigger=\"every 2s\"", block);
+        await Assert.That(block).Contains("hx-trigger=\"every 2s\"");
 
         var response = await app.SubmitFormAsync(client, Url, $"id={job.Id}");
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
 
         await app.WaitForJobsAsync();
 
-        Assert.Equal(JobState.Canceled, app.Jobs.Get(job.Id)!.State);
-        Assert.Contains("Anything stored before then was kept", await app.GetHtmlAsync(client, Url));
+        await Assert.That(app.Jobs.Get(job.Id)!.State).IsEqualTo(JobState.Canceled);
+        await Assert.That(await app.GetHtmlAsync(client, Url)).Contains("Anything stored before then was kept");
     }
 
-    [Fact]
+    [Test]
     public async Task Someone_elses_import_is_neither_listed_nor_shown()
     {
         using var app = new TestApp(authMode: "password");
@@ -216,16 +216,16 @@ public class ImportPageTests
             requestedById: 9999, _ => Task.FromResult<object?>(new ImportResult([], [], null)));
         await app.WaitForJobsAsync();
 
-        Assert.DoesNotContain("example.com/theirs", await app.GetHtmlAsync(client, Url));
+        await Assert.That(await app.GetHtmlAsync(client, Url)).DoesNotContain("example.com/theirs");
 
         // Nothing rather than an error, the same as for an import a restart forgot, so a poll
         // for it removes the block instead of retrying forever.
-        var fragment = await client.GetAsync($"{Url}?handler=Job&id={theirs.Id}", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, fragment.StatusCode);
-        Assert.Equal("", await fragment.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var fragment = await client.GetAsync($"{Url}?handler=Job&id={theirs.Id}", TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(fragment.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(await fragment.Content.ReadAsStringAsync(TestContext.Current!.Execution.CancellationToken)).IsEqualTo("");
     }
 
-    [Fact]
+    [Test]
     public async Task Someone_elses_import_cannot_be_canceled()
     {
         using var app = new TestApp();
@@ -244,10 +244,10 @@ public class ImportPageTests
 
         var response = await client.PostAsync($"{Url}?handler=Cancel&id={theirs.Id}",
             new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }),
-            TestContext.Current.CancellationToken);
+            TestContext.Current!.Execution.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Equal(JobState.Running, app.Jobs.Get(theirs.Id)!.State);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        await Assert.That(app.Jobs.Get(theirs.Id)!.State).IsEqualTo(JobState.Running);
 
         app.Jobs.Cancel(theirs.Id);
         await app.WaitForJobsAsync();

@@ -45,18 +45,18 @@ public class PostTagRemovalTests
     /// Pins the storage shape the rest of this class is about: the site's category stays
     /// inside the name, because the general tag list carries no namespace for it.
     /// </summary>
-    [Fact]
-    public void A_site_category_packed_into_the_tag_text_is_stored_as_part_of_the_name()
+    [Test]
+    public async Task A_site_category_packed_into_the_tag_text_is_stored_as_part_of_the_name()
     {
-        Assert.Contains(new TagName("", "artist:orb_enjoyer"), Imported());
-        Assert.Contains(new TagName("", "source:fan_art"), Imported());
+        await Assert.That(Imported()).Contains(new TagName("", "artist:orb_enjoyer"));
+        await Assert.That(Imported()).Contains(new TagName("", "source:fan_art"));
 
         // The one name that does arrive with a namespace, as the control: it is addressable
         // either way round, so it kept working while the names above did not.
-        Assert.Contains(new TagName("source", "example"), Imported());
+        await Assert.That(Imported()).Contains(new TagName("source", "example"));
     }
 
-    [Fact]
+    [Test]
     public async Task Every_tag_an_import_stored_can_be_removed_again()
     {
         using var app = new TestApp();
@@ -66,19 +66,19 @@ public class PostTagRemovalTests
         var imported = Imported();
         await app.TagAsync(postId, imported);
 
-        Assert.Equal(imported.Count, (await app.ExplicitTagsAsync(postId)).Count);
+        await Assert.That((await app.ExplicitTagsAsync(postId)).Count).IsEqualTo(imported.Count);
 
         foreach (var tag in imported)
         {
             var html = await app.GetHtmlAsync(client, $"/Posts/Detail/{postId}");
 
-            var response = await TestApp.PostHxAsync(client, RemoveControlFor(html, tag), html);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var response = await TestApp.PostHxAsync(client, await RemoveControlFor(html, tag), html);
+            await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
 
-            Assert.DoesNotContain(tag, await app.ExplicitTagsAsync(postId));
+            await Assert.That(await app.ExplicitTagsAsync(postId)).DoesNotContain(tag);
         }
 
-        Assert.Empty(await app.ExplicitTagsAsync(postId));
+        await Assert.That(await app.ExplicitTagsAsync(postId)).IsEmpty();
     }
 
     /// <summary>
@@ -86,14 +86,14 @@ public class PostTagRemovalTests
     /// this guards against lives in the gap between what the markup sends and what the
     /// handler can resolve, and a hand-built URL would step over that gap.
     /// </summary>
-    private static string RemoveControlFor(string html, TagName tag)
+    private static async Task<string> RemoveControlFor(string html, TagName tag)
     {
         var label = WebUtility.HtmlEncode($"Remove tag {tag.Display}");
         var button = Regex.Match(html, "<button[^>]* aria-label=\"" + Regex.Escape(label) + "\"[^>]*>");
-        Assert.True(button.Success, $"no remove button for '{tag.Display}'");
+        await Assert.That(button.Success).IsTrue().Because($"no remove button for '{tag.Display}'");
 
         var url = Regex.Match(button.Value, " hx-post=\"([^\"]+)\"");
-        Assert.True(url.Success, $"the remove button for '{tag.Display}' posts nowhere");
+        await Assert.That(url.Success).IsTrue().Because($"the remove button for '{tag.Display}' posts nowhere");
 
         return WebUtility.HtmlDecode(url.Groups[1].Value);
     }

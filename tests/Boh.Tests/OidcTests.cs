@@ -11,7 +11,7 @@ namespace Boh.Tests;
 
 public class OidcTests
 {
-    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+    private static CancellationToken Ct => TestContext.Current!.Execution.CancellationToken;
 
     private static readonly Dictionary<string, string?> LocalOff = new() { ["BOH_LOCAL_AUTH"] = "false" };
 
@@ -28,15 +28,15 @@ public class OidcTests
             .AsNoTracking().SingleOrDefaultAsync(u => u.Username == username, Ct);
     }
 
-    private static void AssertRefused(HttpResponseMessage response)
+    private static async Task AssertRefused(HttpResponseMessage response)
     {
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Account/Login?error=oidc", response.Headers.Location!.OriginalString);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
+        await Assert.That(response.Headers.Location!.OriginalString).IsEqualTo("/Account/Login?error=oidc");
     }
 
     // ---- the flow ------------------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task The_authorize_request_uses_the_code_flow_with_pkce()
     {
         var idp = new FakeOidcProvider();
@@ -45,14 +45,14 @@ public class OidcTests
         var location = await FakeOidcProvider.AuthorizeRequestAsync(Client(app));
         var query = HttpUtility.ParseQueryString(location.Query);
 
-        Assert.StartsWith(FakeOidcProvider.Issuer + "/authorize", location.ToString());
-        Assert.Equal("code", query["response_type"]);
-        Assert.Null(query["response_mode"]); // query, the code flow default
-        Assert.Equal("S256", query["code_challenge_method"]);
-        Assert.EndsWith("/signin-oidc", query["redirect_uri"]);
+        await Assert.That(location.ToString()).StartsWith(FakeOidcProvider.Issuer + "/authorize");
+        await Assert.That(query["response_type"]).IsEqualTo("code");
+        await Assert.That(query["response_mode"]).IsNull(); // query, the code flow default
+        await Assert.That(query["code_challenge_method"]).IsEqualTo("S256");
+        await Assert.That(query["redirect_uri"]).EndsWith("/signin-oidc");
     }
 
-    [Fact]
+    [Test]
     public async Task A_first_sign_in_creates_a_passwordless_account_and_signs_it_in()
     {
         var idp = new FakeOidcProvider();
@@ -60,22 +60,22 @@ public class OidcTests
         var client = Client(app);
 
         var response = await idp.SignInAsync(client, "sub-1", "Kim");
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/", response.Headers.Location!.OriginalString);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
+        await Assert.That(response.Headers.Location!.OriginalString).IsEqualTo("/");
 
         var user = await FindAsync(app, "kim");
-        Assert.NotNull(user);
-        Assert.Equal($"{FakeOidcProvider.Issuer} sub-1", user!.OidcSubject);
-        Assert.Equal("", user.PasswordHash);
-        Assert.False(user.IsAdmin);
+        await Assert.That(user).IsNotNull();
+        await Assert.That(user!.OidcSubject).IsEqualTo($"{FakeOidcProvider.Issuer} sub-1");
+        await Assert.That(user.PasswordHash).IsEqualTo("");
+        await Assert.That(user.IsAdmin).IsFalse();
 
         var account = await app.GetHtmlAsync(client, "/Account");
-        Assert.Contains("Signed in as <strong>kim</strong>", account);
-        Assert.Contains("has no password", account);
-        Assert.DoesNotContain("name=\"currentPassword\"", account);
+        await Assert.That(account).Contains("Signed in as <strong>kim</strong>");
+        await Assert.That(account).Contains("has no password");
+        await Assert.That(account).DoesNotContain("name=\"currentPassword\"");
     }
 
-    [Fact]
+    [Test]
     public async Task A_returning_subject_keeps_its_account_when_the_username_changes()
     {
         var idp = new FakeOidcProvider();
@@ -86,12 +86,12 @@ public class OidcTests
 
         var response = await idp.SignInAsync(Client(app), "sub-1", "kimberly");
 
-        Assert.Equal("/", response.Headers.Location!.OriginalString);
-        Assert.Equal(id, (await FindAsync(app, "kim"))!.Id);
-        Assert.Null(await FindAsync(app, "kimberly"));
+        await Assert.That(response.Headers.Location!.OriginalString).IsEqualTo("/");
+        await Assert.That((await FindAsync(app, "kim"))!.Id).IsEqualTo(id);
+        await Assert.That(await FindAsync(app, "kimberly")).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task An_existing_account_with_the_same_username_is_linked()
     {
         var idp = new FakeOidcProvider();
@@ -99,13 +99,13 @@ public class OidcTests
 
         var response = await idp.SignInAsync(Client(app), "sub-admin", UserService.AdminUsername);
 
-        Assert.Equal("/", response.Headers.Location!.OriginalString);
+        await Assert.That(response.Headers.Location!.OriginalString).IsEqualTo("/");
         var admin = await FindAsync(app, UserService.AdminUsername);
-        Assert.Equal($"{FakeOidcProvider.Issuer} sub-admin", admin!.OidcSubject);
-        Assert.True(admin.IsAdmin);
+        await Assert.That(admin!.OidcSubject).IsEqualTo($"{FakeOidcProvider.Issuer} sub-admin");
+        await Assert.That(admin.IsAdmin).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task A_username_linked_to_another_subject_is_refused()
     {
         var idp = new FakeOidcProvider();
@@ -113,19 +113,19 @@ public class OidcTests
 
         await idp.SignInAsync(Client(app), "sub-1", "kim");
 
-        AssertRefused(await idp.SignInAsync(Client(app), "sub-2", "kim"));
+        await AssertRefused(await idp.SignInAsync(Client(app), "sub-2", "kim"));
     }
 
-    [Fact]
+    [Test]
     public async Task A_missing_username_is_refused()
     {
         var idp = new FakeOidcProvider();
         using var app = App(idp);
 
-        AssertRefused(await idp.SignInAsync(Client(app), "sub-1", null));
+        await AssertRefused(await idp.SignInAsync(Client(app), "sub-1", null));
     }
 
-    [Fact]
+    [Test]
     public async Task A_refusal_is_explained_on_the_login_page()
     {
         var idp = new FakeOidcProvider();
@@ -133,39 +133,39 @@ public class OidcTests
 
         var html = await app.GetHtmlAsync(Client(app), "/Account/Login?error=oidc");
 
-        Assert.Contains("did not work", html);
+        await Assert.That(html).Contains("did not work");
     }
 
-    [Fact]
+    [Test]
     public async Task An_unverified_email_is_refused_as_a_username()
     {
         var idp = new FakeOidcProvider();
         using var app = App(idp, new() { ["BOH_OIDC_USERNAME_CLAIM"] = "email" });
 
         idp.ExtraClaims = [new("email", "admin"), new("email_verified", "false", ClaimValueTypes.Boolean)];
-        AssertRefused(await idp.SignInAsync(Client(app), "sub-1", null));
-        Assert.Null((await FindAsync(app, UserService.AdminUsername))!.OidcSubject);
+        await AssertRefused(await idp.SignInAsync(Client(app), "sub-1", null));
+        await Assert.That((await FindAsync(app, UserService.AdminUsername))!.OidcSubject).IsNull();
 
         idp.ExtraClaims = [new("email", "kim@example.com"), new("email_verified", "true", ClaimValueTypes.Boolean)];
-        Assert.Equal("/", (await idp.SignInAsync(Client(app), "sub-2", null)).Headers.Location!.OriginalString);
+        await Assert.That((await idp.SignInAsync(Client(app), "sub-2", null)).Headers.Location!.OriginalString).IsEqualTo("/");
     }
 
     // ---- groups --------------------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task The_admin_group_grants_and_revokes_admin_on_each_sign_in()
     {
         var idp = new FakeOidcProvider();
         using var app = App(idp, new() { ["BOH_OIDC_ADMIN_GROUP"] = "boh-admins" });
 
         await idp.SignInAsync(Client(app), "sub-1", "kim", "boh-admins");
-        Assert.True((await FindAsync(app, "kim"))!.IsAdmin);
+        await Assert.That((await FindAsync(app, "kim"))!.IsAdmin).IsTrue();
 
         await idp.SignInAsync(Client(app), "sub-1", "kim", "staff");
-        Assert.False((await FindAsync(app, "kim"))!.IsAdmin);
+        await Assert.That((await FindAsync(app, "kim"))!.IsAdmin).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task Without_an_admin_group_admin_is_left_to_boh()
     {
         var idp = new FakeOidcProvider();
@@ -173,25 +173,25 @@ public class OidcTests
 
         await idp.SignInAsync(Client(app), "sub-1", "kim", "boh-admins");
 
-        Assert.False((await FindAsync(app, "kim"))!.IsAdmin);
+        await Assert.That((await FindAsync(app, "kim"))!.IsAdmin).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task The_user_group_keeps_outsiders_out()
     {
         var idp = new FakeOidcProvider();
         using var app = App(idp, new() { ["BOH_OIDC_USER_GROUP"] = "boh" });
 
-        AssertRefused(await idp.SignInAsync(Client(app), "sub-1", "kim", "staff"));
-        Assert.Null(await FindAsync(app, "kim"));
+        await AssertRefused(await idp.SignInAsync(Client(app), "sub-1", "kim", "staff"));
+        await Assert.That(await FindAsync(app, "kim")).IsNull();
 
         var response = await idp.SignInAsync(Client(app), "sub-2", "lee", "boh");
-        Assert.Equal("/", response.Headers.Location!.OriginalString);
+        await Assert.That(response.Headers.Location!.OriginalString).IsEqualTo("/");
     }
 
     // ---- local auth ----------------------------------------------------
 
-    [Fact]
+    [Test]
     public async Task With_both_the_login_page_offers_both()
     {
         var idp = new FakeOidcProvider();
@@ -199,11 +199,11 @@ public class OidcTests
 
         var html = await app.GetHtmlAsync(Client(app), "/Account/Login");
 
-        Assert.Contains("name=\"Password\"", html);
-        Assert.Contains("Sign in with Authentik", html);
+        await Assert.That(html).Contains("name=\"Password\"");
+        await Assert.That(html).Contains("Sign in with Authentik");
     }
 
-    [Fact]
+    [Test]
     public async Task With_local_auth_off_the_login_page_offers_only_oidc()
     {
         var idp = new FakeOidcProvider();
@@ -211,12 +211,12 @@ public class OidcTests
 
         var html = await app.GetHtmlAsync(Client(app), "/Account/Login");
 
-        Assert.DoesNotContain("name=\"Password\"", html);
-        Assert.DoesNotContain("passkey-signin", html);
-        Assert.Contains("handler=Oidc", html);
+        await Assert.That(html).DoesNotContain("name=\"Password\"");
+        await Assert.That(html).DoesNotContain("passkey-signin");
+        await Assert.That(html).Contains("handler=Oidc");
     }
 
-    [Fact]
+    [Test]
     public async Task With_local_auth_off_a_password_is_not_accepted()
     {
         var idp = new FakeOidcProvider();
@@ -230,10 +230,10 @@ public class OidcTests
             ["Password"] = TestApp.AdminPassword,
         });
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
-    [Fact]
+    [Test]
     public async Task With_local_auth_off_the_account_page_drops_passwords_and_passkeys()
     {
         var idp = new FakeOidcProvider();
@@ -243,12 +243,12 @@ public class OidcTests
         await idp.SignInAsync(client, "sub-1", "kim");
         var html = await app.GetHtmlAsync(client, "/Account");
 
-        Assert.DoesNotContain("Change password", html);
-        Assert.DoesNotContain("id=\"passkeys\"", html);
-        Assert.Contains("id=\"tokens\"", html);
+        await Assert.That(html).DoesNotContain("Change password");
+        await Assert.That(html).DoesNotContain("id=\"passkeys\"");
+        await Assert.That(html).Contains("id=\"tokens\"");
     }
 
-    [Fact]
+    [Test]
     public async Task With_local_auth_off_admins_cannot_create_users_or_set_passwords()
     {
         var idp = new FakeOidcProvider();
@@ -258,19 +258,19 @@ public class OidcTests
         await idp.SignInAsync(client, "sub-1", "kim", "boh-admins");
         var html = await app.GetHtmlAsync(client, "/Users");
 
-        Assert.Contains("(SSO)", html);
-        Assert.DoesNotContain("handler=Create", html);
-        Assert.DoesNotContain("handler=ResetPassword", html);
+        await Assert.That(html).Contains("(SSO)");
+        await Assert.That(html).DoesNotContain("handler=Create");
+        await Assert.That(html).DoesNotContain("handler=ResetPassword");
 
         var response = await TestApp.PostHxAsync(client, "/Users?handler=Create", html, new()
         {
             ["username"] = "lee",
             ["password"] = "long-enough-password",
         });
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
-    [Fact]
+    [Test]
     public async Task Turning_local_auth_off_ends_password_sessions()
     {
         var idp = new FakeOidcProvider();
@@ -296,7 +296,7 @@ public class OidcTests
             var signIn = await client.SendAsync(request, Ct);
             cookie = signIn.Headers.GetValues("Set-Cookie").Select(c => c.Split(';')[0]).Single(c => c.StartsWith("boh.auth="));
 
-            Assert.Equal(HttpStatusCode.OK, (await Get(client, "/Account", cookie)).StatusCode);
+            await Assert.That((await Get(client, "/Account", cookie)).StatusCode).IsEqualTo(HttpStatusCode.OK);
 
             // Same data directory, so the same keys read the cookie.
             using var off = new TestApp(authMode: "password", oidc: idp, settings: LocalOff, dataPath: on.DataPath);
@@ -304,8 +304,8 @@ public class OidcTests
                 off.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false, AllowAutoRedirect = false }),
                 "/Account", cookie);
 
-            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-            Assert.StartsWith("/Account/Login", response.Headers.Location!.PathAndQuery);
+            await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Redirect);
+            await Assert.That(response.Headers.Location!.PathAndQuery).StartsWith("/Account/Login");
         }
     }
 
@@ -316,22 +316,22 @@ public class OidcTests
         return client.SendAsync(request);
     }
 
-    [Fact]
+    [Test]
     public async Task With_local_auth_off_the_admin_password_is_not_seeded()
     {
         var idp = new FakeOidcProvider();
         using var app = App(idp, LocalOff);
         _ = Client(app);
 
-        Assert.Null(await FindAsync(app, UserService.AdminUsername));
+        await Assert.That(await FindAsync(app, UserService.AdminUsername)).IsNull();
     }
 
-    [Fact]
-    public void Local_auth_cannot_be_turned_off_without_oidc()
+    [Test]
+    public async Task Local_auth_cannot_be_turned_off_without_oidc()
     {
         using var app = new TestApp(authMode: "password", settings: LocalOff);
 
         var error = Assert.Throws<InvalidOperationException>(() => app.CreateClient());
-        Assert.Contains("BOH_LOCAL_AUTH=false", error.Message);
+        await Assert.That(error.Message).Contains("BOH_LOCAL_AUTH=false");
     }
 }
