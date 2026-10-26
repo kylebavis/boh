@@ -9,6 +9,9 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+    groups:
+      microsoft:
+        patterns: ["Microsoft.*", "System.*"]
   # Workflow actions are pinned to commit SHAs, so nothing upstream can change
   # what a tag resolves to underneath us. That also means no update arrives on its
   # own: this is the only thing moving those pins, and it rewrites the trailing
