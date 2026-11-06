@@ -47,6 +47,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           # Pushed without a tag; the merge job assembles the multi-arch manifest.
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          # Attestations ride along in each digest's index; imagetools create keeps them.
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
 
