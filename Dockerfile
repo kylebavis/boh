@@ -12,8 +12,8 @@ WORKDIR /src
 # platform it supports — Windows, macOS, musl, riscv, mips — adding ~270 MB of
 # libraries that can never execute here. Targeting one RID keeps only the pair
 # this image can actually load.
-RUN if [ "$TARGETARCH" = "amd64" ]; then echo linux-x64 > /tmp/rid; \
-    else echo "linux-$TARGETARCH" > /tmp/rid; fi
+RUN if [ "$TARGETARCH" = "amd64" ]; then echo linux-musl-x64 > /tmp/rid; \
+    else echo "linux-musl-$TARGETARCH" > /tmp/rid; fi
 
 # Restore against the project files alone so the layer survives source edits.
 COPY Directory.Build.props ./
@@ -36,47 +36,31 @@ RUN mkdir /app/own \
     && if [ -e web.config ]; then mv web.config /app/own/; fi
 
 # ---- runtime --------------------------------------------------------------
-# Debian rather than Alpine: this image also carries Python (gallery-dl) and the
-# Magick.NET native libraries, and glibc avoids a class of musl packaging problems.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:1a48394b6f29d3a32c79d9edecd4abda0ecbe8776d567dbfc4590ed6979c740c AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine@sha256:486297ae006e95ee2ee3112a2c03e3d26e41fbbc64b7a29e28e7a18cc36b12bb AS runtime
 
 # Pinned so an image rebuild cannot silently change importer behavior, and kept in a
 # requirements file so Dependabot can see the version and raise the upgrade as a PR.
 COPY requirements.txt /tmp/requirements.txt
 
-# libgomp1: OpenMP runtime the Magick.NET native library links against.
-# ffmpeg:   video probing (ffprobe) and thumbnail extraction.
-# python3:  runtime for gallery-dl.
-# curl:     used by HEALTHCHECK.
+# libgomp: OpenMP runtime the Magick.NET native library links against.
+# ffmpeg:  video probing (ffprobe) and thumbnail extraction.
+# python3: runtime for gallery-dl.
+# curl:    used by HEALTHCHECK.
 # ca-certificates: listed explicitly so rebuilds pick up trust store fixes before the
-#           base image does (e.g. the eMudhra distrust, 20260816ubuntu0.24.04.1).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+#          base image does.
+RUN apk add --no-cache \
         ca-certificates \
-        libgomp1 \
+        libgomp \
         ffmpeg \
         python3 \
-        python3-venv \
         curl \
-    # A virtualenv rather than a system-wide pip install: Debian marks its Python
-    # environment externally managed (PEP 668), and --break-system-packages is exactly
-    # the kind of override that later bites during a base image upgrade.
+    # A virtualenv rather than a system-wide pip install: Alpine marks its Python
+    # environment externally managed (PEP 668).
     && python3 -m venv /opt/gallery-dl \
     && /opt/gallery-dl/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
     # Only needed to install; 16 MB otherwise.
     && /opt/gallery-dl/bin/pip uninstall -y pip \
-    && apt-get purge -y --auto-remove python3-venv \
-    && rm -rf /var/lib/apt/lists/* /tmp/requirements.txt \
-    # ffmpeg depends on libavdevice, which links the GL stack, which drags in Mesa's
-    # software renderer and LLVM — about 180 MB of GPU driver in a container that only
-    # ever decodes one frame to a file. The packages cannot be purged without taking
-    # ffmpeg with them, but the driver backend is dlopened lazily when a GL context is
-    # created, which never happens here. libGL itself is left in place so ffmpeg still
-    # resolves its NEEDED entries at load time. Verified: ffprobe and frame extraction
-    # both work with these removed.
-    && rm -f /usr/lib/*-linux-gnu/libLLVM.so* \
-             /usr/lib/*-linux-gnu/libgallium*.so \
-    && rm -rf /usr/lib/*-linux-gnu/dri
+    && rm /tmp/requirements.txt
 
 ENV PATH="/opt/gallery-dl/bin:${PATH}"
 
