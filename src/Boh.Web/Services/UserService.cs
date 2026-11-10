@@ -5,18 +5,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Boh.Web.Services;
 
-public abstract record UserResult
+public closed record UserResult
 {
-    private UserResult() { }
-
     public sealed record Ok : UserResult;
     public sealed record Rejected(string Reason) : UserResult;
 }
 
-public abstract record OidcSignIn
+public closed record OidcSignIn
 {
-    private OidcSignIn() { }
-
     public sealed record Ok(User User) : OidcSignIn;
     public sealed record Rejected(string Reason) : OidcSignIn;
 }

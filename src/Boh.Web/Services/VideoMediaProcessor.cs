@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.Mime;
 using System.Text.Json;
 
 namespace Boh.Web.Services;
@@ -14,8 +15,8 @@ public sealed class VideoMediaProcessor(
     /// <summary>Storable containers by ffprobe format name; others are refused.</summary>
     private static readonly Dictionary<string, (string Mime, string Extension)> Allowed = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["mov,mp4,m4a,3gp,3g2,mj2"] = ("video/mp4", ".mp4"),
-        ["matroska,webm"] = ("video/webm", ".webm"),
+        ["mov,mp4,m4a,3gp,3g2,mj2"] = (MediaTypeNames.Video.Mp4, ".mp4"),
+        ["matroska,webm"] = (MediaTypeNames.Video.WebM, ".webm"),
     };
 
     public async Task<MediaInfo?> TryProbeAsync(string sourcePath, CancellationToken ct)

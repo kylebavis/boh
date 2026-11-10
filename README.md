@@ -309,7 +309,7 @@ docker build -t boh:dev .
 docker run --rm -p 8080:8080 -v boh_dev:/data -e BOH_ADMIN_PASSWORD=dev boh:dev
 ```
 
-With a local .NET 10 SDK:
+With a local .NET 11 SDK:
 
 ```sh
 dotnet test --solution boh.slnx

@@ -21,10 +21,8 @@ public sealed record ResolvedSearch(
         : this(include, exclude, unsatisfiable, []) { }
 }
 
-public abstract record TagLinkResult
+public closed record TagLinkResult
 {
-    private TagLinkResult() { }
-
     public sealed record Ok : TagLinkResult;
     public sealed record Rejected(string Reason) : TagLinkResult;
 }

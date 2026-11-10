@@ -22,7 +22,7 @@ updates:
     schedule:
       interval: "weekly"
 
-  # The sdk:10.0 and aspnet:10.0 base images in the Dockerfile, pinned by
+  # The sdk:11.0 and aspnet:11.0-alpine base images in the Dockerfile, pinned by
   # multi-arch index digest so patch and OS rebuilds of the tag arrive as PRs.
   # Grouped so both images move together.
   - package-ecosystem: "docker"
